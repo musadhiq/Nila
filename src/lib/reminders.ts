@@ -85,7 +85,11 @@ export function mergeSettings(raw: Record<string, string>): AppSettings {
   if (raw.character_size === "small" || raw.character_size === "medium" || raw.character_size === "large") {
     s.character_size = raw.character_size;
   }
-  if (raw.character_visibility === "off" || raw.character_visibility === "small" || raw.character_visibility === "normal") {
+  if (
+    raw.character_visibility === "always" ||
+    raw.character_visibility === "reminding" ||
+    raw.character_visibility === "hidden"
+  ) {
     s.character_visibility = raw.character_visibility;
   }
   if (raw.animation === "full" || raw.animation === "reduced" || raw.animation === "off") {
@@ -98,6 +102,30 @@ export function mergeSettings(raw: Record<string, string>): AppSettings {
     s.sound = raw.sound;
   }
   if (raw.start_at_login !== undefined) s.start_at_login = raw.start_at_login === "true";
+  if (raw.language === "en" || raw.language === "manglish") {
+    s.language = raw.language;
+  }
+  if (
+    raw.reminder_behavior === "bubble" ||
+    raw.reminder_behavior === "character" ||
+    raw.reminder_behavior === "system"
+  ) {
+    s.reminder_behavior = raw.reminder_behavior;
+  }
+  if (raw.desktop_notifications !== undefined) {
+    s.desktop_notifications = raw.desktop_notifications === "true";
+  }
+  if (raw.idle_behavior === "normal" || raw.idle_behavior === "minimal") {
+    s.idle_behavior = raw.idle_behavior;
+  }
+  if (
+    raw.accent === "teal" ||
+    raw.accent === "amber" ||
+    raw.accent === "rose" ||
+    raw.accent === "indigo"
+  ) {
+    s.accent = raw.accent;
+  }
   return s;
 }
 
@@ -114,6 +142,11 @@ export function settingsToRecord(s: AppSettings): Record<string, string> {
     appearance: s.appearance,
     sound: s.sound,
     start_at_login: s.start_at_login ? "true" : "false",
+    language: s.language,
+    reminder_behavior: s.reminder_behavior,
+    desktop_notifications: s.desktop_notifications ? "true" : "false",
+    idle_behavior: s.idle_behavior,
+    accent: s.accent,
   };
 }
 

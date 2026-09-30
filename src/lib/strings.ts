@@ -5,13 +5,13 @@
  * text each other in Kerala. All reminder messages, overlay buttons and
  * greetings are Manglish.
  *
- * The settings / reminders panels are a management UI and use plain
- * English so every option is unambiguous.
+ * The settings experience is bilingual (English / Manglish) and lives in
+ * `lib/i18n.ts` — a centralized dictionary. This module keeps Nila's
+ * voice: the words she says, not the words about her.
  */
 
-/** Action buttons. Overlay buttons are Manglish; panel buttons are English. */
+/** Overlay action buttons (Manglish). */
 export const ACTIONS = {
-  // Reminder overlay (Manglish)
   later: "Pinneed",
   ok: "Sheri",
   dismiss: "Ozhivakkuka",
@@ -22,14 +22,6 @@ export const ACTIONS = {
   pause60: "1 manikkoor nirthuka",
   pauseTomorrow: "Naale vare nirthuka",
   resume: "Thudaruka",
-  // Panels (English)
-  settings: "Settings",
-  testReminder: "Try a reminder",
-  save: "Save",
-  cancel: "Cancel",
-  delete: "Delete",
-  edit: "Edit",
-  add: "Add",
 } as const;
 
 /** Built-in reminder messages, in Nila's caring Manglish voice. */
@@ -83,46 +75,4 @@ export const ONBOARDING = {
   schedule: "Eppozhokke ormmippikkanam?",
   appearance: "Enne engane kananam?",
   finish: "Sheri, thudangam!",
-} as const;
-
-/** Settings panel labels (plain English). */
-export const SETTINGS_LABELS = {
-  general: "General",
-  reminders: "Reminders",
-  character: "Character",
-  appearance: "Appearance",
-  schedule: "Schedule",
-  about: "About",
-  quietHours: "Quiet hours",
-  dailyLimit: "Daily limit",
-  cooldown: "Cooldown",
-  startAtLogin: "Start at login",
-  showCharacter: "Show character",
-  sizeSmall: "Small",
-  sizeMedium: "Medium",
-  sizeLarge: "Large",
-  animationFull: "Full",
-  animationReduced: "Reduced",
-  animationOff: "Off",
-  themeSystem: "System",
-  themeLight: "Light",
-  themeDark: "Dark",
-  sound: "Sound",
-  soundNone: "None",
-  soundSoft: "Soft",
-  soundChime: "Chime",
-  dataSection: "Backup",
-  exportData: "Export backup",
-  importData: "Import backup",
-  exported: "Backup saved.",
-  imported: "Backup restored.",
-} as const;
-
-/** Error messages shown in the panels (plain English). */
-export const ERRORS = {
-  generic: "Something went wrong. Please try again.",
-  noTray: "System tray not found.",
-  importFailed: "Couldn't read the file.",
-  exportFailed: "Couldn't create the backup.",
-  importInvalid: "This file is not a Nila backup.",
 } as const;

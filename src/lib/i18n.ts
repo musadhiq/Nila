@@ -1,0 +1,525 @@
+/**
+ * Nila's settings language system — intentionally simple.
+ *
+ * Two languages, one centralized dictionary:
+ *   - "en"       — English, the primary UI language.
+ *   - "manglish" — Malayalam in Latin script, first-class, conversational
+ *                  (never word-for-word translations).
+ *
+ * Nila's *voice* (reminder copy, overlay buttons, greetings) stays Manglish
+ * always — see `strings.ts`. This dictionary covers the settings/management
+ * UI only. No localization framework, no message formatting library: plain
+ * nested objects plus a tiny `{placeholder}` filler.
+ */
+import type { Schedule } from "./types";
+
+export type Language = "en" | "manglish";
+
+const en = {
+  window: {
+    title: "Nila Settings",
+  },
+  nav: {
+    general: "General",
+    reminders: "Reminders",
+    character: "Character",
+    appearance: "Appearance",
+    schedule: "Schedule",
+    notifications: "Notifications",
+    language: "Language",
+    about: "About",
+  },
+  page: {
+    general: {
+      title: "General",
+      subtitle: "Make Nila work the way you like.",
+    },
+    reminders: {
+      title: "Reminders",
+      subtitle: "Choose what Nila can remind you about.",
+    },
+    character: {
+      title: "Character",
+      subtitle: "Customize how Nila appears and reacts.",
+    },
+    appearance: {
+      title: "Appearance",
+      subtitle: "Adjust how Nila looks on your desktop.",
+    },
+    schedule: {
+      title: "Schedule",
+      subtitle: "Control when Nila can interrupt your day.",
+    },
+    notifications: {
+      title: "Notifications",
+      subtitle: "Choose how Nila gets your attention.",
+    },
+    language: {
+      title: "Language",
+      subtitle: "Choose the language for Nila's settings.",
+    },
+    about: {
+      title: "About",
+      subtitle: "A little companion for your day.",
+    },
+  },
+  general: {
+    behaviorSection: "Nila behavior",
+    startAtLogin: "Start Nila at login",
+    startAtLoginDesc: "Nila will appear automatically when you sign in.",
+    pauseSection: "Pause reminders",
+    pauseDesc: "Take a break from reminders for a while.",
+    pause30: "30 minutes",
+    pause60: "1 hour",
+    pauseTomorrow: "Until tomorrow",
+    resume: "Resume reminders",
+    pausedUntil: "Paused until {time}",
+    testSection: "Try it out",
+    testReminder: "Try a reminder",
+    testReminderDesc: "See how a reminder looks and sounds.",
+    backupSection: "Backup",
+    backupDesc: "Keep a copy of your reminders and settings.",
+    export: "Export backup",
+    import: "Import backup",
+    exported: "Backup saved.",
+    imported: "Backup restored ({count} reminders).",
+  },
+  reminders: {
+    builtInSection: "Built-in reminders",
+    customSection: "Custom reminders",
+    newReminder: "New reminder",
+    emptyCustom: "No custom reminders yet.",
+    emptyCustomDesc:
+      "Create one when you want Nila to remember something for you.",
+    editHint: "Select a reminder to change its schedule.",
+    enabled: "Enabled",
+    editor: {
+      newTitle: "New reminder",
+      editTitle: "Edit reminder",
+      titleLabel: "Title",
+      titlePlaceholder: "Drink water",
+      messageLabel: "Message",
+      messagePlaceholder: "Time for some water",
+      typeLabel: "Type",
+      scheduleLabel: "Schedule",
+      scheduleDaily: "Daily",
+      scheduleWeekly: "Weekly",
+      scheduleInterval: "Every X minutes",
+      scheduleOnce: "Once",
+      timeLabel: "Time",
+      daysLabel: "Days",
+      minutesLabel: "Every",
+      minutesUnit: "minutes",
+      onceLabel: "Date and time",
+      save: "Save reminder",
+      cancel: "Cancel",
+      delete: "Delete reminder",
+      deleteConfirm: "Delete this reminder? This can't be undone.",
+      keepEditing: "Keep editing",
+      yesDelete: "Delete",
+      titleRequired: "Please add a title.",
+      messageRequired: "Please add a message.",
+      scheduleRequired: "Please choose when it should repeat.",
+      kind: {
+        water: "Water",
+        food: "Food",
+        break: "Break",
+        move: "Movement",
+        sleep: "Sleep",
+        custom: "Custom",
+      } as Record<string, string>,
+    },
+    schedule: {
+      once: "Once · {at}",
+      daily: "Daily · {time}",
+      weekly: "{days} · {time}",
+      interval: "Every {minutes} min",
+      daysShort: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    },
+  },
+  character: {
+    previewLabel: "Preview",
+    sizeSection: "Character size",
+    sizeDesc: "How big Nila appears on your desktop.",
+    sizeSmall: "Small",
+    sizeMedium: "Medium",
+    sizeLarge: "Large",
+    animationSection: "Animation",
+    animationDesc: "How much Nila moves.",
+    animationFull: "Full",
+    animationReduced: "Reduced",
+    animationOff: "Off",
+    idleSection: "Idle behavior",
+    idleDesc: "What Nila does while waiting.",
+    idleNormal: "Normal",
+    idleNormalDesc: "Nila breathes and looks around gently.",
+    idleMinimal: "Minimal",
+    idleMinimalDesc: "Nila stays still when idle.",
+    visibilitySection: "Visibility",
+    visibilityDesc: "When Nila appears on your desktop.",
+    visibilityAlways: "Always visible",
+    visibilityAlwaysDesc: "Nila stays on screen, quietly part of your day.",
+    visibilityReminding: "Only when reminding",
+    visibilityRemindingDesc:
+      "Nila appears when a reminder is due, then slips back into the tray.",
+    visibilityHidden: "Hidden",
+    visibilityHiddenDesc:
+      "Nila lives in the tray; reminders arrive as system notifications.",
+  },
+  appearance: {
+    themeSection: "Theme",
+    themeDesc: "Follow your system, or pick one.",
+    themeSystem: "System",
+    themeLight: "Light",
+    themeDark: "Dark",
+    accentSection: "Accent color",
+    accentDesc: "A quiet touch of color across settings.",
+    accentTeal: "Lagoon",
+    accentAmber: "Marigold",
+    accentRose: "Rose",
+    accentIndigo: "Indigo",
+  },
+  schedule: {
+    quietSection: "Quiet hours",
+    quietDesc: "Nila won't remind you during these hours.",
+    quietStart: "Quiet hours start",
+    quietEnd: "Quiet hours end",
+    limitSection: "Daily reminder limit",
+    limitDesc: "The most reminders Nila will show each day.",
+    limitValue: "{count} reminders",
+    cooldownSection: "Minimum time between reminders",
+    cooldownDesc: "Nila waits at least this long between reminders.",
+    cooldownValue: "{count} minutes",
+  },
+  notifications: {
+    desktopSection: "Desktop notifications",
+    desktopTitle: "Desktop notifications",
+    desktopDesc: "Also show a system notification with each reminder.",
+    soundTitle: "Sound",
+    soundDesc: "Play a gentle sound when a reminder appears.",
+    soundNone: "None",
+    soundSoft: "Soft",
+    soundGentle: "Gentle",
+    behaviorSection: "Reminder behavior",
+    behaviorBubble: "Character + bubble",
+    behaviorBubbleDesc: "Nila appears with the reminder message.",
+    behaviorCharacter: "Character only",
+    behaviorCharacterDesc:
+      "Nila appears quietly — click her to see the reminder.",
+    behaviorSystem: "System notification",
+    behaviorSystemDesc:
+      "Only a system notification; Nila stays in the tray.",
+  },
+  languagePage: {
+    section: "Language",
+    sectionDesc: "Applies immediately — no restart needed.",
+    english: "English",
+    englishDesc: "The primary language for settings.",
+    manglish: "Manglish",
+    manglishDesc: "Malayalam in Latin script, the way we text.",
+  },
+  about: {
+    version: "Version {version}",
+    versionLabel: "Version",
+    tagline: "A little companion for your day.",
+    documentation: "Documentation",
+    documentationValue: "README and the docs/ folder",
+    licenses: "Licenses",
+    licensesValue: "Apache-2.0 (code)",
+    github: "GitHub",
+    githubValue: "github.com/musadhiq/Nila",
+    madeFor: "Made for Linux",
+  },
+  common: {
+    on: "On",
+    off: "Off",
+    close: "Close",
+    back: "Back",
+    save: "Save",
+    cancel: "Cancel",
+    delete: "Delete",
+    edit: "Edit",
+    add: "Add",
+    done: "Done",
+  },
+  errors: {
+    generic: "Something went wrong. Please try again.",
+    exportFailed: "Couldn't create the backup.",
+    importFailed: "Couldn't read the file.",
+    importInvalid: "This file is not a Nila backup.",
+    reminderSaveFailed: "Couldn't save this reminder. Please try again.",
+  },
+};
+
+export type Dict = typeof en;
+
+const manglish: Dict = {
+  window: {
+    title: "Nila Settings",
+  },
+  nav: {
+    general: "General",
+    reminders: "Reminders",
+    character: "Character",
+    appearance: "Appearance",
+    schedule: "Schedule",
+    notifications: "Notifications",
+    language: "Language",
+    about: "About",
+  },
+  page: {
+    general: {
+      title: "General",
+      subtitle: "Nila ninte ishtam pole work cheyyatte.",
+    },
+    reminders: {
+      title: "Reminders",
+      subtitle: "Ethokke karyangal Nila ormmippikkanamennu theerumanikku.",
+    },
+    character: {
+      title: "Character",
+      subtitle: "Nila eppozhaanu kaanunnathu, engane react cheyyunnathu — ivide set cheyyam.",
+    },
+    appearance: {
+      title: "Appearance",
+      subtitle: "Desktop-il Nila-yude look ivide adjust cheyyam.",
+    },
+    schedule: {
+      title: "Schedule",
+      subtitle: "Ninte divasathil eppozhokke Nila vannu disturb cheyyaamennu control cheyyu.",
+    },
+    notifications: {
+      title: "Notifications",
+      subtitle: "Nila ninte shradha engane pidikkana mennu theerumanikku.",
+    },
+    language: {
+      title: "Language",
+      subtitle: "Nila-yude settings eth language-il venamennu theerumanikku.",
+    },
+    about: {
+      title: "About",
+      subtitle: "Ninte divasathilekku oru cheriya koottukari.",
+    },
+  },
+  general: {
+    behaviorSection: "Nila behavior",
+    startAtLogin: "Login-il Nila start cheyyuka",
+    startAtLoginDesc: "Sign in cheyyumbol Nila thanne varum.",
+    pauseSection: "Reminders nirthuka",
+    pauseDesc: "Kurachu nerathekk reminders venda.",
+    pause30: "30 minute",
+    pause60: "1 manikkoor",
+    pauseTomorrow: "Naale vare",
+    resume: "Reminders thudanguka",
+    pausedUntil: "{time} vare nirthi vechirikkunnu",
+    testSection: "Onnu try cheyyu",
+    testReminder: "Oru reminder try cheyyu",
+    testReminderDesc: "Reminder eppozhaanu kaanunnathu, sound engane — onnu kandu nokku.",
+    backupSection: "Backup",
+    backupDesc: "Reminders-um settings-um oru copy aayi save cheyyam.",
+    export: "Backup export cheyyuka",
+    import: "Backup import cheyyuka",
+    exported: "Backup save aayi.",
+    imported: "Backup restore aayi ({count} reminders).",
+  },
+  reminders: {
+    builtInSection: "Built-in reminders",
+    customSection: "Custom reminders",
+    newReminder: "Puthiya reminder",
+    emptyCustom: "Custom reminders onnum illa.",
+    emptyCustomDesc: "Nila ethengilum ormmikkanamennu thonnumbol ivide create cheyyam.",
+    editHint: "Schedule maattana menkil oru reminder select cheyyu.",
+    enabled: "Enabled",
+    editor: {
+      newTitle: "Puthiya reminder",
+      editTitle: "Reminder edit cheyyuka",
+      titleLabel: "Title",
+      titlePlaceholder: "Vellam kudikkuka",
+      messageLabel: "Message",
+      messagePlaceholder: "Vellam kudikkan samayayi",
+      typeLabel: "Type",
+      scheduleLabel: "Schedule",
+      scheduleDaily: "Dinasavum",
+      scheduleWeekly: "Aazhchayil",
+      scheduleInterval: "X minute-koodumbol",
+      scheduleOnce: "Oru thavana",
+      timeLabel: "Samayam",
+      daysLabel: "Divasangal",
+      minutesLabel: "Ethra",
+      minutesUnit: "minute-koodumbol",
+      onceLabel: "Date-um samayavum",
+      save: "Reminder save cheyyuka",
+      cancel: "Cancel",
+      delete: "Reminder delete cheyyuka",
+      deleteConfirm: "Ee reminder delete cheyyatte? Thirinju kittilla.",
+      keepEditing: "Keep editing",
+      yesDelete: "Delete",
+      titleRequired: "Oru title kodukku.",
+      messageRequired: "Oru message ezhuthu.",
+      scheduleRequired: "Eppozhokke repeat cheyyanamen nu theerumanikku.",
+      kind: {
+        water: "Vellam",
+        food: "Bhakshanam",
+        break: "Visramam",
+        move: "Nadatham",
+        sleep: "Urakkam",
+        custom: "Custom",
+      } as Record<string, string>,
+    },
+    schedule: {
+      once: "Oru thavana · {at}",
+      daily: "Dinasavum · {time}",
+      weekly: "{days} · {time}",
+      interval: "{minutes} minute-koodumbol",
+      daysShort: ["Nja", "Thi", "Cho", "Bud", "Vya", "Vel", "Sha"],
+    },
+  },
+  character: {
+    previewLabel: "Preview",
+    sizeSection: "Character size",
+    sizeDesc: "Desktop-il Nila ethra valuthayi kaananam.",
+    sizeSmall: "Cheriya",
+    sizeMedium: "Midiyam",
+    sizeLarge: "Valiya",
+    animationSection: "Animation",
+    animationDesc: "Nila ethra move cheyyanam.",
+    animationFull: "Full",
+    animationReduced: "Kurachu",
+    animationOff: "Off",
+    idleSection: "Idle behavior",
+    idleDesc: "Nila summa irikkumbol enthu cheyyanam.",
+    idleNormal: "Normal",
+    idleNormalDesc: "Nila gently breathe cheythum chuttum nokkiyum irikkum.",
+    idleMinimal: "Minimal",
+    idleMinimalDesc: "Idle aayirikkumbol Nila anangathe irikkum.",
+    visibilitySection: "Visibility",
+    visibilityDesc: "Nila desktopil eppozha varunnathu.",
+    visibilityAlways: "Eppozhum kananam",
+    visibilityAlwaysDesc: "Nila scree'nil thanne undakum, ningalude divasathinte koode.",
+    visibilityReminding: "Ormmippikku mbozha mathram",
+    visibilityRemindingDesc:
+      "Ormmappeduthal vannal Nila varum, pinne trayilekku thirike pokum.",
+    visibilityHidden: "Olikkuka",
+    visibilityHiddenDesc:
+      "Nila trayil aanu; ormmappeduthalukal system notification ayi varum.",
+  },
+  appearance: {
+    themeSection: "Theme",
+    themeDesc: "System follow cheyyu, allenkil ninte ishtam theerumanikku.",
+    themeSystem: "System",
+    themeLight: "Light",
+    themeDark: "Dark",
+    accentSection: "Accent color",
+    accentDesc: "Settings-il oru cheriya color touch.",
+    accentTeal: "Lagoon",
+    accentAmber: "Marigold",
+    accentRose: "Rose",
+    accentIndigo: "Indigo",
+  },
+  schedule: {
+    quietSection: "Quiet hours",
+    quietDesc: "Ee samayathu Nila ormmippikkilla.",
+    quietStart: "Quiet hours thudakkam",
+    quietEnd: "Quiet hours avassanam",
+    limitSection: "Daily reminder limit",
+    limitDesc: "Oru divasam Nila kanikkunna maximum reminders.",
+    limitValue: "{count} reminders",
+    cooldownSection: "Reminders thammilulla minimum gap",
+    cooldownDesc: "Reminders-kkidayil Nila ingane wait cheyyum.",
+    cooldownValue: "{count} minute",
+  },
+  notifications: {
+    desktopSection: "Desktop notifications",
+    desktopTitle: "Desktop notifications",
+    desktopDesc: "Reminder-odu koode oru system notification-um kaanikkum.",
+    soundTitle: "Sound",
+    soundDesc: "Reminder varumbol oru gentle sound kalikkum.",
+    soundNone: "Venda",
+    soundSoft: "Soft",
+    soundGentle: "Gentle",
+    behaviorSection: "Reminder eppozhaanu kaanunnathu",
+    behaviorBubble: "Character + bubble",
+    behaviorBubbleDesc: "Reminder message-odu koode Nila varum.",
+    behaviorCharacter: "Character mathram",
+    behaviorCharacterDesc: "Nila quietly varum — reminder kaanana avale click cheyyu.",
+    behaviorSystem: "System notification",
+    behaviorSystemDesc: "System notification mathram — Nila tray-il thanne irikkum.",
+  },
+  languagePage: {
+    section: "Language",
+    sectionDesc: "Udan thanne apply aavum — restart venda.",
+    english: "English",
+    englishDesc: "Settings-inte primary language.",
+    manglish: "Manglish",
+    manglishDesc: "Latin script-il ezhuthunna Malayalam.",
+  },
+  about: {
+    version: "Version {version}",
+    versionLabel: "Version",
+    tagline: "Ninte divasathilekku oru cheriya koottukari.",
+    documentation: "Documentation",
+    documentationValue: "README-um docs/ folder-um",
+    licenses: "Licenses",
+    licensesValue: "Apache-2.0 (code)",
+    github: "GitHub",
+    githubValue: "github.com/musadhiq/Nila",
+    madeFor: "Linux-nu vendi",
+  },
+  common: {
+    on: "On",
+    off: "Off",
+    close: "Close",
+    back: "Back",
+    save: "Save",
+    cancel: "Cancel",
+    delete: "Delete",
+    edit: "Edit",
+    add: "Add",
+    done: "Sheri",
+  },
+  errors: {
+    generic: "Enthengilum thettu patti. Onnu koodi try cheyyu.",
+    exportFailed: "Backup undakkan pattiyilla.",
+    importFailed: "File vayikkan pattiyilla.",
+    importInvalid: "Ithu Nila backup alla.",
+    reminderSaveFailed: "Reminder save cheyyan pattiyilla. Onnu koodi try cheyyu.",
+  },
+};
+
+/** The full settings dictionary for both languages. */
+export const STRINGS: Record<Language, Dict> = { en, manglish };
+
+/** Get the dictionary for a language (falls back to English). */
+export function getStrings(lang: Language): Dict {
+  return STRINGS[lang] ?? STRINGS.en;
+}
+
+/** Fill `{placeholder}` values in a template string. */
+export function fill(
+  template: string,
+  vars: Record<string, string | number>,
+): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    key in vars ? String(vars[key]) : `{${key}}`,
+  );
+}
+
+/** Localized one-line description of a schedule, for reminder list rows. */
+export function describeScheduleIn(s: Schedule, lang: Language): string {
+  const t = getStrings(lang).reminders.schedule;
+  switch (s.type) {
+    case "once":
+      return fill(t.once, { at: s.at });
+    case "daily":
+      return fill(t.daily, { time: s.time });
+    case "weekly": {
+      const days = s.days
+        .map((d) => t.daysShort[d] ?? "")
+        .filter(Boolean)
+        .join(", ");
+      return fill(t.weekly, { days: days || "—", time: s.time });
+    }
+    case "interval":
+      return fill(t.interval, { minutes: s.minutes });
+  }
+}
