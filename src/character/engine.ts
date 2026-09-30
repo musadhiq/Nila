@@ -79,6 +79,7 @@ export class CharacterEngine {
   private animation: CharacterAnimation | null = "idle-breathe";
   private size: CharacterSize = "small";
   private motion: MotionPreference = "full";
+  private idleBehavior: "normal" | "minimal" = "normal";
   private expression: ExpressionName | null = null;
   private listeners = new Set<Listener>();
   private resumeState: CharacterState = "idle";
@@ -122,7 +123,9 @@ export class CharacterEngine {
   private defaultAnimationFor(state: CharacterState): CharacterAnimation | null {
     if (this.motion === "off") return null;
     switch (state) {
-      case "idle": return this.motion === "reduced" ? null : "idle-breathe";
+      case "idle":
+        if (this.idleBehavior === "minimal") return null;
+        return this.motion === "reduced" ? null : "idle-breathe";
       case "happy": return this.motion === "reduced" ? null : "happy-bounce";
       case "sleeping": return "sleep";
       case "thinking": return "thinking";
@@ -184,6 +187,13 @@ export class CharacterEngine {
 
   setMotion(motion: MotionPreference): void {
     this.motion = motion;
+    this.animation = this.defaultAnimationFor(this.state);
+    this.emit();
+  }
+
+  /** Minimal idle behavior: Nila stays still while waiting. */
+  setIdleBehavior(behavior: "normal" | "minimal"): void {
+    this.idleBehavior = behavior;
     this.animation = this.defaultAnimationFor(this.state);
     this.emit();
   }

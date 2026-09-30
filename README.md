@@ -88,9 +88,24 @@ npm run tauri dev
   (`character/expressions/`) flash over her state: a surprised gasp and
   a point at the bubble when a reminder fires, sleepy on snooze, proud
   when you mark one done, confused on a bad backup import.
-- **Manglish voice, English settings** — Nila speaks Manglish (Malayalam
-  in Latin script, e.g. “Vellam kudicho?”), while the settings and
-  reminders panels use plain English.
+- **Manglish voice, bilingual settings** — Nila speaks Manglish (Malayalam
+  in Latin script, e.g. “Vellam kudicho?”). The settings window is fully
+  bilingual: pick **English** or **Manglish** on the Language page and the
+  whole interface switches immediately, no restart. The tray menu follows
+  the same language.
+- **Premium settings window** — a calm two-column desktop settings
+  experience (General, Reminders, Character, Appearance, Schedule,
+  Notifications, Language, About) in a resizable 960×640 window with
+  light/dark/system themes, four quiet accent colors, full keyboard
+  support and reduced-motion respect. Changes apply instantly — no save
+  buttons.
+- **Reminder presentation modes** — *Character + bubble* (the classic
+  overlay), *Character only* (Nila appears quietly; click her to see the
+  reminder), or *System notification* (Nila stays in the tray). Desktop
+  notifications can also back up every reminder.
+- **Character visibility** — *Always visible* (Nila stays on screen),
+  *Only when reminding* (the tray-first default), or *Hidden* (Nila lives
+  in the tray; reminders arrive as system notifications).
 - **Reminders** — built-in (water, food, break, movement, sleep), custom
   one-time and recurring reminders, snooze (Pinneed), pause, quiet hours
   (default 22:00–08:00), daily limits and cooldowns.
@@ -109,8 +124,11 @@ npm run tauri dev
 ```text
 src/                 # React + TypeScript frontend
   character/         # character renderer, state machine, animations
-  components/        # reminder bubble, settings, onboarding
-  lib/               # scheduler core, Manglish/English strings, types
+  components/        # reminder bubble, onboarding, settings window
+    settings/        # settings design system (layout, controls, icons)
+    settings/pages/  # the eight settings pages + reminder editor
+  lib/               # scheduler core, i18n dictionary, types
+  styles/            # settings window stylesheet
 src-tauri/           # Rust backend: scheduler, SQLite, platform integration
 docs/                # product spec and engineering docs
 ```

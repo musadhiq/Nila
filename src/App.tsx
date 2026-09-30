@@ -11,7 +11,8 @@ import {
 import { CharacterEngine, NilaCharacter } from "./character";
 import type { CharacterSnapshot } from "./character";
 import type { ExpressionName } from "./character/expressions";
-import { ONBOARDING, SETTINGS_LABELS } from "./lib/strings";
+import { ONBOARDING } from "./lib/strings";
+import { getStrings } from "./lib/i18n";
 import type { AppSettings, Reminder, ReminderKind, Schedule } from "./lib/types";
 import { DEFAULT_SETTINGS } from "./lib/types";
 import {
@@ -36,9 +37,10 @@ import {
 } from "./lib/windowPlacement";
 import { ReminderOverlay, type DueReminder } from "./components/ReminderOverlay";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { RemindersPanel } from "./components/RemindersPanel";
+import { IconGeneral } from "./components/settings/icons";
+import type { ReminderInput } from "./components/settings/ReminderEditor";
 
-type View = "companion" | "settings" | "reminders";
+type View = "companion" | "settings";
 
 const REMINDER_KINDS = ["water", "food", "break", "move", "sleep", "custom"] as const;
 
@@ -74,6 +76,8 @@ export default function App() {
   // Pending delayed hide (lets an expression beat play before Nila slips
   // back into the tray); cancelled when a new reminder fires.
   const pendingHideRef = useRef<number | null>(null);
+  // A due reminder waiting for the user to click Nila ("character" mode).
+  const pendingReminderRef = useRef<DueReminder | null>(null);
   // Fresh settings inside event handlers (the REMINDER_DUE listener is
   // registered once but needs the current sound/motion choices).
   const settingsRef = useRef(settings);
@@ -82,8 +86,26 @@ export default function App() {
 
   const COMPANION_W = 220;
   const COMPANION_H = 300;
-  const PANEL_W = 360;
-  const PANEL_H = 560;
+  // Premium two-column settings window (works at 900x600 and up; the
+  // sidebar collapses to an icon rail in narrower windows).
+  const PANEL_W = 960;
+  const PANEL_H = 640;
+
+  /**
+   * Window chrome per view. The companion is a small always-on-top
+   * frameless sprite; settings is a real resizable desktop window
+   * (with its own custom titlebar, since decorations are off).
+   */
+  const setPanelChrome = async (panel: boolean) => {
+    if (!isTauri()) return;
+    try {
+      const win = getCurrentWindow();
+      await win.setResizable(panel);
+      await win.setAlwaysOnTop(!panel);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const resizeWindow = async (w: number, h: number) => {
     if (!isTauri()) return;
@@ -186,6 +208,7 @@ export default function App() {
     if (!isTauri()) return;
     const win = getCurrentWindow();
     try {
+      await setPanelChrome(false);
       await win.setSize(new LogicalSize(COMPANION_W, COMPANION_H));
       const show = async () => {
         await win.show();
@@ -220,15 +243,25 @@ export default function App() {
   /** Send Nila back to the tray (used when closing panels). */
   const hideToTray = () => {
     manualOpenRef.current = false;
+    pendingReminderRef.current = null;
     setActiveReminder(null);
     setView("companion");
+    void setPanelChrome(false);
     void resizeWindow(COMPANION_W, COMPANION_H);
-    void hideAppWindow();
+    // "Always visible" keeps Nila on screen: closing settings just
+    // returns to the companion instead of hiding to the tray.
+    if (settingsRef.current.character_visibility === "always") {
+      void revealCompanion();
+    } else {
+      void hideAppWindow();
+    }
   };
 
   /** After a reminder is handled, hide again unless the user opened the window. */
   const maybeHideAfterReminder = () => {
-    if (!manualOpenRef.current) void hideAppWindow();
+    if (manualOpenRef.current) return;
+    if (settingsRef.current.character_visibility === "always") return;
+    void hideAppWindow();
   };
 
   /**
@@ -237,6 +270,7 @@ export default function App() {
    */
   const hideAfterBeat = (ms: number) => {
     if (manualOpenRef.current) return;
+    if (settingsRef.current.character_visibility === "always") return;
     if (pendingHideRef.current !== null) window.clearTimeout(pendingHideRef.current);
     pendingHideRef.current = window.setTimeout(() => {
       pendingHideRef.current = null;
@@ -330,6 +364,8 @@ export default function App() {
         setPaused(isPausedSettings(merged));
         engineRef.current!.setSize(merged.character_size);
         engineRef.current!.setMotion(merged.animation);
+        // "Always visible": Nila stays on screen from launch.
+        if (merged.character_visibility === "always") void revealCompanion();
       } catch {
         // Demo mode (plain vite): defaults stay, backend calls no-op.
       }
@@ -371,7 +407,26 @@ export default function App() {
           window.clearTimeout(pendingHideRef.current);
           pendingHideRef.current = null;
         }
+        const behavior = settingsRef.current.reminder_behavior;
+        const hidden = settingsRef.current.character_visibility === "hidden";
+        // "Hidden" mode: Nila never appears on screen. The scheduler
+        // delivers the reminder as an OS notification instead.
+        if (hidden) return;
+        // "System notification" mode: the OS notification is the whole
+        // surface (sent by the scheduler); Nila stays in the tray.
+        if (behavior === "system") return;
         engineRef.current!.beginReminder(kind);
+        if (behavior === "character") {
+          // "Character only" mode: Nila appears quietly with no overlay.
+          // Clicking her reveals the pending reminder; if ignored she
+          // slips back into the tray after a while.
+          pendingReminderRef.current = r;
+          chimeForReminder();
+          setView("companion");
+          void revealCompanion();
+          hideAfterBeat(30000);
+          return;
+        }
         setActiveReminder(r);
         // She gasps, then points at the reminder bubble.
         flashExpression("surprised", 800);
@@ -424,10 +479,28 @@ export default function App() {
     manualOpenRef.current = true;
     if (v === "settings") void refreshSettings();
     setView(v);
+    void setPanelChrome(true);
     void resizeWindow(PANEL_W, PANEL_H);
   };
 
+  const minimizeWindow = () => {
+    if (!isTauri()) return;
+    void getCurrentWindow().minimize().catch(() => {});
+  };
+
   const handleCompanionClick = (e?: React.MouseEvent) => {
+    // "Character only" mode: clicking Nila reveals the pending reminder.
+    const pending = pendingReminderRef.current;
+    if (pending && !activeReminder) {
+      pendingReminderRef.current = null;
+      engineRef.current!.beginReminder(
+        (REMINDER_KINDS as readonly string[]).includes(pending.kind)
+          ? (pending.kind as (typeof REMINDER_KINDS)[number])
+          : "custom",
+      );
+      setActiveReminder(pending);
+      return;
+    }
     if (activeReminder) return;
     // A real drag shouldn't also trigger the wave.
     const d = downPos.current;
@@ -492,10 +565,18 @@ export default function App() {
   const testReminder = async () => {
     // The overlay must be visible: leave the panel first (this was the bug —
     // the reminder fired underneath the open settings panel).
-    manualOpenRef.current = true;
-    setView("companion");
-    void revealCompanion();
+    // In "system notification" mode there is no overlay: the backend sends
+    // an OS notification instead, so Nila stays in the tray. Same for
+    // "hidden" visibility.
+    const behavior = settingsRef.current.reminder_behavior;
+    const hidden = settingsRef.current.character_visibility === "hidden";
+    if (behavior !== "system" && !hidden) {
+      manualOpenRef.current = true;
+      setView("companion");
+      void revealCompanion();
+    }
     if (!isTauri()) {
+      if (behavior === "system" || hidden) return;
       const r: DueReminder = {
         id: "demo",
         title: "Vellam",
@@ -515,20 +596,50 @@ export default function App() {
     }
   };
 
+  const updateReminder = async (id: string, input: ReminderInput) => {
+    const prev = reminders.find((x) => x.id === id);
+    setReminders((list) =>
+      list.map((x) =>
+        x.id === id
+          ? {
+              ...x,
+              title: input.title,
+              message: input.message,
+              kind: input.kind,
+              schedule: input.schedule,
+            }
+          : x,
+      ),
+    );
+    try {
+      await invokeCommand("update_reminder", {
+        id,
+        input: {
+          title: input.title,
+          message: input.message,
+          kind: input.kind,
+          schedule: scheduleToJson(input.schedule),
+          enabled: prev?.enabled ?? true,
+        },
+      });
+    } catch {
+      /* demo mode: keep optimistic state */
+    }
+  };
+
   const saveSettings = async (s: AppSettings) => {
     setSettings(s);
     const engine = engineRef.current!;
     engine.setSize(s.character_size);
     engine.setMotion(s.animation);
+    engine.setIdleBehavior(s.idle_behavior);
     try {
       await invokeCommand("update_settings", { settings: settingsToRecord(s) });
     } catch {
       /* demo mode */
     }
-    // Stay visible in companion mode after saving (the user opened settings
-    // deliberately); closing the panel returns Nila to the tray.
-    setView("companion");
-    void resizeWindow(COMPANION_W, COMPANION_H);
+    // Settings apply immediately and stay open; closing the panel returns
+    // Nila to the tray.
   };
 
   // Tray menu events from the backend.
@@ -655,58 +766,34 @@ export default function App() {
         <button
           type="button"
           className="gear-btn"
-          aria-label={SETTINGS_LABELS.general}
+          aria-label={getStrings(settings.language).window.title}
           onClick={(e) => {
             e.stopPropagation();
             openPanel("settings");
           }}
         >
-          ⚙
+          <IconGeneral />
         </button>
       )}
       {view !== "companion" && (
         <div className="panel-wrap">
-          <div className="tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "settings"}
-              className={view === "settings" ? "tab on" : "tab"}
-              onClick={() => openPanel("settings")}
-            >
-              {SETTINGS_LABELS.general}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "reminders"}
-              className={view === "reminders" ? "tab on" : "tab"}
-              onClick={() => setView("reminders")}
-            >
-              {SETTINGS_LABELS.reminders}
-            </button>
-          </div>
-          {view === "settings" ? (
-            <SettingsPanel
-              settings={settings}
-              paused={paused}
-              onSave={(s) => void saveSettings(s)}
-              onPause={(m) => void pauseAll(m)}
-              onResume={() => void resumeAll()}
-              onTest={() => void testReminder()}
-              onClose={hideToTray}
-              onDataChanged={() => void reloadAfterImport()}
-              onFlash={(name) => flashExpression(name, 1500)}
-            />
-          ) : (
-            <RemindersPanel
-              reminders={reminders}
-              onToggle={(id, en) => void toggleReminder(id, en)}
-              onDelete={(id) => void deleteReminder(id)}
-              onCreate={(input) => void createReminder(input)}
-              onClose={hideToTray}
-            />
-          )}
+          <SettingsPanel
+            settings={settings}
+            paused={paused}
+            reminders={reminders}
+            onSave={(s) => void saveSettings(s)}
+            onPause={(m) => void pauseAll(m)}
+            onResume={() => void resumeAll()}
+            onTest={() => void testReminder()}
+            onClose={hideToTray}
+            onMinimize={minimizeWindow}
+            onDataChanged={() => void reloadAfterImport()}
+            onFlash={(name) => flashExpression(name, 1500)}
+            onToggleReminder={(id, en) => void toggleReminder(id, en)}
+            onDeleteReminder={(id) => void deleteReminder(id)}
+            onCreateReminder={(input) => void createReminder(input)}
+            onUpdateReminder={(id, input) => void updateReminder(id, input)}
+          />
         </div>
       )}
     </div>
