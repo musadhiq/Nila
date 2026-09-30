@@ -83,6 +83,9 @@ export default function App() {
   const [enterAnim, setEnterAnim] = useState<string | null>(null);
   const [stageFading, setStageFading] = useState(false);
   const [charTransform, setCharTransform] = useState("none");
+  /** Ground shadow under Nila — only when she's anchored to the bottom edge
+   *  (never for side peeks or top hanging). Updated with the transform. */
+  const [showGroundShadow, setShowGroundShadow] = useState(true);
   const [bubbleSide, setBubbleSide] = useState<BubbleSide>("above");
   const enterAnimTimer = useRef<number | null>(null);
   // The preset Nila is currently using (may differ from the setting when
@@ -128,6 +131,10 @@ export default function App() {
       const win = getCurrentWindow();
       await win.setResizable(panel);
       await win.setAlwaysOnTop(!panel);
+      // Guard the usable size: the settings panel must never shrink
+      // below a workable size, and the companion sprite must never
+      // keep a minimum size once it returns to sprite duty.
+      await win.setMinSize(panel ? new LogicalSize(720, 480) : null);
     } catch {
       /* ignore */
     }
@@ -313,6 +320,8 @@ export default function App() {
   const applyCharTransform = (preset: PositionPreset) => {
     const s = settingsRef.current;
     setCharTransform(characterTransformCSS(preset, s.top_hang, s.tilt));
+    // Ground shadow only when Nila stands on the bottom edge.
+    setShowGroundShadow(preset === "bottom-left" || preset === "bottom" || preset === "bottom-right");
   };
 
   /** CSS entrance class for the stage; null when the window glides instead. */
@@ -959,12 +968,15 @@ export default function App() {
     }
   };
 
-  const openPanel = (v: View) => {
+  const openPanel = async (v: View) => {
     manualOpenRef.current = true;
     if (v === "settings") void refreshSettings();
     setView(v);
-    void setPanelChrome(true);
-    void resizeWindow(PANEL_W, PANEL_H);
+    // Sequential on purpose: the window manager must apply the panel
+    // chrome and the panel size before the window is (re)shown,
+    // otherwise the panel can get stuck at the small sprite size.
+    await setPanelChrome(true);
+    await resizeWindow(PANEL_W, PANEL_H);
   };
 
   const minimizeWindow = () => {
@@ -1145,8 +1157,14 @@ export default function App() {
         if (mode === "settings") {
           void refreshSettings();
           setView("settings");
-          void resizeWindow(PANEL_W, PANEL_H);
-          void showAppWindow();
+          // Same panel treatment as the gear button: resizable, not
+          // always-on-top, sized before showing so the window never
+          // gets stuck at the small companion size.
+          void (async () => {
+            await setPanelChrome(true);
+            await resizeWindow(PANEL_W, PANEL_H);
+            await showAppWindow();
+          })();
         } else {
           setView("companion");
           void presentCompanion("idle");
@@ -1256,6 +1274,7 @@ export default function App() {
                     size={snap.size}
                     dark={dark}
                     expression={snap.expression}
+                    groundShadow={showGroundShadow}
                   />
                 </div>
               </div>
@@ -1280,6 +1299,7 @@ export default function App() {
                   size={snap.size}
                   dark={dark}
                   expression={snap.expression}
+                  groundShadow={showGroundShadow}
                 />
               </div>
             </div>
@@ -1298,7 +1318,7 @@ export default function App() {
           aria-label={getStrings(settings.language).window.title}
           onClick={(e) => {
             e.stopPropagation();
-            openPanel("settings");
+            void openPanel("settings");
           }}
         >
           <IconGeneral />

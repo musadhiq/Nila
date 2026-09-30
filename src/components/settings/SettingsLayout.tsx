@@ -6,7 +6,9 @@
  * region, minimize and close.
  */
 import type { ReactNode } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Dict } from "../../lib/i18n";
+import { isTauri } from "../../lib/tauri";
 import {
   IconAbout,
   IconAppearance,
@@ -83,7 +85,18 @@ export function SettingsLayout({
         </nav>
       </aside>
       <div className="settings-main">
-        <div className="st-titlebar" data-tauri-drag-region>
+        <div
+          className="st-titlebar"
+          onMouseDown={(e) => {
+            // Explicit drag initiation: data-tauri-drag-region is flaky
+            // on some Linux/Wayland compositors, so start the native drag
+            // ourselves. Presses that begin on a window-control button are
+            // left alone so minimize/close clicks keep working.
+            if (e.button !== 0 || !isTauri()) return;
+            if ((e.target as HTMLElement).closest("button")) return;
+            void getCurrentWindow().startDragging().catch(() => {});
+          }}
+        >
           <span className="st-titlebar-title">{t.page[active].title}</span>
           <span className="st-titlebar-actions">
             <button
