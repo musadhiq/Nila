@@ -31,6 +31,9 @@ interface Props {
   settings: AppSettings;
   paused: boolean;
   reminders: Reminder[];
+  /** When true the OS draws the titlebar (native decorations); the
+   *  custom titlebar hides to avoid a double header. */
+  nativeTitlebar?: boolean;
   onSave: (s: AppSettings) => void;
   onPause: (minutes: 30 | 60 | null) => void;
   onResume: () => void;
@@ -49,6 +52,7 @@ export function SettingsPanel({
   settings,
   paused,
   reminders,
+  nativeTitlebar,
   onSave,
   onPause,
   onResume,
@@ -117,6 +121,7 @@ export function SettingsPanel({
         onNavigate={setPage}
         onClose={onClose}
         onMinimize={onMinimize}
+        nativeTitlebar={nativeTitlebar}
       >
         {page === "general" && (
           <GeneralPage

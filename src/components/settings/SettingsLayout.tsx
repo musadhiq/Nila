@@ -50,6 +50,7 @@ export function SettingsLayout({
   onNavigate,
   onClose,
   onMinimize,
+  nativeTitlebar,
   children,
 }: {
   t: Dict;
@@ -57,6 +58,8 @@ export function SettingsLayout({
   onNavigate: (p: PageId) => void;
   onClose: () => void;
   onMinimize: () => void;
+  /** When true the OS draws the titlebar; hide the custom one. */
+  nativeTitlebar?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -85,38 +88,40 @@ export function SettingsLayout({
         </nav>
       </aside>
       <div className="settings-main">
-        <div
-          className="st-titlebar"
-          onMouseDown={(e) => {
-            // Explicit drag initiation: data-tauri-drag-region is flaky
-            // on some Linux/Wayland compositors, so start the native drag
-            // ourselves. Presses that begin on a window-control button are
-            // left alone so minimize/close clicks keep working.
-            if (e.button !== 0 || !isTauri()) return;
-            if ((e.target as HTMLElement).closest("button")) return;
-            void getCurrentWindow().startDragging().catch(() => {});
-          }}
-        >
-          <span className="st-titlebar-title">{t.page[active].title}</span>
-          <span className="st-titlebar-actions">
-            <button
-              type="button"
-              className="st-winbtn"
-              onClick={onMinimize}
-              aria-label="Minimize"
-            >
-              <IconMinus />
-            </button>
-            <button
-              type="button"
-              className="st-winbtn close"
-              onClick={onClose}
-              aria-label={t.common.close}
-            >
-              <IconClose />
-            </button>
-          </span>
-        </div>
+        {!nativeTitlebar && (
+          <div
+            className="st-titlebar"
+            onMouseDown={(e) => {
+              // Explicit drag initiation: data-tauri-drag-region is flaky
+              // on some Linux/Wayland compositors, so start the native drag
+              // ourselves. Presses that begin on a window-control button are
+              // left alone so minimize/close clicks keep working.
+              if (e.button !== 0 || !isTauri()) return;
+              if ((e.target as HTMLElement).closest("button")) return;
+              void getCurrentWindow().startDragging().catch(() => {});
+            }}
+          >
+            <span className="st-titlebar-title">{t.page[active].title}</span>
+            <span className="st-titlebar-actions">
+              <button
+                type="button"
+                className="st-winbtn"
+                onClick={onMinimize}
+                aria-label="Minimize"
+              >
+                <IconMinus />
+              </button>
+              <button
+                type="button"
+                className="st-winbtn close"
+                onClick={onClose}
+                aria-label={t.common.close}
+              >
+                <IconClose />
+              </button>
+            </span>
+          </div>
+        )}
         <main className="settings-content" key={active}>
           <header className="page-header">
             <h1 className="page-title">{t.page[active].title}</h1>

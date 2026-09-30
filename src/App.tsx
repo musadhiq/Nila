@@ -79,6 +79,9 @@ export default function App() {
   const [activeReminder, setActiveReminder] = useState<DueReminder | null>(null);
   const [paused, setPaused] = useState(false);
   const [greeted, setGreeted] = useState(false);
+  /** True while the settings panel uses native OS window decorations
+   *  (titlebar + resize handles). The custom titlebar hides then. */
+  const [decorated, setDecorated] = useState(false);
   // Presence state.
   const [enterAnim, setEnterAnim] = useState<string | null>(null);
   const [stageFading, setStageFading] = useState(false);
@@ -133,15 +136,22 @@ export default function App() {
       // ignores runtime resizable changes on an undecorated window and
       // keeps clamping to the creation size. Instead the window is born
       // resizable (tauri.conf) but locked via min/max; here we just move
-      // the locks.
+      // the locks. We also use NATIVE decorations for the settings panel:
+      // an undecorated window on Wayland gets no working resize handles
+      // and startDragging() is unreliable, while the compositor's own
+      // titlebar drags and resizes correctly.
       if (panel) {
-        // Settings: a real resizable desktop window.
+        // Settings: a real resizable desktop window with native chrome.
+        await win.setDecorations(true);
         await win.setMinSize(new LogicalSize(720, 480));
         await win.setMaxSize(null);
+        setDecorated(true);
       } else {
-        // Companion: lock back to the small sprite size.
+        // Companion: frameless sprite, locked to the small size.
+        await win.setDecorations(false);
         await win.setMinSize(new LogicalSize(COMPANION_W, COMPANION_H));
         await win.setMaxSize(new LogicalSize(COMPANION_W, COMPANION_H));
+        setDecorated(false);
       }
       await win.setAlwaysOnTop(!panel);
     } catch {
@@ -1156,6 +1166,27 @@ export default function App() {
   };
 
   // Tray menu events from the backend.
+  // Intercept the OS close button (native decorations): closing the
+  // settings window sends Nila back to the tray instead of quitting.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | null = null;
+    (async () => {
+      try {
+        unlisten = await getCurrentWindow().onCloseRequested((e) => {
+          e.preventDefault();
+          hideToTray();
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     let offShow: (() => void) | null = null;
     let offPause: (() => void) | null = null;
@@ -1339,6 +1370,7 @@ export default function App() {
             settings={settings}
             paused={paused}
             reminders={reminders}
+            nativeTitlebar={decorated}
             onSave={(s) => void saveSettings(s)}
             onPause={(m) => void pauseAll(m)}
             onResume={() => void resumeAll()}
