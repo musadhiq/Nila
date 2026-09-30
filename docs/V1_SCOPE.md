@@ -24,9 +24,8 @@ Nila is a Malayalam-first desktop companion where the animated character is the 
 - SQLite
 - restart-safe schedules
 - import/export
-- macOS
-- Windows
-- system tray/menu bar
+- Linux
+- system tray
 - dark/light/system appearance
 - reduced motion
 - basic accessibility
@@ -45,7 +44,8 @@ Nila is a Malayalam-first desktop companion where the animated character is the 
 - weather
 - fitness
 - social features
-- Linux
+- macOS
+- Windows
 - multiple characters
 - character editor
 - cloud sync

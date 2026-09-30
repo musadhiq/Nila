@@ -45,9 +45,8 @@ Example reminders:
 - Cooldown between reminders
 - SQLite local storage
 - Import/export
-- macOS support
-- Windows support
-- system tray/menu bar
+- Linux support
+- system tray
 - startup option
 - light/dark/system appearance
 - reduced-motion support
@@ -66,7 +65,8 @@ Example reminders:
 - weather
 - fitness integrations
 - social features
-- Linux support
+- macOS support
+- Windows support
 - plugin marketplace
 - multiple characters
 - character editor
@@ -302,13 +302,8 @@ Avoid notification spam.
 
 ## 17. Desktop presence
 
-macOS:
-- menu bar
-- floating companion
-- reminder overlay
-
-Windows:
-- system tray
+Linux:
+- system tray (AppIndicator / StatusNotifier)
 - floating companion
 - reminder overlay
 
@@ -331,28 +326,19 @@ Persist position.
 
 Keep within visible bounds after monitor changes.
 
-## 19. macOS
+## 19. Linux
 
 Implement:
-- menu bar presence
-- startup option
-- floating character
+- system tray via AppIndicator/StatusNotifier (with graceful fallback when no tray exists)
+- startup option via `~/.config/autostart` `.desktop` entry
+- floating character window
 - reminder overlay
 - multiple monitors
 - high DPI
-- sleep/wake recovery
+- sleep/wake recovery via logind D-Bus signals
 
-Optional notch-adjacent presentation may be added when technically reliable, with a floating fallback.
-
-## 20. Windows
-
-Implement:
-- system tray
-- startup option
-- floating character
-- multi-monitor
-- high DPI
-- sleep/wake recovery
+GNOME users need the AppIndicator extension for the tray icon; the
+floating companion works regardless.
 
 ## 21. Settings
 
@@ -666,7 +652,7 @@ Document code, artwork, and third-party asset licensing.
 9. Reminder editor and built-ins.
 10. Pause/snooze/quiet hours/cooldown/limits.
 11. Settings.
-12. macOS/Windows integration.
+12. Linux integration.
 13. Import/export.
 14. Accessibility and reduced motion.
 15. Testing and packaging.

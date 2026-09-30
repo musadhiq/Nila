@@ -10,7 +10,7 @@ Nila is an original open-source desktop companion focused on gentle reminders an
 - No analytics/telemetry in V1.
 - No accounts, authentication, cloud backend, or mandatory internet.
 - No AI/LLM dependency.
-- macOS and Windows first.
+- Linux first.
 - Original visual identity only; do not copy proprietary artwork, character design, animations, logos, sounds, or source code.
 
 ## Priorities

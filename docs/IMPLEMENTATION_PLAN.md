@@ -36,8 +36,8 @@ Built-in templates, custom reminder create/edit/delete/enable.
 ## Phase 10 — Settings
 General, character, appearance, schedule, reminders, about.
 
-## Phase 11 — macOS + Windows
-Startup, menu/tray, notifications, multi-monitor, DPI, sleep/wake.
+## Phase 11 — Linux integration
+Tray (AppIndicator), autostart `.desktop` entry, notifications, multi-monitor, DPI, sleep/wake.
 
 ## Phase 12 — Data Operations
 JSON export/import and validation.

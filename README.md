@@ -1,18 +1,19 @@
 # നില (Nila)
 
-A gentle desktop reminder companion for macOS and Windows.
+A gentle desktop reminder companion for Linux.
 
 Nila lives on your desktop as a small animated character and pops up with
 kind Malayalam reminders — drink water, take a break, eat, move, sleep —
 without accounts, cloud, tracking, or AI. Everything stays on your machine.
 
-> **V1:** Malayalam-only UI · macOS + Windows · original character ·
+> **V1:** Malayalam-only UI · Linux · original character ·
 > local SQLite storage · event-driven scheduler
 
 ## Quick start (developers)
 
 Prerequisites: [Rust](https://rustup.rs/), [Node.js 20+](https://nodejs.org/),
-and the [Tauri 2.x system dependencies](https://v2.tauri.app/start/prerequisites/).
+and the [Tauri 2.x Linux dependencies](https://v2.tauri.app/start/prerequisites/)
+(webkit2gtk, AppIndicator libraries, etc.).
 
 ```sh
 npm install

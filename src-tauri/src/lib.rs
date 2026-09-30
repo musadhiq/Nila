@@ -60,10 +60,12 @@ fn default_db_path() -> std::path::PathBuf {
 }
 
 fn dirs_fallback() -> std::path::PathBuf {
-    std::env::var_os("APPDATA")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Library/Application Support"))
-        })
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
+    // Linux (V1 target): XDG base directories.
+    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
+        return std::path::PathBuf::from(data_home);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return std::path::PathBuf::from(home).join(".local/share");
+    }
+    std::path::PathBuf::from(".")
 }
