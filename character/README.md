@@ -2,9 +2,9 @@
 
 `concept-sheet.png` is the master design reference: a young South Indian
 girl with long wavy black hair, small red bindi, gold jhumka earrings,
-light green kurta.
+light green kurta. It is kept here for future use.
 
-## States (`states/`)
+## States
 
 One 1024px PNG per character state, all generated from the concept sheet
 in a consistent 3D animated-film style on plain light backgrounds:
@@ -32,4 +32,3 @@ in a consistent 3D animated-film style on plain light backgrounds:
   Phase-5 placeholder. Wiring the character engine to these images
   (with reduced-motion fallbacks) is scheduled before the first packaged
   build.
-- `expressions/` is reserved for close-up face variants (Phase 6+).
