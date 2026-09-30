@@ -2,8 +2,9 @@
 // touching the database; imported JSON is validated, never executed.
 
 use crate::db::{self, Reminder};
+use crate::scheduler;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ReminderInput {
@@ -52,7 +53,11 @@ pub fn get_settings(db: State<'_, db::DbState>) -> Result<serde_json::Value, Str
 }
 
 #[tauri::command]
-pub fn update_settings(db: State<'_, db::DbState>, settings: serde_json::Value) -> Result<(), String> {
+pub fn update_settings(
+    app: AppHandle,
+    db: State<'_, db::DbState>,
+    settings: serde_json::Value,
+) -> Result<(), String> {
     let obj = settings.as_object().ok_or("ക്രമീകരണം തെറ്റാണ്")?;
     if obj.len() > 64 {
         return Err("കൂടുതൽ ക്രമീകരണങ്ങൾ".into());
@@ -68,6 +73,7 @@ pub fn update_settings(db: State<'_, db::DbState>, settings: serde_json::Value) 
         }
         db::set_setting(&conn, k, &val).map_err(|e| e.to_string())?;
     }
+    scheduler::notify_data_changed(&app);
     Ok(())
 }
 
@@ -78,7 +84,11 @@ pub fn list_reminders(db: State<'_, db::DbState>) -> Result<Vec<Reminder>, Strin
 }
 
 #[tauri::command]
-pub fn create_reminder(db: State<'_, db::DbState>, input: ReminderInput) -> Result<Reminder, String> {
+pub fn create_reminder(
+    app: AppHandle,
+    db: State<'_, db::DbState>,
+    input: ReminderInput,
+) -> Result<Reminder, String> {
     validate_input(&input)?;
     let reminder = Reminder {
         id: format!("r-{}", chrono::Utc::now().timestamp_millis()),
@@ -90,11 +100,13 @@ pub fn create_reminder(db: State<'_, db::DbState>, input: ReminderInput) -> Resu
     };
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::upsert_reminder(&conn, &reminder).map_err(|e| e.to_string())?;
+    scheduler::notify_data_changed(&app);
     Ok(reminder)
 }
 
 #[tauri::command]
 pub fn update_reminder(
+    app: AppHandle,
     db: State<'_, db::DbState>,
     id: String,
     input: ReminderInput,
@@ -113,20 +125,28 @@ pub fn update_reminder(
     };
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::upsert_reminder(&conn, &reminder).map_err(|e| e.to_string())?;
+    scheduler::notify_data_changed(&app);
     Ok(reminder)
 }
 
 #[tauri::command]
-pub fn delete_reminder(db: State<'_, db::DbState>, id: String) -> Result<(), String> {
+pub fn delete_reminder(
+    app: AppHandle,
+    db: State<'_, db::DbState>,
+    id: String,
+) -> Result<(), String> {
     if id.len() > 64 {
         return Err("ഐഡി തെറ്റാണ്".into());
     }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::delete_reminder(&conn, &id).map_err(|e| e.to_string())
+    db::delete_reminder(&conn, &id).map_err(|e| e.to_string())?;
+    scheduler::notify_data_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn snooze_reminder(
+    app: AppHandle,
     db: State<'_, db::DbState>,
     id: String,
     minutes: u32,
@@ -143,11 +163,16 @@ pub fn snooze_reminder(
     )
     .map_err(|e| e.to_string())?;
     db::record_history(&conn, &id, "snoozed").map_err(|e| e.to_string())?;
+    scheduler::notify_data_changed(&app);
     Ok(())
 }
 
 #[tauri::command]
-pub fn pause_all(db: State<'_, db::DbState>, minutes: Option<u32>) -> Result<(), String> {
+pub fn pause_all(
+    app: AppHandle,
+    db: State<'_, db::DbState>,
+    minutes: Option<u32>,
+) -> Result<(), String> {
     // minutes: Some(30|60) or None = until tomorrow
     if let Some(m) = minutes {
         if ![30, 60].contains(&m) {
@@ -167,20 +192,41 @@ pub fn pause_all(db: State<'_, db::DbState>, minutes: Option<u32>) -> Result<(),
         }
     };
     db::set_setting(&conn, "paused_until", &until.to_rfc3339()).map_err(|e| e.to_string())?;
+    scheduler::notify_data_changed(&app);
     Ok(())
 }
 
 #[tauri::command]
-pub fn resume_all(db: State<'_, db::DbState>) -> Result<(), String> {
+pub fn resume_all(app: AppHandle, db: State<'_, db::DbState>) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::set_setting(&conn, "paused_until", "").map_err(|e| e.to_string())?;
+    scheduler::notify_data_changed(&app);
     Ok(())
 }
 
 #[tauri::command]
-pub fn test_reminder(app: tauri::AppHandle) -> Result<(), String> {
+pub fn test_reminder(app: AppHandle) -> Result<(), String> {
     use tauri::Emitter;
     app.emit("REMINDER_DUE", "test").map_err(|e| e.to_string())
+}
+
+/// Record a user action on a shown reminder (dismissed/completed/skipped).
+/// History only; does not change scheduling.
+#[tauri::command]
+pub fn record_reminder_action(
+    db: State<'_, db::DbState>,
+    id: String,
+    action: String,
+) -> Result<(), String> {
+    if id.len() > 64 {
+        return Err("ഐഡി തെറ്റാണ്".into());
+    }
+    if !["dismissed", "completed", "skipped"].contains(&action.as_str()) {
+        return Err("പ്രവർത്തനം തെറ്റാണ്".into());
+    }
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::record_history(&conn, &id, &action).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -198,7 +244,11 @@ pub fn export_data(db: State<'_, db::DbState>) -> Result<serde_json::Value, Stri
 }
 
 #[tauri::command]
-pub fn import_data(db: State<'_, db::DbState>, data: serde_json::Value) -> Result<usize, String> {
+pub fn import_data(
+    app: AppHandle,
+    db: State<'_, db::DbState>,
+    data: serde_json::Value,
+) -> Result<usize, String> {
     // Strict validation: correct envelope, bounded sizes, valid schedules.
     if data.get("format").and_then(|f| f.as_str()) != Some("nila-export") {
         return Err("ഫയൽ നിലയുടേതല്ല".into());
@@ -246,5 +296,6 @@ pub fn import_data(db: State<'_, db::DbState>, data: serde_json::Value) -> Resul
             }
         }
     }
+    scheduler::notify_data_changed(&app);
     Ok(count)
 }

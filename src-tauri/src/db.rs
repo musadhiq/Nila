@@ -119,6 +119,61 @@ pub fn delete_reminder(conn: &Connection, id: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+pub fn get_reminder(conn: &Connection, id: &str) -> rusqlite::Result<Option<Reminder>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, message, kind, schedule, enabled FROM reminders WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query(params![id])?;
+    Ok(rows
+        .next()?
+        .map(|r| {
+            Ok(Reminder {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                message: r.get(2)?,
+                kind: r.get(3)?,
+                schedule: r.get(4)?,
+                enabled: r.get::<_, i64>(5)? != 0,
+            })
+        })
+        .transpose()?)
+}
+
+/// All active snoozes as (reminder_id, wake_at UTC). Rows with
+/// unparseable timestamps are skipped, never fatal.
+pub fn list_snoozed(conn: &Connection) -> rusqlite::Result<Vec<(String, chrono::DateTime<chrono::Utc>)>> {
+    let mut stmt = conn.prepare("SELECT reminder_id, wake_at FROM snoozed_reminders")?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (id, wake) = row?;
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&wake) {
+            out.push((id, dt.with_timezone(&chrono::Utc)));
+        }
+    }
+    Ok(out)
+}
+
+pub fn clear_snooze(conn: &Connection, id: &str) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM snoozed_reminders WHERE reminder_id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Drop snoozes whose wake time has passed (RFC 3339 UTC strings sort
+/// lexicographically, so a string comparison is exact here).
+pub fn delete_expired_snoozes(
+    conn: &Connection,
+    now: &chrono::DateTime<chrono::Utc>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM snoozed_reminders WHERE wake_at <= ?1",
+        params![now.to_rfc3339()],
+    )?;
+    Ok(())
+}
+
 pub fn record_history(conn: &Connection, reminder_id: &str, action: &str) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO reminder_history (reminder_id, occurred_at, action) VALUES (?1, ?2, ?3)",

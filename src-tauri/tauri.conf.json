@@ -1,27 +1,43 @@
-[build]
-devUrl = "http://localhost:1420"
-frontendDist = "../dist"
-
-[package]
-productName = "നില"
-version = "0.1.0"
-
-[tauri.bundle]
-active = true
-targets = ["deb", "appimage"]
-category = "Utility"
-shortDescription = "A gentle Malayalam desktop reminder companion"
-icon = [
-  "icons/32x32.png",
-  "icons/128x128.png",
-  "icons/128x128@2x.png",
-]
-
-[app]
-windows = [
-  { label = "companion", title = "നില", width = 220, height = 260, transparent = true, decorations = false, alwaysOnTop = true, skipTaskbar = true, resizable = false },
-]
-security = { csp = "default-src 'self'; style-src 'self' 'unsafe-inline'" }
-
-[plugins]
-[plugins.sql]
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost"
+    },
+    "windows": [
+      {
+        "alwaysOnTop": true,
+        "decorations": false,
+        "height": 300,
+        "label": "companion",
+        "resizable": false,
+        "skipTaskbar": true,
+        "title": "നില",
+        "transparent": true,
+        "width": 220
+      }
+    ]
+  },
+  "build": {
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "bundle": {
+    "active": true,
+    "category": "Utility",
+    "icon": [
+      "character/idle.png"
+    ],
+    "shortDescription": "A gentle Malayalam desktop reminder companion",
+    "targets": [
+      "deb",
+      "appimage"
+    ]
+  },
+  "identifier": "app.nila.companion",
+  "plugins": {
+    "sql": {}
+  },
+  "productName": "നില",
+  "version": "0.1.0"
+}

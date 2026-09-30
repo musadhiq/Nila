@@ -31,6 +31,9 @@ pub fn run() {
             db::migrate(&conn).expect("failed to migrate Nila database");
             app.manage(db::DbState::new(conn));
 
+            // Scheduler generation counter (wakes the driver on changes).
+            app.manage(scheduler::SchedulerGen::new());
+
             // Hand the scheduler its dependencies and let it run.
             scheduler::spawn(app.handle().clone());
             platform::watch_sleep_wake(app.handle().clone());
@@ -47,6 +50,7 @@ pub fn run() {
             commands::pause_all,
             commands::resume_all,
             commands::test_reminder,
+            commands::record_reminder_action,
             commands::export_data,
             commands::import_data,
         ])
