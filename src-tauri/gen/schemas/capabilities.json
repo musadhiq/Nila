@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for Nila","local":true,"windows":["companion"],"permissions":["core:default","sql:default","sql:allow-load","sql:allow-execute","sql:allow-select","notification:default","notification:allow-notify","autostart:default","os:default","process:default"]}}
