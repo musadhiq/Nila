@@ -123,6 +123,7 @@ function PresencePreview({
                 size="small"
                 dark={dark}
                 expression={null}
+                groundShadow={edges.includes("bottom")}
               />
             </span>
           </span>

@@ -3,6 +3,7 @@ import { EXPRESSION_LABEL, type ExpressionName } from "./expressions";
 // Character art lives in the repo's character/ folder (single source of
 // truth); Vite bundles these imports into dist/assets at build time.
 // States in character/states/, momentary faces in character/expressions/.
+// All PNGs are transparent-background cutouts.
 import idleImg from "../../character/states/idle.png";
 import happyImg from "../../character/states/happy.png";
 import sleepingImg from "../../character/states/sleeping.png";
@@ -33,12 +34,21 @@ import restChinImg from "../../character/expressions/rest-chin.png";
  * project character set (see character/): a young South Indian girl
  * with long wavy black hair, red bindi, gold jhumkas, light green kurta.
  *
- * One 1024px PNG per engine state; CSS handles the motion. The `hidden`
- * state renders nothing — visibility is driven by the engine.
+ * One transparent PNG per engine state; CSS handles the motion. The
+ * `hidden` state renders nothing — visibility is driven by the engine.
  *
- * Note: current artwork has a light painted background. Transparent-
- * background variants are planned so the character floats cleanly on
- * dark wallpapers too.
+ * Two variants:
+ * - "cutout" (default): the full transparent character, floating on the
+ *   desktop with an alpha-aware drop shadow. This is the desktop-companion
+ *   look — no circular crop.
+ * - "avatar": a circular cropped portrait for compact UI (settings lists,
+ *   etc.). The desktop companion never uses this.
+ *
+ * The optional ground shadow is a soft ellipse under bottom-standing
+ * positions. It is a static, non-animating element (it stays planted
+ * while Nila breathes/bounces), and callers should only enable it when
+ * Nila is anchored to the bottom edge — never for side peeks or when
+ * hanging from the top.
  */
 
 interface Props {
@@ -48,6 +58,11 @@ interface Props {
   dark?: boolean;
   /** Momentary expression face; takes precedence over the state image. */
   expression?: ExpressionName | null;
+  /** "cutout" (desktop companion) or "avatar" (circular portrait). */
+  variant?: "cutout" | "avatar";
+  /** Soft elliptical ground shadow under the character. Only meaningful
+   *  with variant="cutout" at a bottom-anchored position. */
+  groundShadow?: boolean;
 }
 
 const SIZE_PX: Record<CharacterSize, number> = { small: 96, medium: 160, large: 224 };
@@ -117,25 +132,64 @@ function animClass(animation: CharacterAnimation | null): string {
   }
 }
 
-export function NilaCharacter({ state, animation, size, dark = false, expression = null }: Props) {
+export function NilaCharacter({
+  state,
+  animation,
+  size,
+  dark = false,
+  expression = null,
+  variant = "cutout",
+  groundShadow = false,
+}: Props) {
   const src = expression ? EXPRESSION_IMAGES[expression] : imageForState(state);
   if (!src) return null;
   const px = SIZE_PX[size];
+  const label = expression ? EXPRESSION_LABEL[expression] : STATE_LABEL[state];
+
+  if (variant === "avatar") {
+    return (
+      <img
+        src={src}
+        width={px}
+        height={px}
+        alt={label}
+        role="img"
+        className={animClass(animation)}
+        draggable={false}
+        style={{
+          borderRadius: "50%",
+          objectFit: "cover",
+          filter: dark ? "brightness(0.94)" : undefined,
+          pointerEvents: "none",
+        }}
+      />
+    );
+  }
+
+  // Cutout: full transparent character, aspect-ratio preserved, with an
+  // alpha-aware drop shadow so she lifts off the wallpaper. The ground
+  // shadow (when enabled) is a sibling of the img so idle animations
+  // (breathe/bounce on the img) don't move the shadow — it stays planted.
+  const dropShadow = dark
+    ? "drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5)) brightness(0.94)"
+    : "drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35))";
   return (
-    <img
-      src={src}
-      width={px}
-      height={px}
-      alt={expression ? EXPRESSION_LABEL[expression] : STATE_LABEL[state]}
-      role="img"
-      className={animClass(animation)}
-      draggable={false}
-      style={{
-        borderRadius: "50%",
-        objectFit: "cover",
-        filter: dark ? "brightness(0.94)" : undefined,
-        pointerEvents: "none",
-      }}
-    />
+    <span className="nila-cutout" style={{ width: px }}>
+      {groundShadow && <span className="nila-ground-shadow" aria-hidden="true" />}
+      <img
+        src={src}
+        alt={label}
+        role="img"
+        className={animClass(animation)}
+        draggable={false}
+        style={{
+          width: "100%",
+          height: "auto",
+          display: "block",
+          filter: dropShadow,
+          pointerEvents: "none",
+        }}
+      />
+    </span>
   );
 }

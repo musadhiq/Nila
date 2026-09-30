@@ -98,6 +98,34 @@ html, body {
 }
 .char-drag:active { cursor: grabbing; }
 
+/* Full-cutout companion: the transparent character floating on the desktop.
+ * The wrapper sizes to the image; the drop-shadow filter on the img is
+ * alpha-aware and follows Nila's silhouette. */
+.nila-cutout {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+/* Soft elliptical ground shadow. Sibling of the img (not a child) so idle
+ * animations on the img (breathe/bounce) don't lift the shadow — it stays
+ * planted. Static element: nothing to disable for reduced motion. */
+.nila-ground-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 1%;
+  width: 62%;
+  height: 9%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.38) 0%,
+    rgba(0, 0, 0, 0.18) 45%,
+    rgba(0, 0, 0, 0) 72%
+  );
+  filter: blur(5px);
+  pointer-events: none;
+}
+
 /* Gear button (opens settings) */
 .gear-btn {
   position: absolute;
