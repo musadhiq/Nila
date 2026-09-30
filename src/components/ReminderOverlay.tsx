@@ -13,6 +13,9 @@ interface Props {
   onDone: (id: string, action: "dismissed" | "completed") => void;
   onSnooze: (id: string, minutes: 10 | 30 | 60) => void;
   onPause: () => void;
+  /** Render as a flex item inside the presence layout instead of a
+   *  full-window overlay (spec 46: the bubble adapts to Nila's position). */
+  inLayout?: boolean;
 }
 
 /**
@@ -20,9 +23,9 @@ interface Props {
  * companion when a reminder fires, with Malayalam actions: done,
  * dismiss, snooze (10/30/60), or pause all reminders for 30 minutes.
  */
-export function ReminderOverlay({ reminder, onDone, onSnooze, onPause }: Props) {
+export function ReminderOverlay({ reminder, onDone, onSnooze, onPause, inLayout }: Props) {
   return (
-    <div className="overlay">
+    <div className={`overlay${inLayout ? " overlay-in-layout" : ""}`}>
       <div className="overlay-card" role="alertdialog" aria-label={reminder.title}>
         <div className="overlay-title">{reminder.title}</div>
         <div className="overlay-message">{reminder.message}</div>
