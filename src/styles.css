@@ -160,21 +160,73 @@ html, body {
   pointer-events: none;
 }
 .overlay-card {
+  --bubble-bg: #ffffff;
+  --bubble-fg: #2b3350;
+  position: relative;
   pointer-events: auto;
-  background: #ffffff;
-  color: #2b3350;
-  border-radius: 14px;
-  padding: 10px 12px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+  background: var(--bubble-bg);
+  color: var(--bubble-fg);
+  border-radius: 18px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
   max-width: 100%;
-  text-align: center;
+  text-align: left;
 }
 @media (prefers-color-scheme: dark) {
-  .overlay-card { background: #2c3852; color: #f2f5ff; }
+  .overlay-card {
+    --bubble-bg: #2c3852;
+    --bubble-fg: #f2f5ff;
+  }
 }
-.overlay-title { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
-.overlay-message { font-size: 13px; margin-bottom: 8px; }
-.overlay-actions { display: flex; gap: 6px; justify-content: center; margin-top: 6px; flex-wrap: wrap; }
+/* Chat-bubble tail pointing toward Nila. The side class comes from the
+ * presence layout: the bubble sits on that side of the character. */
+.reminder-bubble .overlay-card::after {
+  content: "";
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 9px solid transparent;
+}
+.side-left .reminder-bubble .overlay-card::after {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left-color: var(--bubble-bg);
+  border-right: 0;
+}
+.side-right .reminder-bubble .overlay-card::after {
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-right-color: var(--bubble-bg);
+  border-left: 0;
+}
+.side-above .reminder-bubble .overlay-card::after {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-top-color: var(--bubble-bg);
+  border-bottom: 0;
+}
+.side-below .reminder-bubble .overlay-card::after {
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-bottom-color: var(--bubble-bg);
+  border-top: 0;
+}
+.overlay-title {
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 4px;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.overlay-message { font-size: 14px; line-height: 1.45; margin-bottom: 10px; }
+.overlay-actions { display: flex; gap: 6px; justify-content: flex-start; margin-top: 6px; flex-wrap: wrap; }
+/* Pill buttons for the chat-bubble feel. */
+.overlay-card .btn { border-radius: 999px; }
 
 /* ---- Presence: the stage Nila lives on (spec 33-57) ---- */
 .nila-stage {
