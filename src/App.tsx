@@ -647,6 +647,15 @@ export default function App() {
       // Remember the character box so a "retreat" exit can shrink the
       // window back around her without her jumping on screen.
       reminderLayoutRef.current = { ...layout, x: fixed.x, y: fixed.y };
+      // Clear the companion's min/max locks (220x300) BEFORE resizing:
+      // otherwise setSize is clamped and the bubble gets cropped.
+      // Max-before-min order (same lesson as the settings panel fix).
+      try {
+        await win.setMaxSize(null);
+        await win.setMinSize(new LogicalSize(Math.round(w), Math.round(h)));
+      } catch {
+        /* ignore */
+      }
       await win.setSize(new LogicalSize(Math.round(w), Math.round(h)));
       const lm = {
         x: mon.x / scale,

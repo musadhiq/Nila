@@ -222,6 +222,19 @@ pub fn resume_all(app: AppHandle, db: State<'_, db::DbState>) -> Result<(), Stri
     Ok(())
 }
 
+/// Diagnostic: when is the next reminder scheduled to fire?
+/// Returns {id, at} or null if nothing is scheduled.
+#[tauri::command]
+pub fn next_reminder(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+    let next = scheduler::compute_next_deadline(&app);
+    Ok(next.map(|(id, at)| {
+        serde_json::json!({
+            "id": id,
+            "at": at.to_rfc3339(),
+        })
+    }))
+}
+
 #[tauri::command]
 pub fn test_reminder(app: AppHandle, db: State<'_, db::DbState>) -> Result<(), String> {
     use tauri::Emitter;

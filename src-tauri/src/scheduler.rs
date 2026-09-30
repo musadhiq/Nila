@@ -278,7 +278,7 @@ fn snapshot(app: &AppHandle) -> Option<Snapshot> {
 
 /// The next (reminder id, deadline). Internal sentinels (`__nila_*`) are
 /// maintenance wake-ups, not reminders.
-fn compute_next_deadline(app: &AppHandle) -> Option<(String, DateTime<Utc>)> {
+pub fn compute_next_deadline(app: &AppHandle) -> Option<(String, DateTime<Utc>)> {
     let now = Utc::now();
     let snap = snapshot(app)?;
     let s = snap.settings;

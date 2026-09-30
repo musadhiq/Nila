@@ -195,6 +195,7 @@ pub fn run() {
             commands::pause_all,
             commands::resume_all,
             commands::test_reminder,
+            commands::next_reminder,
             commands::record_reminder_action,
             commands::export_data,
             commands::import_data,
