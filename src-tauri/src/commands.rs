@@ -63,6 +63,9 @@ pub fn update_settings(
         return Err("Too many settings.".into());
     }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let prev_lang = db::get_setting(&conn, "language")
+        .unwrap_or(None)
+        .unwrap_or_default();
     for (k, v) in obj {
         if k.len() > 64 {
             return Err("Setting name too long.".into());
@@ -74,6 +77,14 @@ pub fn update_settings(
         db::set_setting(&conn, k, &val).map_err(|e| e.to_string())?;
     }
     scheduler::notify_data_changed(&app);
+    // Rebuild the tray menu when the language changed.
+    let new_lang = obj
+        .get("language")
+        .and_then(|v| v.as_str())
+        .unwrap_or(prev_lang.as_str());
+    if new_lang != prev_lang {
+        crate::refresh_tray_menu(&app);
+    }
     Ok(())
 }
 
@@ -205,8 +216,25 @@ pub fn resume_all(app: AppHandle, db: State<'_, db::DbState>) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub fn test_reminder(app: AppHandle) -> Result<(), String> {
+pub fn test_reminder(app: AppHandle, db: State<'_, db::DbState>) -> Result<(), String> {
     use tauri::Emitter;
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let behavior = db::get_setting(&conn, "reminder_behavior")
+        .map_err(|e| e.to_string())?;
+    let visibility = db::get_setting(&conn, "character_visibility")
+        .map_err(|e| e.to_string())?;
+    // "System notification" mode and "hidden" visibility: the OS
+    // notification is the whole surface.
+    if behavior.as_deref() == Some("system") || visibility.as_deref() == Some("hidden") {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = app
+            .notification()
+            .builder()
+            .title("Parikshanam")
+            .body("Ithu oru parikshana ormmappeduthal aanu 🌸")
+            .show();
+        return Ok(());
+    }
     app.emit("REMINDER_DUE", "test").map_err(|e| e.to_string())
 }
 

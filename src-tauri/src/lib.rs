@@ -27,17 +27,50 @@ fn show_window(app: &tauri::AppHandle, mode: &str) {
     }
 }
 
-/// Build the menu-bar tray icon.
-///
-/// Nila lives in the tray by default: the floating character window only
-/// appears when a reminder is due (or when opened from this menu).
-fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Show Nila", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let pause =
-        MenuItem::with_id(app, "pause", "Pause / resume reminders", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Nila", true, None::<&str>)?;
-    let menu = Menu::with_items(
+/// Tray menu labels in the user's language (English / Manglish).
+struct TrayStrings {
+    show: &'static str,
+    settings: &'static str,
+    pause: &'static str,
+    quit: &'static str,
+    tooltip: &'static str,
+}
+
+fn tray_strings(lang: &str) -> TrayStrings {
+    match lang {
+        "manglish" => TrayStrings {
+            show: "Nila show cheyyuka",
+            settings: "Settings",
+            pause: "Reminders nirthuka / thudakkuka",
+            quit: "Nila quit cheyyuka",
+            tooltip: "Nila — reminder companion",
+        },
+        _ => TrayStrings {
+            show: "Show Nila",
+            settings: "Settings",
+            pause: "Pause / resume reminders",
+            quit: "Quit Nila",
+            tooltip: "Nila — reminder companion",
+        },
+    }
+}
+
+/// Read the current settings language from the database.
+fn current_language(app: &tauri::AppHandle) -> String {
+    app.try_state::<db::DbState>()
+        .and_then(|st| st.0.lock().ok())
+        .and_then(|conn| db::get_setting(&conn, "language").unwrap_or(None))
+        .unwrap_or_default()
+}
+
+/// Build the tray menu for a language.
+fn tray_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<Menu<tauri::Wry>> {
+    let s = tray_strings(lang);
+    let show = MenuItem::with_id(app, "show", s.show, true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", s.settings, true, None::<&str>)?;
+    let pause = MenuItem::with_id(app, "pause", s.pause, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", s.quit, true, None::<&str>)?;
+    Menu::with_items(
         app,
         &[
             &show,
@@ -46,14 +79,35 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
-    )?;
+    )
+}
+
+/// Rebuild the tray menu in the current language.
+/// Called from `update_settings` when the language changes.
+pub fn refresh_tray_menu(app: &tauri::AppHandle) {
+    let lang = current_language(app);
+    if let Ok(menu) = tray_menu(app, &lang) {
+        if let Some(tray) = app.tray_by_id("nila-tray") {
+            let _ = tray.set_menu(Some(menu));
+            let _ = tray.set_tooltip(Some(tray_strings(&lang).tooltip));
+        }
+    }
+}
+
+/// Build the menu-bar tray icon.
+///
+/// Nila lives in the tray by default: the floating character window only
+/// appears when a reminder is due (or when opened from this menu).
+fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let lang = current_language(app);
+    let menu = tray_menu(app, &lang)?;
 
     let icon = tauri::image::Image::from_bytes(include_bytes!("../../character/idle.png"))
         .expect("failed to load tray icon");
 
     TrayIconBuilder::with_id("nila-tray")
         .icon(icon)
-        .tooltip("Nila — reminder companion")
+        .tooltip(tray_strings(&lang).tooltip)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {

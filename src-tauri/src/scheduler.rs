@@ -203,6 +203,12 @@ struct Settings {
     daily_limit: i64,
     cooldown_minutes: i64,
     paused_until: Option<DateTime<Utc>>,
+    /// How a due reminder presents itself: "bubble" | "character" | "system".
+    reminder_behavior: String,
+    /// When Nila appears: "always" | "reminding" | "hidden".
+    character_visibility: String,
+    /// Send an OS notification with each reminder (backstop).
+    desktop_notifications: bool,
 }
 
 fn read_settings(conn: &rusqlite::Connection) -> Settings {
@@ -230,6 +236,14 @@ fn read_settings(conn: &rusqlite::Connection) -> Settings {
             .unwrap_or(DEFAULT_COOLDOWN_MINUTES)
             .max(0),
         paused_until,
+        reminder_behavior: get("reminder_behavior")
+            .filter(|s| ["bubble", "character", "system"].contains(&s.as_str()))
+            .unwrap_or_else(|| "bubble".to_string()),
+        character_visibility: get("character_visibility")
+            .filter(|s| ["always", "reminding", "hidden"].contains(&s.as_str()))
+            .unwrap_or_else(|| "reminding".to_string()),
+        desktop_notifications: get("desktop_notifications")
+            .map_or(true, |s| s != "false"),
     }
 }
 
@@ -427,10 +441,18 @@ async fn fire_if_eligible(app: &AppHandle, reminder_id: &str) {
         "message": reminder.message,
         "kind": reminder.kind,
     });
-    let _ = app.emit(REMINDER_DUE_EVENT, payload);
+    let behavior = settings.reminder_behavior.as_str();
+    let hidden = settings.character_visibility == "hidden";
+    // "System notification" mode and "hidden" visibility: the OS
+    // notification is the whole surface; the frontend stays in the tray.
+    if behavior != "system" && !hidden {
+        let _ = app.emit(REMINDER_DUE_EVENT, payload);
+    }
 
-    // OS notification as a backstop; the overlay is the primary surface.
-    {
+    // OS notification: a backstop in overlay modes, the primary surface in
+    // "system" mode and "hidden" visibility (where it always fires
+    // regardless of the toggle, so reminders are never silent).
+    if settings.desktop_notifications || behavior == "system" || hidden {
         use tauri_plugin_notification::NotificationExt;
         let _ = app
             .notification()

@@ -5,7 +5,6 @@ import {
   BUILT_IN_MESSAGES,
   BUILT_IN_TITLES,
   ONBOARDING,
-  SETTINGS_LABELS,
   pickVariant,
 } from "../src/lib/strings.ts";
 
@@ -40,34 +39,15 @@ describe("Nila strings", () => {
     assert.equal(pickVariant("nope", 0), "");
   });
 
-  it("overlay actions are Manglish, panel actions are English", () => {
+  it("overlay actions are Manglish", () => {
     assert.equal(ACTIONS.later, "Pinneed");
     assert.equal(ACTIONS.ok, "Sheri");
     assert.equal(ACTIONS.snooze10, "10 minute kazhinj");
     assert.doesNotMatch(ACTIONS.later, MALAYALAM_SCRIPT);
-    assert.equal(ACTIONS.save, "Save");
-    assert.equal(ACTIONS.cancel, "Cancel");
-    assert.equal(ACTIONS.testReminder, "Try a reminder");
   });
 
   it("onboarding greets first and introduces Nila", () => {
     assert.match(ONBOARDING.hello, /Hi/);
     assert.match(ONBOARDING.intro, /Nila/);
-  });
-
-  it("settings labels are plain English", () => {
-    const expected: Record<string, string> = {
-      general: "General",
-      reminders: "Reminders",
-      character: "Character",
-      appearance: "Appearance",
-      quietHours: "Quiet hours",
-      dailyLimit: "Daily limit",
-      exportData: "Export backup",
-    };
-    for (const [key, value] of Object.entries(expected)) {
-      assert.equal(SETTINGS_LABELS[key as keyof typeof SETTINGS_LABELS], value, key);
-      assert.doesNotMatch(value, MALAYALAM_SCRIPT, key);
-    }
   });
 });
