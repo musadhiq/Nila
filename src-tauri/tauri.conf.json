@@ -1,0 +1,29 @@
+[build]
+devUrl = "http://localhost:1420"
+frontendDist = "../dist"
+
+[package]
+productName = "നില"
+version = "0.1.0"
+
+[tauri.bundle]
+active = true
+targets = "all"
+category = "Utility"
+shortDescription = "A gentle Malayalam desktop reminder companion"
+icon = [
+  "icons/32x32.png",
+  "icons/128x128.png",
+  "icons/128x128@2x.png",
+  "icons/icon.icns",
+  "icons/icon.ico",
+]
+
+[app]
+windows = [
+  { label = "companion", title = "നില", width = 220, height = 260, transparent = true, decorations = false, alwaysOnTop = true, skipTaskbar = true, resizable = false },
+]
+security = { csp = "default-src 'self'; style-src 'self' 'unsafe-inline'" }
+
+[plugins]
+[plugins.sql]

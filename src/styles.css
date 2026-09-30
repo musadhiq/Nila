@@ -1,0 +1,90 @@
+/* Nila companion window styles. Transparent floating window. */
+
+:root {
+  font-family: "Noto Sans Malayalam", system-ui, sans-serif;
+  color-scheme: light dark;
+}
+
+html, body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.companion {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+}
+
+.companion:focus-visible {
+  outline: 2px solid #6f8ff7;
+  outline-offset: -2px;
+  border-radius: 12px;
+}
+
+.bubble {
+  position: absolute;
+  bottom: 78%;
+  background: #ffffff;
+  color: #2b3350;
+  border-radius: 14px;
+  padding: 8px 14px;
+  font-size: 15px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bubble {
+    background: #2c3852;
+    color: #f2f5ff;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nila-bounce, .nila-wave, .nila-breathe, .nila-attention, .nila-sleepy {
+    animation: none !important;
+  }
+}
+
+/* Character animations */
+@keyframes nila-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+.nila-breathe { animation: nila-breathe 3.2s ease-in-out infinite; transform-origin: 50% 90%; }
+
+@keyframes nila-bounce {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-10px); }
+  60% { transform: translateY(-4px); }
+}
+.nila-bounce { animation: nila-bounce 0.9s ease-in-out 2; transform-origin: 50% 90%; }
+
+@keyframes nila-wave {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-6deg); }
+  75% { transform: rotate(6deg); }
+}
+.nila-wave { animation: nila-wave 0.8s ease-in-out 2; transform-origin: 50% 90%; }
+
+@keyframes nila-attention {
+  0% { transform: scale(0.85); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+.nila-attention { animation: nila-attention 0.6s ease-out; transform-origin: 50% 90%; }
+
+@keyframes nila-sleepy {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}
+.nila-sleepy { animation: nila-sleepy 4s ease-in-out infinite; transform-origin: 50% 90%; }
