@@ -88,3 +88,135 @@ html, body {
   50% { transform: translateY(3px); }
 }
 .nila-sleepy { animation: nila-sleepy 4s ease-in-out infinite; transform-origin: 50% 90%; }
+
+/* Gear button (opens settings) */
+.gear-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  color: #2b3350;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.gear-btn:hover, .gear-btn:focus-visible { opacity: 1; }
+@media (prefers-color-scheme: dark) {
+  .gear-btn { background: rgba(44, 56, 82, 0.85); color: #f2f5ff; }
+}
+
+/* Reminder overlay */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 6px;
+  pointer-events: none;
+}
+.overlay-card {
+  pointer-events: auto;
+  background: #ffffff;
+  color: #2b3350;
+  border-radius: 14px;
+  padding: 10px 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+  max-width: 100%;
+  text-align: center;
+}
+@media (prefers-color-scheme: dark) {
+  .overlay-card { background: #2c3852; color: #f2f5ff; }
+}
+.overlay-title { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
+.overlay-message { font-size: 13px; margin-bottom: 8px; }
+.overlay-actions { display: flex; gap: 6px; justify-content: center; margin-top: 6px; flex-wrap: wrap; }
+
+/* Buttons */
+.btn {
+  border: 1px solid #d4dcf2;
+  background: #f4f6fd;
+  color: #2b3350;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn.primary { background: #6f8ff7; border-color: #6f8ff7; color: #fff; font-weight: 600; }
+.btn.small { font-size: 11px; padding: 4px 8px; }
+.btn.ghost { background: transparent; }
+.btn:hover { filter: brightness(0.96); }
+@media (prefers-color-scheme: dark) {
+  .btn { background: #3b4a6b; border-color: #4a5b80; color: #f2f5ff; }
+  .btn.primary { background: #6f8ff7; border-color: #6f8ff7; }
+}
+.icon-btn {
+  border: none; background: transparent; cursor: pointer; font-size: 13px; padding: 2px 6px;
+  color: inherit; border-radius: 6px;
+}
+.icon-btn:hover { background: rgba(127, 140, 180, 0.2); }
+.icon-btn.danger:hover { background: rgba(220, 80, 80, 0.18); }
+
+/* Panels (settings / reminders) */
+.panel-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 12px;
+  overflow: hidden;
+}
+@media (prefers-color-scheme: dark) {
+  .panel-wrap { background: rgba(28, 32, 48, 0.97); color: #f2f5ff; }
+}
+.tabs { display: flex; gap: 4px; padding: 6px 6px 0; }
+.tab {
+  flex: 1; border: none; background: transparent; padding: 6px; font-size: 12px;
+  cursor: pointer; color: inherit; font-family: inherit;
+  border-bottom: 2px solid transparent;
+}
+.tab.on { border-bottom-color: #6f8ff7; font-weight: 700; }
+.panel {
+  flex: 1; overflow-y: auto; padding: 8px 10px 12px; font-size: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.panel-header { display: flex; align-items: center; justify-content: space-between; }
+.panel-title { font-weight: 700; font-size: 13px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.panel input[type="time"], .panel input[type="number"], .panel input[type="text"],
+.panel input[type="datetime-local"], .panel select {
+  font-family: inherit; font-size: 12px; padding: 5px 6px; border-radius: 8px;
+  border: 1px solid #d4dcf2; background: #fff; color: #2b3350; max-width: 100%;
+}
+@media (prefers-color-scheme: dark) {
+  .panel input, .panel select { background: #2c3852; border-color: #4a5b80; color: #f2f5ff; }
+}
+.panel-actions { display: flex; gap: 6px; }
+.panel-section { border-top: 1px solid rgba(127, 140, 180, 0.25); padding-top: 8px; }
+
+.reminder-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.reminder-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  border: 1px solid rgba(127, 140, 180, 0.3); border-radius: 10px; padding: 6px 8px;
+}
+.reminder-main { display: flex; gap: 8px; align-items: center; cursor: pointer; flex: 1; min-width: 0; }
+.reminder-main > span { display: flex; flex-direction: column; min-width: 0; }
+.reminder-title { font-weight: 600; font-size: 12px; }
+.reminder-sub { font-size: 11px; opacity: 0.7; }
+.empty { text-align: center; opacity: 0.5; }
+
+.add-form { display: flex; flex-direction: column; gap: 8px; }
+.day-picker { display: flex; gap: 4px; flex-wrap: wrap; }
+.day {
+  border: 1px solid #d4dcf2; background: transparent; color: inherit;
+  border-radius: 8px; padding: 4px 6px; font-size: 11px; cursor: pointer; font-family: inherit;
+}
+.day.on { background: #6f8ff7; border-color: #6f8ff7; color: #fff; }
