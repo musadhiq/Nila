@@ -143,8 +143,8 @@ export default function App() {
       if (panel) {
         // Settings: a real resizable desktop window with native chrome.
         await win.setDecorations(true);
-        await win.setMinSize(new LogicalSize(720, 480));
         await win.setMaxSize(null);
+        await win.setMinSize(new LogicalSize(720, 480));
         setDecorated(true);
       } else {
         // Companion: frameless sprite, locked to the small size.

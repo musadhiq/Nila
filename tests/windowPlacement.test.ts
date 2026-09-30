@@ -20,10 +20,13 @@ const store = new Map<string, string>();
     store.delete(k);
   },
 };
+let mockTime = 0;
+performance.now = () => mockTime;
 (globalThis as Record<string, unknown>).requestAnimationFrame = (
   cb: (t: number) => void,
 ) => {
-  setTimeout(() => cb(performance.now()), 0);
+  mockTime += 10;
+  setTimeout(() => cb(mockTime), 0);
   return 0;
 };
 
