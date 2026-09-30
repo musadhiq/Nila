@@ -58,8 +58,11 @@ fn tray_strings(lang: &str) -> TrayStrings {
 /// Read the current settings language from the database.
 fn current_language(app: &tauri::AppHandle) -> String {
     app.try_state::<db::DbState>()
-        .and_then(|st| st.0.lock().ok())
-        .and_then(|conn| db::get_setting(&conn, "language").unwrap_or(None))
+        .and_then(|st| {
+            // The lock guard must not escape this closure (it borrows `st`).
+            let conn = st.0.lock().ok()?;
+            db::get_setting(&conn, "language").unwrap_or(None)
+        })
         .unwrap_or_default()
 }
 
@@ -102,8 +105,13 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let lang = current_language(app);
     let menu = tray_menu(app, &lang)?;
 
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../../character/states/idle.png"))
-        .expect("failed to load tray icon");
+    // tauri::image::Image takes raw RGBA pixels — decode the PNG first.
+    let icon_png = include_bytes!("../../character/states/idle.png");
+    let rgba = image::load_from_memory(icon_png)
+        .expect("failed to decode tray icon PNG")
+        .to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    let icon = tauri::image::Image::new_owned(rgba.into_raw(), w, h);
 
     TrayIconBuilder::with_id("nila-tray")
         .icon(icon)
