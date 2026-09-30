@@ -19,7 +19,7 @@ import {
   IconReminders,
   IconSchedule,
 } from "./icons";
-import idleUrl from "../../../character/idle.png";
+import idleUrl from "../../../character/states/idle.png";
 
 export type PageId =
   | "general"

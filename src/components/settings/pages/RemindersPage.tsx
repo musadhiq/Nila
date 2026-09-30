@@ -12,7 +12,7 @@ import type { Reminder, ReminderKind } from "../../../lib/types";
 import { SettingsRow, SettingsSection, Switch } from "../ui";
 import { IconChevronRight, IconPlus, IconReminders } from "../icons";
 import { ReminderEditor, type ReminderInput } from "../ReminderEditor";
-import idleUrl from "../../../../character/idle.png";
+import idleUrl from "../../../../character/states/idle.png";
 
 const BUILT_IN_KINDS: ReminderKind[] = ["water", "food", "break", "move", "sleep"];
 

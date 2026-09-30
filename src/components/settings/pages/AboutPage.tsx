@@ -4,7 +4,7 @@
 import { fill } from "../../../lib/i18n";
 import { SettingsRow, SettingsSection } from "../ui";
 import type { PageProps } from "./page";
-import idleUrl from "../../../../character/idle.png";
+import idleUrl from "../../../../character/states/idle.png";
 
 const NILA_VERSION = "0.1.0";
 

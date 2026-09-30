@@ -2,17 +2,18 @@ import type { CharacterAnimation, CharacterSize, CharacterState } from "./engine
 import { EXPRESSION_LABEL, type ExpressionName } from "./expressions";
 // Character art lives in the repo's character/ folder (single source of
 // truth); Vite bundles these imports into dist/assets at build time.
-import idleImg from "../../character/idle.png";
-import happyImg from "../../character/happy.png";
-import sleepingImg from "../../character/sleeping.png";
-import thinkingImg from "../../character/thinking.png";
-import worriedImg from "../../character/worried.png";
-import excitedImg from "../../character/excited.png";
-import wavingImg from "../../character/waving.png";
-import remindingImg from "../../character/reminding.png";
-import sadImg from "../../character/sad.png";
-import pausedImg from "../../character/paused.png";
-import celebratingImg from "../../character/celebrating.png";
+// States in character/states/, momentary faces in character/expressions/.
+import idleImg from "../../character/states/idle.png";
+import happyImg from "../../character/states/happy.png";
+import sleepingImg from "../../character/states/sleeping.png";
+import thinkingImg from "../../character/states/thinking.png";
+import worriedImg from "../../character/states/worried.png";
+import excitedImg from "../../character/states/excited.png";
+import wavingImg from "../../character/states/waving.png";
+import remindingImg from "../../character/states/reminding.png";
+import sadImg from "../../character/states/sad.png";
+import pausedImg from "../../character/states/paused.png";
+import celebratingImg from "../../character/states/celebrating.png";
 // Momentary expression faces from the concept sheet (character/expressions/).
 import surprisedImg from "../../character/expressions/surprised.png";
 import sleepyImg from "../../character/expressions/sleepy.png";
