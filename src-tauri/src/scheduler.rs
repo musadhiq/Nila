@@ -310,27 +310,33 @@ fn compute_next_deadline(app: &AppHandle) -> Option<(String, DateTime<Utc>)> {
             continue;
         }
         // A snoozed reminder's deadline is its wake time, not its schedule.
-        let mut candidate = match snap.snoozed.iter().find(|(id, _)| id == &r.id) {
+        // Tuple: (candidate time, is_explicit_once).
+        let (mut candidate, is_explicit_once) = match snap.snoozed.iter().find(|(id, _)| id == &r.id) {
             Some((_, wake)) => {
                 if *wake <= now {
                     continue; // stale row; cleaned on next snapshot
                 }
-                *wake
+                (*wake, false)
             }
             None => {
                 let sched: Schedule = match serde_json::from_str(&r.schedule) {
                     Ok(sched) => sched,
                     Err(_) => continue, // corrupt schedule: skip, never crash
                 };
+                let is_once = matches!(sched, Schedule::Once { .. });
                 match next_occurrence(&sched, now) {
-                    Some(next) => next,
+                    Some(next) => (next, is_once),
                     None => continue,
                 }
             }
         };
-        if let Some(floor) = cooldown_floor {
-            if candidate < floor {
-                candidate = floor;
+        // Cooldown spaces out automatic reminders, but an explicit one-time
+        // reminder (user picked "in 1 minute") honors the chosen time.
+        if !is_explicit_once {
+            if let Some(floor) = cooldown_floor {
+                if candidate < floor {
+                    candidate = floor;
+                }
             }
         }
         candidate = skip_quiet_hours(candidate, s.quiet_start, s.quiet_end);

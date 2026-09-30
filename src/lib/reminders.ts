@@ -283,3 +283,29 @@ export const BUILT_IN_TEMPLATES: BuiltInTemplate[] = (Object.keys(BUILT_IN_TITLE
               ? { type: "daily", time: "13:00" }
               : { type: "daily", time: "22:30" },
   }));
+
+/**
+ * Check if the current local time falls within quiet hours.
+ * Returns the quiet-end time (HH:MM) if active, null otherwise.
+ */
+export function quietHoursActive(
+  quietStart: string,
+  quietEnd: string,
+  now: Date = new Date(),
+): string | null {
+  const parse = (s: string): [number, number] | null => {
+    const [h, m] = s.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return [h, m];
+  };
+  const start = parse(quietStart);
+  const end = parse(quietEnd);
+  if (!start || !end) return null;
+
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const s = start[0] * 60 + start[1];
+  const e = end[0] * 60 + end[1];
+
+  const inQuiet = s <= e ? mins >= s && mins < e : mins >= s || mins < e;
+  return inQuiet ? quietEnd : null;
+}

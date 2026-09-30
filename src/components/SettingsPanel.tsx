@@ -6,8 +6,9 @@
  */
 import { useEffect, useState } from "react";
 import "../styles/settings.css";
-import { getStrings, type Language } from "../lib/i18n";
+import { getStrings, fill, type Language } from "../lib/i18n";
 import type { AppSettings, Reminder } from "../lib/types";
+import { quietHoursActive } from "../lib/reminders";
 import type { ExpressionName } from "../character/expressions";
 import { SettingsLayout, type PageId } from "./settings/SettingsLayout";
 import { GeneralPage } from "./settings/pages/GeneralPage";
@@ -73,6 +74,9 @@ export function SettingsPanel({
   const update = (patch: Partial<AppSettings>) =>
     onSave({ ...settings, ...patch });
 
+  // Quiet-hours banner: visible when reminders are currently suppressed.
+  const quietUntil = quietHoursActive(settings.quiet_start, settings.quiet_end);
+
   // Resolved theme for the settings chrome + character preview.
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
@@ -123,6 +127,11 @@ export function SettingsPanel({
         onMinimize={onMinimize}
         nativeTitlebar={nativeTitlebar}
       >
+        {quietUntil && (
+          <div className="quiet-banner" role="status">
+            {fill(t.window.quietActive, { time: quietUntil })}
+          </div>
+        )}
         {page === "general" && (
           <GeneralPage
             t={t}

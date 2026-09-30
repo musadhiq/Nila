@@ -1199,3 +1199,18 @@ button.srow.as-button:hover {
 .advanced-body {
   padding: 2px 0 6px;
 }
+
+/* Quiet-hours banner: shown when reminders are suppressed. */
+.quiet-banner {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(111, 143, 247, 0.12);
+  border: 1px solid rgba(111, 143, 247, 0.3);
+  color: inherit;
+  font-size: 13px;
+  text-align: center;
+}
+[data-theme="dark"] .quiet-banner {
+  background: rgba(111, 143, 247, 0.18);
+}

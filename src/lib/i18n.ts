@@ -18,6 +18,7 @@ export type Language = "en" | "manglish";
 const en = {
   window: {
     title: "Nila Settings",
+    quietActive: "Quiet hours until {time} — reminders are paused",
   },
   nav: {
     general: "General",
@@ -334,6 +335,7 @@ export type Dict = typeof en;
 const manglish: Dict = {
   window: {
     title: "Nila Settings",
+    quietActive: "Quiet hours {time} vare — reminders niruthi vachu",
   },
   nav: {
     general: "General",
