@@ -38,15 +38,15 @@ fn validate_input(input: &ReminderInput) -> Result<(), String> {
 #[tauri::command]
 pub fn get_settings(db: State<'_, db::DbState>) -> Result<serde_json::Value, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    Ok(settings_json(&conn).map_err(|e| e.to_string())?)
+}
+
+/// Build the settings JSON object from an already-locked connection.
+/// Used by `get_settings` and `export_data` so the latter never takes
+/// the DB mutex twice (std Mutex is not re-entrant — that would deadlock).
+fn settings_json(conn: &rusqlite::Connection) -> rusqlite::Result<serde_json::Value> {
     let mut map = serde_json::Map::new();
-    let mut stmt = conn
-        .prepare("SELECT key, value FROM settings")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        .map_err(|e| e.to_string())?;
-    for row in rows {
-        let (k, v) = row.map_err(|e| e.to_string())?;
+    for (k, v) in db::get_all_settings(conn)? {
         map.insert(k, serde_json::Value::String(v));
     }
     Ok(serde_json::Value::Object(map))
@@ -233,7 +233,7 @@ pub fn record_reminder_action(
 pub fn export_data(db: State<'_, db::DbState>) -> Result<serde_json::Value, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let reminders = db::list_reminders(&conn).map_err(|e| e.to_string())?;
-    let settings = get_settings(db)?;
+    let settings = settings_json(&conn).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "format": "nila-export",
         "version": 1,

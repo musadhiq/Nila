@@ -146,6 +146,24 @@ export default function App() {
     }
   };
 
+  // After a backup import: keep the "first launch" seed from re-firing,
+  // then reload settings + reminders and apply character options.
+  const reloadAfterImport = async () => {
+    try {
+      await invokeCommand("update_settings", { settings: { seeded_v1: "1" } });
+      const raw = await invokeCommand<Record<string, string>>("get_settings");
+      const merged = mergeSettings(raw);
+      const dtos = await invokeCommand<ReminderDto[]>("list_reminders");
+      setSettings(merged);
+      setReminders(dtos.map(toReminder));
+      setPaused(isPausedSettings(merged));
+      engineRef.current!.setSize(merged.character_size);
+      engineRef.current!.setMotion(merged.animation);
+    } catch {
+      /* demo mode */
+    }
+  };
+
   const openPanel = (v: View) => {
     if (v === "settings") void refreshSettings();
     setView(v);
@@ -359,6 +377,7 @@ export default function App() {
               onResume={() => void resumeAll()}
               onTest={() => void testReminder()}
               onClose={() => setView("companion")}
+              onDataChanged={() => void reloadAfterImport()}
             />
           ) : (
             <RemindersPanel

@@ -217,6 +217,16 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> rusqlite::Resul
     Ok(())
 }
 
+/// Read every settings row. Callers that already hold the DB lock must use
+/// this instead of going through the `get_settings` command (which locks).
+pub fn get_all_settings(conn: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    rows.collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

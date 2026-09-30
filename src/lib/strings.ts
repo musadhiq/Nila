@@ -85,12 +85,23 @@ export const SETTINGS_LABELS = {
   themeSystem: "സിസ്റ്റം",
   themeLight: "വെളിച്ചം",
   themeDark: "ഇരുട്ട്",
+  sound: "ശബ്ദം",
+  soundNone: "ഇല്ല",
+  soundSoft: "മൃദുവായത്",
+  soundChime: "മണിനാദം",
+  dataSection: "വിവരങ്ങൾ",
+  exportData: "ബാക്കപ്പ് എടുക്കുക",
+  importData: "ബാക്കപ്പ് തിരിച്ചെടുക്കുക",
+  exported: "ബാക്കപ്പ് സൂക്ഷിച്ചു.",
+  imported: "ബാക്കപ്പ് തിരിച്ചെടുത്തു.",
 } as const;
 
 export const ERRORS = {
   generic: "എന്തോ തെറ്റ് സംഭവിച്ചു. ദയവായി വീണ്ടും ശ്രമിക്കൂ.",
   noTray: "സിസ്റ്റം ട്രേ കണ്ടെത്തിയില്ല.",
   importFailed: "ഫയൽ വായിക്കാൻ കഴിഞ്ഞില്ല.",
+  exportFailed: "ബാക്കപ്പ് എടുക്കാൻ കഴിഞ്ഞില്ല.",
+  importInvalid: "ഈ ഫയൽ നിലയുടെ ബാക്കപ്പ് അല്ല.",
 } as const;
 
 /** Pick a message variant deterministically-ish (rotates by count). */

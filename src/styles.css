@@ -220,3 +220,7 @@ html, body {
   border-radius: 8px; padding: 4px 6px; font-size: 11px; cursor: pointer; font-family: inherit;
 }
 .day.on { background: #6f8ff7; border-color: #6f8ff7; color: #fff; }
+
+.status-line { font-size: 12px; padding: 6px 8px; border-radius: 8px; }
+.status-line.ok { background: rgba(76, 175, 80, 0.15); color: #2e7d32; }
+.status-line.err { background: rgba(244, 67, 54, 0.12); color: #c62828; }
