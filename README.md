@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="character/nila-logo.png" alt="Nila logo" width="320" />
+</p>
+
 # നില (Nila)
 
 A gentle desktop reminder companion for Linux.
