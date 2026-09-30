@@ -102,7 +102,7 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let lang = current_language(app);
     let menu = tray_menu(app, &lang)?;
 
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../../character/idle.png"))
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../../character/states/idle.png"))
         .expect("failed to load tray icon");
 
     TrayIconBuilder::with_id("nila-tray")

@@ -27,7 +27,7 @@
     "active": true,
     "category": "Utility",
     "icon": [
-      "../character/idle.png"
+      "../character/states/idle.png"
     ],
     "shortDescription": "A gentle Malayalam desktop reminder companion",
     "targets": [
