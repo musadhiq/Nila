@@ -22,6 +22,57 @@ npm run tauri build     # build installers
 npm test               # run unit tests
 ```
 
+### Linux development setup (automated)
+
+On Ubuntu/Debian-based systems, a setup script prepares a fresh machine
+automatically — Rust via rustup, Node.js 20+, Tauri 2.x native dependencies,
+npm packages — then validates the environment (`cargo metadata`, frontend
+build, tests, Tauri build):
+
+```sh
+git clone https://github.com/musadhiq/Nila.git
+cd Nila
+chmod +x scripts/setup-linux.sh
+./scripts/setup-linux.sh
+```
+
+Then:
+
+```sh
+npm run tauri dev
+```
+
+Useful extras:
+
+```sh
+npm run check:linux                            # diagnose without installing anything
+./scripts/setup-linux.sh --skip-tauri-build    # skip the long first build
+```
+
+The automated setup currently targets Ubuntu/Debian-based systems
+(Ubuntu, Debian, Linux Mint, Pop!_OS and derivatives with `apt`).
+On other distributions it prints the manual requirements instead of
+changing your system.
+
+### Manual requirements
+
+If you prefer to set things up by hand (any Linux distribution):
+
+- **Node.js 20+** and **npm** — https://nodejs.org/
+- **Rust stable** (≥ 1.77) via **rustup** — https://rustup.rs/
+  (`rustc --version`, `cargo --version` must work)
+- **Tauri 2.x Linux prerequisites** — https://v2.tauri.app/start/prerequisites/
+  (on Debian/Ubuntu: `build-essential curl wget file pkg-config libssl-dev
+  libxdo-dev libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev`)
+
+Then `npm ci` (or `npm install`), and verify with:
+
+```sh
+cargo metadata --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1
+npm run build
+npm run tauri dev
+```
+
 ## How it works
 
 - **Character first** — the animated character is the product. It wakes,
