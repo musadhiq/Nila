@@ -2,7 +2,19 @@
 // JSON strings and settings as string maps; this module converts to and
 // from the typed frontend models.
 
-import type { AppSettings, Reminder, ReminderKind, Schedule } from "./types.ts";
+import type {
+  AppSettings,
+  EntranceBehavior,
+  ExitBehavior,
+  IdlePresence,
+  MonitorMode,
+  PositionPreset,
+  Reminder,
+  ReminderKind,
+  SavedPresencePos,
+  Schedule,
+} from "./types.ts";
+import { POSITION_PRESETS } from "./types.ts";
 import { BUILT_IN_MESSAGES, BUILT_IN_TITLES } from "./strings.ts";
 import { DEFAULT_SETTINGS } from "./types.ts";
 
@@ -126,6 +138,84 @@ export function mergeSettings(raw: Record<string, string>): AppSettings {
   ) {
     s.accent = raw.accent;
   }
+  // --- Character presence & positioning ---
+  const isPreset = (v: string | undefined): v is PositionPreset =>
+    v !== undefined && (POSITION_PRESETS as string[]).includes(v);
+  if (isPreset(raw.position_preset)) s.position_preset = raw.position_preset;
+  const entrances: EntranceBehavior[] = ["fade", "slide", "pop", "peek", "bounce", "gentle"];
+  if (raw.entrance && (entrances as string[]).includes(raw.entrance)) {
+    s.entrance = raw.entrance as EntranceBehavior;
+  }
+  const exits: ExitBehavior[] = ["fade", "slide", "retreat", "peek-out"];
+  if (raw.exit_behavior && (exits as string[]).includes(raw.exit_behavior)) {
+    s.exit_behavior = raw.exit_behavior as ExitBehavior;
+  }
+  const idles: IdlePresence[] = [
+    "visible",
+    "mostly-visible",
+    "partially-hidden",
+    "peek-from-edge",
+    "hidden",
+    "gentle-idle",
+  ];
+  if (raw.idle_presence && (idles as string[]).includes(raw.idle_presence)) {
+    s.idle_presence = raw.idle_presence as IdlePresence;
+  }
+  const frac = (v: string | undefined): number | undefined => {
+    if (v === undefined || v === "") return undefined;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : undefined;
+  };
+  const pk = frac(raw.peek_amount);
+  if (pk !== undefined) s.peek_amount = pk;
+  const eo = num(raw.edge_offset);
+  if (eo !== undefined) s.edge_offset = Math.min(200, Math.max(0, eo));
+  const tl = raw.tilt !== undefined && raw.tilt !== "" ? parseFloat(raw.tilt) : undefined;
+  if (tl !== undefined && Number.isFinite(tl)) s.tilt = Math.min(8, Math.max(-8, tl));
+  if (raw.top_hang !== undefined) s.top_hang = raw.top_hang === "true";
+  const ems = num(raw.entrance_ms);
+  if (ems !== undefined) s.entrance_ms = Math.min(900, Math.max(0, ems));
+  const xms = num(raw.exit_ms);
+  if (xms !== undefined) s.exit_ms = Math.min(900, Math.max(0, xms));
+  if (raw.draggable !== undefined) s.draggable = raw.draggable === "true";
+  if (raw.snap_enabled !== undefined) s.snap_enabled = raw.snap_enabled === "true";
+  const st = num(raw.snap_threshold);
+  if (st !== undefined) s.snap_threshold = Math.min(120, Math.max(0, st));
+  if (raw.natural_appearances !== undefined) {
+    s.natural_appearances = raw.natural_appearances === "true";
+  }
+  if (raw.enabled_positions) {
+    try {
+      const arr = JSON.parse(raw.enabled_positions) as unknown;
+      if (Array.isArray(arr)) {
+        const clean = arr.filter((p): p is PositionPreset => isPreset(String(p)));
+        if (clean.length > 0) s.enabled_positions = clean;
+      }
+    } catch {
+      /* keep default */
+    }
+  }
+  const mmodes: MonitorMode[] = ["main", "current", "remember", "specific"];
+  if (raw.monitor_mode && (mmodes as string[]).includes(raw.monitor_mode)) {
+    s.monitor_mode = raw.monitor_mode as MonitorMode;
+  }
+  const mi = num(raw.monitor_index);
+  if (mi !== undefined) s.monitor_index = Math.max(0, mi);
+  if (raw.presence_pos) {
+    try {
+      const p = JSON.parse(raw.presence_pos) as Partial<SavedPresencePos>;
+      if (
+        typeof p.x === "number" &&
+        typeof p.y === "number" &&
+        typeof p.monitor === "number" &&
+        isPreset(p.preset)
+      ) {
+        s.presence_pos = { x: p.x, y: p.y, monitor: p.monitor, preset: p.preset };
+      }
+    } catch {
+      /* keep null */
+    }
+  }
   return s;
 }
 
@@ -147,6 +237,24 @@ export function settingsToRecord(s: AppSettings): Record<string, string> {
     desktop_notifications: s.desktop_notifications ? "true" : "false",
     idle_behavior: s.idle_behavior,
     accent: s.accent,
+    position_preset: s.position_preset,
+    entrance: s.entrance,
+    exit_behavior: s.exit_behavior,
+    idle_presence: s.idle_presence,
+    peek_amount: String(s.peek_amount),
+    edge_offset: String(s.edge_offset),
+    tilt: String(s.tilt),
+    top_hang: s.top_hang ? "true" : "false",
+    entrance_ms: String(s.entrance_ms),
+    exit_ms: String(s.exit_ms),
+    draggable: s.draggable ? "true" : "false",
+    snap_enabled: s.snap_enabled ? "true" : "false",
+    snap_threshold: String(s.snap_threshold),
+    natural_appearances: s.natural_appearances ? "true" : "false",
+    enabled_positions: JSON.stringify(s.enabled_positions),
+    monitor_mode: s.monitor_mode,
+    monitor_index: String(s.monitor_index),
+    presence_pos: s.presence_pos ? JSON.stringify(s.presence_pos) : "",
   };
 }
 
