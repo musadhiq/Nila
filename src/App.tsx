@@ -964,6 +964,9 @@ export default function App() {
       const merged = mergeSettings(raw);
       setSettings(merged);
       setPaused(isPausedSettings(merged));
+      // Also reload reminders so the list is never stale when the panel opens.
+      const dtos = await invokeCommand<ReminderDto[]>("list_reminders");
+      setReminders(dtos.map(toReminder));
     } catch {
       /* demo mode */
     }
@@ -1064,6 +1067,17 @@ export default function App() {
     engineRef.current!.pause();
     setActiveReminder(null);
     setPaused(true);
+    // Keep the settings state in sync: pause_all writes paused_until to the
+    // Rust store, but a later saveSettings() with a stale settings object
+    // would overwrite it with "". Refresh from Rust so the state matches.
+    try {
+      const raw = await invokeCommand<Record<string, string>>("get_settings");
+      const merged = mergeSettings(raw);
+      setSettings(merged);
+      setPaused(isPausedSettings(merged));
+    } catch {
+      /* demo mode */
+    }
     maybeHideAfterReminder();
   };
 
@@ -1075,6 +1089,15 @@ export default function App() {
     }
     engineRef.current!.resume();
     setPaused(false);
+    // Same sync as pauseAll: resume_all clears paused_until in Rust.
+    try {
+      const raw = await invokeCommand<Record<string, string>>("get_settings");
+      const merged = mergeSettings(raw);
+      setSettings(merged);
+      setPaused(isPausedSettings(merged));
+    } catch {
+      /* demo mode */
+    }
   };
 
   const testReminder = async () => {

@@ -76,12 +76,19 @@ pub fn update_settings(
         }
         db::set_setting(&conn, k, &val).map_err(|e| e.to_string())?;
     }
-    scheduler::notify_data_changed(&app);
-    // Rebuild the tray menu when the language changed.
+    // Compute the new language before releasing the lock.
     let new_lang = obj
         .get("language")
         .and_then(|v| v.as_str())
-        .unwrap_or(prev_lang.as_str());
+        .unwrap_or(prev_lang.as_str())
+        .to_string();
+    // Release the DB lock BEFORE the tray refresh: refresh_tray_menu ->
+    // current_language locks the DB again, and std::Mutex is not
+    // re-entrant (holding `conn` here would deadlock the app on every
+    // language change).
+    drop(conn);
+    scheduler::notify_data_changed(&app);
+    // Rebuild the tray menu when the language changed.
     if new_lang != prev_lang {
         crate::refresh_tray_menu(&app);
     }
