@@ -55,16 +55,16 @@ export function scheduleToJson(s: Schedule): string {
 export function describeSchedule(s: Schedule): string {
   switch (s.type) {
     case "once":
-      return `ഒറ്റത്തവണ · ${s.at}`;
+      return `Once · ${s.at}`;
     case "daily":
-      return `ദിവസവും · ${s.time}`;
+      return `Daily · ${s.time}`;
     case "weekly": {
-      const names = ["ഞായർ", "തിങ്കൾ", "ചൊവ്വ", "ബുധൻ", "വ്യാഴം", "വെള്ളി", "ശനി"];
+      const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
       const days = s.days.map((d) => names[d] ?? "").filter(Boolean).join(", ");
-      return `ആഴ്ചയിൽ · ${days || "—"} · ${s.time}`;
+      return `Weekly · ${days || "—"} · ${s.time}`;
     }
     case "interval":
-      return `ഓരോ ${s.minutes} മിനിറ്റിലും`;
+      return `Every ${s.minutes} min`;
   }
 }
 

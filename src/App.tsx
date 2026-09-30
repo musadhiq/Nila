@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  availableMonitors,
+  currentMonitor,
+  getCurrentWindow,
+  LogicalSize,
+  PhysicalPosition,
+  primaryMonitor,
+  type Monitor,
+} from "@tauri-apps/api/window";
 import { CharacterEngine, NilaCharacter } from "./character";
 import type { CharacterSnapshot } from "./character";
+import type { ExpressionName } from "./character/expressions";
 import { ONBOARDING, SETTINGS_LABELS } from "./lib/strings";
 import type { AppSettings, Reminder, ReminderKind, Schedule } from "./lib/types";
 import { DEFAULT_SETTINGS } from "./lib/types";
@@ -13,6 +23,17 @@ import {
   type ReminderDto,
 } from "./lib/reminders";
 import { invokeCommand, isTauri, listenEvent } from "./lib/tauri";
+import { playReminderChime } from "./lib/sound";
+import {
+  glidePosition,
+  homePosition,
+  isOnAnyMonitor,
+  loadSavedPosition,
+  saveWindowPosition,
+  trayStartPosition,
+  type MonitorRect,
+  type Xy,
+} from "./lib/windowPlacement";
 import { ReminderOverlay, type DueReminder } from "./components/ReminderOverlay";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RemindersPanel } from "./components/RemindersPanel";
@@ -43,10 +64,226 @@ export default function App() {
   const [paused, setPaused] = useState(false);
   const [greeted, setGreeted] = useState(false);
 
+  // Window lifecycle: Nila lives in the menu-bar tray. The floating window
+  // only appears when a reminder is due, or when opened from the tray.
+  // `manualOpen` tracks a user-opened window so reminder dismissal doesn't
+  // hide a window the user asked to see.
+  const manualOpenRef = useRef(false);
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
+  // Pending delayed hide (lets an expression beat play before Nila slips
+  // back into the tray); cancelled when a new reminder fires.
+  const pendingHideRef = useRef<number | null>(null);
+  // Fresh settings inside event handlers (the REMINDER_DUE listener is
+  // registered once but needs the current sound/motion choices).
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const downPos = useRef<{ x: number; y: number } | null>(null);
+
+  const COMPANION_W = 220;
+  const COMPANION_H = 300;
+  const PANEL_W = 360;
+  const PANEL_H = 560;
+
+  const resizeWindow = async (w: number, h: number) => {
+    if (!isTauri()) return;
+    try {
+      await getCurrentWindow().setSize(new LogicalSize(w, h));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const showAppWindow = async () => {
+    if (!isTauri()) return;
+    try {
+      const win = getCurrentWindow();
+      await win.show();
+      await win.setFocus();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const hideAppWindow = async () => {
+    if (!isTauri()) return;
+    try {
+      await getCurrentWindow().hide();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Momentary expression faces (character/expressions/): a new flash always
+  // cancels the previous one so beats never overlap or cut each other short.
+  const exprTimers = useRef<number[]>([]);
+  const flashExpression = (name: ExpressionName, ms: number) => {
+    exprTimers.current.forEach((t) => window.clearTimeout(t));
+    exprTimers.current = [];
+    engineRef.current!.showExpression(name);
+    exprTimers.current.push(
+      window.setTimeout(() => engineRef.current!.clearExpression(), ms),
+    );
+  };
+
+  /** Soft notification chime on reminder, honoring the sound setting. */
+  const chimeForReminder = () => {
+    const s = settingsRef.current.sound;
+    if (s !== "none") playReminderChime(s);
+  };
+
+  const toMonitorRect = (m: Monitor): MonitorRect => ({
+    x: m.position.x,
+    y: m.position.y,
+    width: m.size.width,
+    height: m.size.height,
+  });
+
+  /**
+   * Nila's home position: where she was last left (if still on a monitor),
+   * else bottom-right of the primary monitor. Physical pixels.
+   */
+  const resolveHomePosition = async (): Promise<Xy | null> => {
+    try {
+      const win = getCurrentWindow();
+      const scale = await win.scaleFactor();
+      const mons = await availableMonitors().catch((): Monitor[] => []);
+      const rects = mons.map(toMonitorRect);
+      const primary = await primaryMonitor().catch(() => null);
+      const base = primary ? toMonitorRect(primary) : rects[0];
+      if (!base) return null;
+      const saved = loadSavedPosition();
+      if (saved && isOnAnyMonitor(saved, rects.length ? rects : [base])) {
+        return saved;
+      }
+      return homePosition(
+        base,
+        Math.round(COMPANION_W * scale),
+        Math.round(COMPANION_H * scale),
+      );
+    } catch {
+      return null;
+    }
+  };
+
+  /** Place the (still hidden) window at home before it first appears. */
+  const restoreHomePosition = async () => {
+    if (!isTauri()) return;
+    const home = await resolveHomePosition();
+    if (!home) return;
+    try {
+      await getCurrentWindow().setPosition(new PhysicalPosition(home.x, home.y));
+    } catch {
+      /* leave the OS default */
+    }
+  };
+
+  /**
+   * Reveal the companion: resize, then glide in from the tray (top-right)
+   * to Nila's home position. Reduced/off motion skips the glide.
+   */
+  const revealCompanion = async () => {
+    if (!isTauri()) return;
+    const win = getCurrentWindow();
+    try {
+      await win.setSize(new LogicalSize(COMPANION_W, COMPANION_H));
+      const show = async () => {
+        await win.show();
+        await win.setFocus().catch(() => {});
+      };
+      const motion = settingsRef.current.animation;
+      const monitor = await currentMonitor().catch(() => null);
+      if (!monitor || motion !== "full") {
+        await show();
+        return;
+      }
+      const scale = await win.scaleFactor();
+      const winW = Math.round(COMPANION_W * scale);
+      const rect = toMonitorRect(monitor);
+      const home = await resolveHomePosition();
+      const target = home ?? (await win.outerPosition().catch(() => null)) ?? { x: rect.x, y: rect.y };
+      const start = trayStartPosition(rect, winW);
+      await win.setPosition(new PhysicalPosition(start.x, start.y));
+      await show();
+      await glidePosition(start, { x: target.x, y: target.y }, 700, (x, y) => {
+        void win.setPosition(new PhysicalPosition(x, y)).catch(() => {});
+      });
+    } catch {
+      try {
+        await win.show();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  /** Send Nila back to the tray (used when closing panels). */
+  const hideToTray = () => {
+    manualOpenRef.current = false;
+    setActiveReminder(null);
+    setView("companion");
+    void resizeWindow(COMPANION_W, COMPANION_H);
+    void hideAppWindow();
+  };
+
+  /** After a reminder is handled, hide again unless the user opened the window. */
+  const maybeHideAfterReminder = () => {
+    if (!manualOpenRef.current) void hideAppWindow();
+  };
+
+  /**
+   * Let an expression beat play (proud/sleepy), then slip back into the
+   * tray — unless the user opened the window themselves.
+   */
+  const hideAfterBeat = (ms: number) => {
+    if (manualOpenRef.current) return;
+    if (pendingHideRef.current !== null) window.clearTimeout(pendingHideRef.current);
+    pendingHideRef.current = window.setTimeout(() => {
+      pendingHideRef.current = null;
+      if (!manualOpenRef.current) void hideAppWindow();
+    }, ms);
+  };
+
+  /** Drag the floating window by the character (Tauri only). */
+  const startDrag = (e: React.MouseEvent) => {
+    downPos.current = { x: e.clientX, y: e.clientY };
+    if (!isTauri() || e.button !== 0) return;
+    if (view !== "companion" || activeReminder) return;
+    void getCurrentWindow().startDragging().catch(() => {});
+  };
+
   // Engine -> React state.
   useEffect(() => {
     const off = engineRef.current!.onChange(setSnap);
     return off;
+  }, []);
+
+  // Remember Nila's home: after the user drags her somewhere, persist the
+  // position (debounced) so she always returns to the same spot.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | null = null;
+    let timer: number | null = null;
+    (async () => {
+      try {
+        unlisten = await getCurrentWindow().listen("tauri://move", () => {
+          if (timer !== null) window.clearTimeout(timer);
+          timer = window.setTimeout(() => {
+            timer = null;
+            void getCurrentWindow()
+              .outerPosition()
+              .then((p) => saveWindowPosition(p.x, p.y))
+              .catch(() => {});
+          }, 600);
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      unlisten?.();
+    };
   }, []);
 
   // First-launch greeting.
@@ -56,6 +293,9 @@ export default function App() {
       setGreeted(true);
       window.setTimeout(() => engineRef.current!.returnToIdle(), 2500);
     }, 600);
+    // The window starts hidden in the tray; put it at home before it
+    // first appears so the fly-in always starts from the right place.
+    void restoreHomePosition();
     return () => window.clearTimeout(t);
   }, []);
 
@@ -108,8 +348,8 @@ export default function App() {
         if (typeof payload === "string") {
           r = {
             id: "test",
-            title: "പരീക്ഷണം",
-            message: "ഇത് ഒരു പരീക്ഷണ ഓർമ്മപ്പെടുത്തലാണ് 🌸",
+            title: "Parikshanam",
+            message: "Ithu oru parikshana ormmappeduthal aanu 🌸",
             kind: "custom",
           };
         } else if (payload && typeof payload === "object") {
@@ -126,8 +366,24 @@ export default function App() {
         const kind = (REMINDER_KINDS as readonly string[]).includes(r.kind)
           ? (r.kind as (typeof REMINDER_KINDS)[number])
           : "custom";
+        // A new reminder cancels a pending slip-back-to-tray.
+        if (pendingHideRef.current !== null) {
+          window.clearTimeout(pendingHideRef.current);
+          pendingHideRef.current = null;
+        }
         engineRef.current!.beginReminder(kind);
         setActiveReminder(r);
+        // She gasps, then points at the reminder bubble.
+        flashExpression("surprised", 800);
+        exprTimers.current.push(
+          window.setTimeout(() => engineRef.current!.showExpression("point"), 800),
+          window.setTimeout(() => engineRef.current!.clearExpression(), 1800),
+        );
+        chimeForReminder();
+        // A reminder is due: Nila appears, gliding in from the tray to
+        // her home position. The overlay takes over the window.
+        setView("companion");
+        void revealCompanion();
       });
     })();
     return () => {
@@ -165,12 +421,17 @@ export default function App() {
   };
 
   const openPanel = (v: View) => {
+    manualOpenRef.current = true;
     if (v === "settings") void refreshSettings();
     setView(v);
+    void resizeWindow(PANEL_W, PANEL_H);
   };
 
-  const handleCompanionClick = () => {
+  const handleCompanionClick = (e?: React.MouseEvent) => {
     if (activeReminder) return;
+    // A real drag shouldn't also trigger the wave.
+    const d = downPos.current;
+    if (e && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
     const engine = engineRef.current!;
     engine.wave();
     window.setTimeout(() => engine.returnToIdle(), 1800);
@@ -184,6 +445,13 @@ export default function App() {
     }
     engineRef.current!.dismissReminder();
     setActiveReminder(null);
+    if (action === "completed") {
+      // She beams with pride, then slips back into the tray.
+      flashExpression("proud", 1600);
+      hideAfterBeat(1300);
+      return;
+    }
+    maybeHideAfterReminder();
   };
 
   const snoozeActive = async (id: string, minutes: 10 | 30 | 60) => {
@@ -194,6 +462,9 @@ export default function App() {
     }
     engineRef.current!.snoozeReminder();
     setActiveReminder(null);
+    // She gets drowsy, then slips back into the tray.
+    flashExpression("sleepy", 1400);
+    hideAfterBeat(1200);
   };
 
   const pauseAll = async (minutes: 30 | 60 | null) => {
@@ -205,6 +476,7 @@ export default function App() {
     engineRef.current!.pause();
     setActiveReminder(null);
     setPaused(true);
+    maybeHideAfterReminder();
   };
 
   const resumeAll = async () => {
@@ -218,14 +490,21 @@ export default function App() {
   };
 
   const testReminder = async () => {
+    // The overlay must be visible: leave the panel first (this was the bug —
+    // the reminder fired underneath the open settings panel).
+    manualOpenRef.current = true;
+    setView("companion");
+    void revealCompanion();
     if (!isTauri()) {
       const r: DueReminder = {
         id: "demo",
-        title: "വെള്ളം",
-        message: "വെള്ളം കുടിച്ചോ? (ഡെമോ)",
+        title: "Vellam",
+        message: "Vellam kudicho? (demo)",
         kind: "water",
       };
       engineRef.current!.beginReminder("water");
+      flashExpression("surprised", 1200);
+      chimeForReminder();
       setActiveReminder(r);
       return;
     }
@@ -246,8 +525,47 @@ export default function App() {
     } catch {
       /* demo mode */
     }
+    // Stay visible in companion mode after saving (the user opened settings
+    // deliberately); closing the panel returns Nila to the tray.
     setView("companion");
+    void resizeWindow(COMPANION_W, COMPANION_H);
   };
+
+  // Tray menu events from the backend.
+  useEffect(() => {
+    let offShow: (() => void) | null = null;
+    let offPause: (() => void) | null = null;
+    let offHidden: (() => void) | null = null;
+    (async () => {
+      offShow = await listenEvent<string>("TRAY_SHOW", (mode) => {
+        manualOpenRef.current = true;
+        if (mode === "settings") {
+          void refreshSettings();
+          setView("settings");
+          void resizeWindow(PANEL_W, PANEL_H);
+          void showAppWindow();
+        } else {
+          setView("companion");
+          void revealCompanion();
+        }
+      });
+      offPause = await listenEvent("TRAY_PAUSE", () => {
+        if (pausedRef.current) void resumeAll();
+        else void pauseAll(60);
+      });
+      offHidden = await listenEvent("TRAY_HIDDEN", () => {
+        manualOpenRef.current = false;
+        setActiveReminder(null);
+        setView("companion");
+      });
+    })();
+    return () => {
+      offShow?.();
+      offPause?.();
+      offHidden?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleReminder = async (id: string, enabled: boolean) => {
     const r = reminders.find((x) => x.id === id);
@@ -302,23 +620,23 @@ export default function App() {
       onClick={handleCompanionClick}
       onDoubleClick={() => engineRef.current!.playAnimation("happy-bounce")}
       role="button"
-      aria-label="നില"
+      aria-label="Nila"
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") handleCompanionClick();
-        if (e.key === "Escape") {
-          setView("companion");
-          setActiveReminder(null);
-        }
+        if (e.key === "Escape") hideToTray();
       }}
     >
       {snap.visible && (
-        <NilaCharacter
-          state={snap.state}
-          animation={snap.animation}
-          size={snap.size}
-          dark={dark}
-        />
+        <div className="char-drag" onMouseDown={startDrag}>
+          <NilaCharacter
+            state={snap.state}
+            animation={snap.animation}
+            size={snap.size}
+            dark={dark}
+            expression={snap.expression}
+          />
+        </div>
       )}
       {greeted && !activeReminder && snap.state === "waving" && (
         <div className="bubble" role="status">
@@ -376,8 +694,9 @@ export default function App() {
               onPause={(m) => void pauseAll(m)}
               onResume={() => void resumeAll()}
               onTest={() => void testReminder()}
-              onClose={() => setView("companion")}
+              onClose={hideToTray}
               onDataChanged={() => void reloadAfterImport()}
+              onFlash={(name) => flashExpression(name, 1500)}
             />
           ) : (
             <RemindersPanel
@@ -385,7 +704,7 @@ export default function App() {
               onToggle={(id, en) => void toggleReminder(id, en)}
               onDelete={(id) => void deleteReminder(id)}
               onCreate={(input) => void createReminder(input)}
-              onClose={() => setView("companion")}
+              onClose={hideToTray}
             />
           )}
         </div>

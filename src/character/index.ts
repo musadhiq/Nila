@@ -7,3 +7,5 @@ export type {
   MotionPreference,
 } from "./engine";
 export { NilaCharacter } from "./NilaCharacter";
+export type { ExpressionName } from "./expressions";
+export { EXPRESSION_LABEL, EXPRESSION_MOMENTS, EXPRESSION_ORDER } from "./expressions";

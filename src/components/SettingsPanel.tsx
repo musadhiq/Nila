@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { ACTIONS, ERRORS, SETTINGS_LABELS } from "../lib/strings";
 import { invokeCommand, isTauri } from "../lib/tauri";
+import type { ExpressionName } from "../character/expressions";
 import type { AppSettings } from "../lib/types";
 
 interface Props {
@@ -12,6 +13,8 @@ interface Props {
   onTest: () => void;
   onClose: () => void;
   onDataChanged: () => void;
+  /** Flash a momentary expression face (e.g. confused on a bad import). */
+  onFlash?: (name: ExpressionName) => void;
 }
 
 interface Status {
@@ -29,6 +32,7 @@ export function SettingsPanel({
   onTest,
   onClose,
   onDataChanged,
+  onFlash,
 }: Props) {
   const [draft, setDraft] = useState<AppSettings>({ ...settings });
   const [status, setStatus] = useState<Status | null>(null);
@@ -79,6 +83,7 @@ export function SettingsPanel({
       try {
         data = JSON.parse(await file.text());
       } catch {
+        onFlash?.("confused");
         setStatus({ ok: false, text: ERRORS.importInvalid });
         return;
       }
@@ -86,6 +91,7 @@ export function SettingsPanel({
       onDataChanged();
       setStatus({ ok: true, text: `${SETTINGS_LABELS.imported} (${count})` });
     } catch (e) {
+      onFlash?.("confused");
       setStatus({ ok: false, text: errText(e, ERRORS.importFailed) });
     } finally {
       setBusy(false);
@@ -131,7 +137,7 @@ export function SettingsPanel({
       </label>
 
       <label className="field">
-        <span>{SETTINGS_LABELS.cooldown} (മിനിറ്റ്)</span>
+        <span>{SETTINGS_LABELS.cooldown} (minutes)</span>
         <input
           type="number"
           min={0}

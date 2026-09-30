@@ -12,8 +12,9 @@
         "label": "companion",
         "resizable": false,
         "skipTaskbar": true,
-        "title": "നില",
+        "title": "Nila",
         "transparent": true,
+        "visible": false,
         "width": 220
       }
     ]

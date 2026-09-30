@@ -12,10 +12,10 @@ interface Props {
 }
 
 const KINDS: ReminderKind[] = ["water", "food", "break", "move", "sleep", "custom"];
-const DAY_NAMES = ["ഞായർ", "തിങ്കൾ", "ചൊവ്വ", "ബുധൻ", "വ്യാഴം", "വെള്ളി", "ശനി"];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const KIND_LABELS: Record<ReminderKind, string> = {
   ...BUILT_IN_TITLES,
-  custom: "സ്വന്തം",
+  custom: "Custom",
 } as Record<ReminderKind, string>;
 
 type ScheduleType = Schedule["type"];
@@ -97,29 +97,29 @@ export function RemindersPanel({ reminders, onToggle, onDelete, onCreate, onClos
         <div className="add-form">
           <input
             type="text"
-            placeholder="തലക്കെട്ട്"
+            placeholder="Title"
             value={title}
             maxLength={80}
             onChange={(e) => setTitle(e.target.value)}
           />
           <input
             type="text"
-            placeholder="സന്ദേശം"
+            placeholder="Message"
             value={message}
             maxLength={280}
             onChange={(e) => setMessage(e.target.value)}
           />
           <span className="field-row">
-            <select value={kind} onChange={(e) => setKind(e.target.value as ReminderKind)} aria-label="തരം">
+            <select value={kind} onChange={(e) => setKind(e.target.value as ReminderKind)} aria-label="Type">
               {KINDS.map((k) => (
                 <option key={k} value={k}>{KIND_LABELS[k]}</option>
               ))}
             </select>
-            <select value={schedType} onChange={(e) => setSchedType(e.target.value as ScheduleType)} aria-label="സമയക്രമം">
-              <option value="daily">ദിവസവും</option>
-              <option value="weekly">ആഴ്ചയിൽ</option>
-              <option value="interval">ഇടവേള</option>
-              <option value="once">ഒറ്റത്തവണ</option>
+            <select value={schedType} onChange={(e) => setSchedType(e.target.value as ScheduleType)} aria-label="Schedule">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="interval">Every X minutes</option>
+              <option value="once">Once</option>
             </select>
           </span>
           {schedType === "daily" && (
@@ -144,7 +144,7 @@ export function RemindersPanel({ reminders, onToggle, onDelete, onCreate, onClos
           )}
           {schedType === "interval" && (
             <label className="field">
-              <span>മിനിറ്റ്</span>
+              <span>Minutes</span>
               <input type="number" min={5} max={1440} value={minutes} onChange={(e) => setMinutes(Number(e.target.value) || 0)} />
             </label>
           )}

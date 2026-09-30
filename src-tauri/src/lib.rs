@@ -12,6 +12,85 @@ pub mod platform;
 pub mod scheduler;
 
 use tauri::Manager;
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter,
+};
+
+/// Show the companion window and tell the frontend which view to open.
+fn show_window(app: &tauri::AppHandle, mode: &str) {
+    app.emit("TRAY_SHOW", mode).ok();
+    if let Some(w) = app.get_webview_window("companion") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
+/// Build the menu-bar tray icon.
+///
+/// Nila lives in the tray by default: the floating character window only
+/// appears when a reminder is due (or when opened from this menu).
+fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "Show Nila", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+    let pause =
+        MenuItem::with_id(app, "pause", "Pause / resume reminders", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Nila", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &show,
+            &settings,
+            &pause,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
+
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../../character/idle.png"))
+        .expect("failed to load tray icon");
+
+    TrayIconBuilder::with_id("nila-tray")
+        .icon(icon)
+        .tooltip("Nila — reminder companion")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "quit" => app.exit(0),
+            "show" => show_window(app, "companion"),
+            "settings" => show_window(app, "settings"),
+            // The frontend owns pause state and toggles it; no window needed.
+            "pause" => {
+                app.emit("TRAY_PAUSE", ()).ok();
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                let visible = app
+                    .get_webview_window("companion")
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false);
+                if visible {
+                    if let Some(w) = app.get_webview_window("companion") {
+                        let _ = w.hide();
+                    }
+                    app.emit("TRAY_HIDDEN", ()).ok();
+                } else {
+                    show_window(app, "companion");
+                }
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
 
 pub fn run() {
     let db_path = default_db_path();
@@ -37,6 +116,10 @@ pub fn run() {
             // Hand the scheduler its dependencies and let it run.
             scheduler::spawn(app.handle().clone());
             platform::watch_sleep_wake(app.handle().clone());
+
+            // Menu-bar tray: the character window stays hidden until a
+            // reminder is due (or the user opens it from the tray).
+            build_tray(app.handle()).expect("failed to build Nila tray icon");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -249,8 +249,8 @@ mod tests {
         let conn = memory_db();
         let r = Reminder {
             id: "r1".into(),
-            title: "വെള്ളം".into(),
-            message: "വെള്ളം കുടിച്ചോ?".into(),
+            title: "Vellam".into(),
+            message: "Vellam kudicho?".into(),
             kind: "water".into(),
             schedule: "{\"type\":\"interval\",\"minutes\":60}".into(),
             enabled: true,
@@ -258,7 +258,7 @@ mod tests {
         upsert_reminder(&conn, &r).unwrap();
         let list = list_reminders(&conn).unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].message, "വെള്ളം കുടിച്ചോ?");
+        assert_eq!(list[0].message, "Vellam kudicho?");
         delete_reminder(&conn, "r1").unwrap();
         assert!(list_reminders(&conn).unwrap().is_empty());
     }

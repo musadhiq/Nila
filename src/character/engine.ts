@@ -4,6 +4,11 @@
 //
 // States (V1): idle, happy, sleeping, thinking, worried, excited,
 // waving, reminding, sad, paused, celebrating, hidden.
+//
+// Momentary expression faces (character/expressions/) overlay the current
+// state via showExpression/clearExpression; see expressions.ts.
+
+import type { ExpressionName } from "./expressions";
 
 export type CharacterState =
   | "idle"
@@ -43,6 +48,8 @@ export interface CharacterSnapshot {
   size: CharacterSize;
   visible: boolean;
   motion: MotionPreference;
+  /** Momentary expression face overlaying the state image, if any. */
+  expression: ExpressionName | null;
 }
 
 type Listener = (snapshot: CharacterSnapshot) => void;
@@ -72,6 +79,7 @@ export class CharacterEngine {
   private animation: CharacterAnimation | null = "idle-breathe";
   private size: CharacterSize = "small";
   private motion: MotionPreference = "full";
+  private expression: ExpressionName | null = null;
   private listeners = new Set<Listener>();
   private resumeState: CharacterState = "idle";
 
@@ -87,6 +95,7 @@ export class CharacterEngine {
       size: this.size,
       visible: this.state !== "hidden",
       motion: this.motion,
+      expression: this.expression,
     };
   }
 
@@ -139,6 +148,24 @@ export class CharacterEngine {
 
   interruptAnimation(): void {
     this.animation = this.defaultAnimationFor(this.state);
+    this.emit();
+  }
+
+  /**
+   * Show a momentary expression face over the current state image.
+   * The caller owns timing (see flashExpression in App.tsx); the engine
+   * never clears it on its own so beats can't be cut short by a state
+   * change underneath.
+   */
+  showExpression(name: ExpressionName): void {
+    this.expression = name;
+    this.emit();
+  }
+
+  /** Clear the expression, revealing the underlying state image again. */
+  clearExpression(): void {
+    if (this.expression === null) return;
+    this.expression = null;
     this.emit();
   }
 

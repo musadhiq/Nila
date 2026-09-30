@@ -17,20 +17,20 @@ pub struct ReminderInput {
 
 fn validate_input(input: &ReminderInput) -> Result<(), String> {
     if input.title.trim().is_empty() || input.title.chars().count() > 80 {
-        return Err("തലക്കെട്ട് 1–80 അക്ഷരങ്ങൾ ആയിരിക്കണം".into());
+        return Err("Title must be 1–80 characters.".into());
     }
     if input.message.trim().is_empty() || input.message.chars().count() > 280 {
-        return Err("സന്ദേശം 1–280 അക്ഷരങ്ങൾ ആയിരിക്കണം".into());
+        return Err("Message must be 1–280 characters.".into());
     }
     let schedule: serde_json::Value =
-        serde_json::from_str(&input.schedule).map_err(|_| "ഷെഡ്യൂൾ തെറ്റാണ്".to_string())?;
+        serde_json::from_str(&input.schedule).map_err(|_| "Invalid schedule.".to_string())?;
     match schedule.get("type").and_then(|t| t.as_str()) {
         Some("once") | Some("daily") | Some("weekly") | Some("interval") => {}
-        _ => return Err("ഷെഡ്യൂൾ തരം തെറ്റാണ്".into()),
+        _ => return Err("Invalid schedule type.".into()),
     }
     const KINDS: &[&str] = &["water", "food", "break", "move", "sleep", "custom"];
     if !KINDS.contains(&input.kind.as_str()) {
-        return Err("റിമൈൻഡർ തരം തെറ്റാണ്".into());
+        return Err("Invalid reminder type.".into());
     }
     Ok(())
 }
@@ -58,18 +58,18 @@ pub fn update_settings(
     db: State<'_, db::DbState>,
     settings: serde_json::Value,
 ) -> Result<(), String> {
-    let obj = settings.as_object().ok_or("ക്രമീകരണം തെറ്റാണ്")?;
+    let obj = settings.as_object().ok_or("Invalid settings.")?;
     if obj.len() > 64 {
-        return Err("കൂടുതൽ ക്രമീകരണങ്ങൾ".into());
+        return Err("Too many settings.".into());
     }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     for (k, v) in obj {
         if k.len() > 64 {
-            return Err("ക്രമീകരണത്തിന്റെ പേര് വലുതാണ്".into());
+            return Err("Setting name too long.".into());
         }
         let val = v.as_str().unwrap_or("").to_string();
         if val.len() > 4096 {
-            return Err("ക്രമീകരണത്തിന്റെ മൂല്യം വലുതാണ്".into());
+            return Err("Setting value too long.".into());
         }
         db::set_setting(&conn, k, &val).map_err(|e| e.to_string())?;
     }
@@ -113,7 +113,7 @@ pub fn update_reminder(
 ) -> Result<Reminder, String> {
     validate_input(&input)?;
     if id.len() > 64 {
-        return Err("ഐഡി തെറ്റാണ്".into());
+        return Err("Invalid id.".into());
     }
     let reminder = Reminder {
         id,
@@ -136,7 +136,7 @@ pub fn delete_reminder(
     id: String,
 ) -> Result<(), String> {
     if id.len() > 64 {
-        return Err("ഐഡി തെറ്റാണ്".into());
+        return Err("Invalid id.".into());
     }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::delete_reminder(&conn, &id).map_err(|e| e.to_string())?;
@@ -152,7 +152,7 @@ pub fn snooze_reminder(
     minutes: u32,
 ) -> Result<(), String> {
     if id.len() > 64 || ![10, 30, 60].contains(&minutes) {
-        return Err("സ്നൂസ് മൂല്യം തെറ്റാണ്".into());
+        return Err("Invalid snooze duration.".into());
     }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let wake_at = (chrono::Utc::now() + chrono::Duration::minutes(minutes as i64)).to_rfc3339();
@@ -176,7 +176,7 @@ pub fn pause_all(
     // minutes: Some(30|60) or None = until tomorrow
     if let Some(m) = minutes {
         if ![30, 60].contains(&m) {
-            return Err("പോസ് ദൈർഘ്യം തെറ്റാണ്".into());
+            return Err("Invalid pause duration.".into());
         }
     }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -219,10 +219,10 @@ pub fn record_reminder_action(
     action: String,
 ) -> Result<(), String> {
     if id.len() > 64 {
-        return Err("ഐഡി തെറ്റാണ്".into());
+        return Err("Invalid id.".into());
     }
     if !["dismissed", "completed", "skipped"].contains(&action.as_str()) {
-        return Err("പ്രവർത്തനം തെറ്റാണ്".into());
+        return Err("Invalid action.".into());
     }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::record_history(&conn, &id, &action).map_err(|e| e.to_string())?;
@@ -251,23 +251,23 @@ pub fn import_data(
 ) -> Result<usize, String> {
     // Strict validation: correct envelope, bounded sizes, valid schedules.
     if data.get("format").and_then(|f| f.as_str()) != Some("nila-export") {
-        return Err("ഫയൽ നിലയുടേതല്ല".into());
+        return Err("Not a Nila backup file.".into());
     }
     if data.get("version").and_then(|v| v.as_u64()) != Some(1) {
-        return Err("പതിപ്പ് പിന്തുണയ്ക്കുന്നില്ല".into());
+        return Err("Unsupported backup version.".into());
     }
     let reminders = data
         .get("reminders")
         .and_then(|r| r.as_array())
-        .ok_or("റിമൈൻഡറുകൾ കാണുന്നില്ല")?;
+        .ok_or("No reminders found in backup.")?;
     if reminders.len() > 500 {
-        return Err("റിമൈൻഡറുകൾ കൂടുതലാണ്".into());
+        return Err("Too many reminders in backup.".into());
     }
     let mut count = 0;
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     for item in reminders {
         let input: ReminderInput =
-            serde_json::from_value(item.clone()).map_err(|_| "റിമൈൻഡർ തെറ്റാണ്".to_string())?;
+            serde_json::from_value(item.clone()).map_err(|_| "Invalid reminder in backup.".to_string())?;
         validate_input(&input)?;
         let reminder = Reminder {
             id: format!("r-{}", chrono::Utc::now().timestamp_millis() + count as i64),

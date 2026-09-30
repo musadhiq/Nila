@@ -40,12 +40,12 @@ describe("schedule parsing", () => {
     assert.deepEqual(parseSchedule(scheduleToJson(s)), s);
   });
 
-  it("describes schedules in Malayalam", () => {
-    assert.match(describeSchedule({ type: "daily", time: "09:00" }), /ദിവസവും/);
+  it("describes schedules in English", () => {
+    assert.match(describeSchedule({ type: "daily", time: "09:00" }), /Daily/);
     assert.match(describeSchedule({ type: "interval", minutes: 60 }), /60/);
     assert.match(
       describeSchedule({ type: "weekly", days: [0, 6], time: "10:00" }),
-      /ഞായർ/,
+      /Sun/,
     );
   });
 });
@@ -54,8 +54,8 @@ describe("reminder DTO conversion", () => {
   it("converts backend DTOs to typed reminders", () => {
     const r = toReminder({
       id: "r1",
-      title: "വെള്ളം",
-      message: "വെള്ളം കുടിച്ചോ?",
+      title: "Vellam",
+      message: "Vellam kudicho?",
       kind: "water",
       schedule: '{"type":"interval","minutes":60}',
       enabled: true,

@@ -41,7 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   character_visibility: "small",
   animation: "full",
   appearance: "system",
-  sound: "none",
+  sound: "chime",
   start_at_login: true,
 };
 

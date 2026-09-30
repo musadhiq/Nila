@@ -1,112 +1,128 @@
-// Malayalam UI copy. The application UI is Malayalam-only (V1 scope);
-// user-entered custom reminder text may contain Malayalam and English.
+/**
+ * Nila's words.
+ *
+ * Nila speaks **Manglish** — Malayalam in Latin script, the way friends
+ * text each other in Kerala. All reminder messages, overlay buttons and
+ * greetings are Manglish.
+ *
+ * The settings / reminders panels are a management UI and use plain
+ * English so every option is unambiguous.
+ */
 
+/** Action buttons. Overlay buttons are Manglish; panel buttons are English. */
 export const ACTIONS = {
-  later: "പിന്നീട്",
-  ok: "ശരി",
-  dismiss: "ഒഴിവാക്കുക",
-  snooze10: "10 മിനിറ്റ് കഴിഞ്ഞ്",
-  snooze30: "30 മിനിറ്റ് കഴിഞ്ഞ്",
-  snooze60: "1 മണിക്കൂർ കഴിഞ്ഞ്",
-  pause30: "30 മിനിറ്റ് നിർത്തുക",
-  pause60: "1 മണിക്കൂർ നിർത്തുക",
-  pauseTomorrow: "നാളെ വരെ നിർത്തുക",
-  resume: "തുടരുക",
-  settings: "ക്രമീകരണം",
-  testReminder: "ഒരു reminder പരീക്ഷിക്കുക",
-  save: "സൂക്ഷിക്കുക",
-  cancel: "റദ്ദാക്കുക",
-  delete: "മായ്ക്കുക",
-  edit: "തിരുത്തുക",
-  add: "ചേർക്കുക",
+  // Reminder overlay (Manglish)
+  later: "Pinneed",
+  ok: "Sheri",
+  dismiss: "Ozhivakkuka",
+  snooze10: "10 minute kazhinj",
+  snooze30: "30 minute kazhinj",
+  snooze60: "1 manikkoor kazhinj",
+  pause30: "30 minute nirthuka",
+  pause60: "1 manikkoor nirthuka",
+  pauseTomorrow: "Naale vare nirthuka",
+  resume: "Thudaruka",
+  // Panels (English)
+  settings: "Settings",
+  testReminder: "Try a reminder",
+  save: "Save",
+  cancel: "Cancel",
+  delete: "Delete",
+  edit: "Edit",
+  add: "Add",
 } as const;
 
+/** Built-in reminder messages, in Nila's caring Manglish voice. */
 export const BUILT_IN_MESSAGES: Record<string, string[]> = {
   water: [
-    "വെള്ളം കുടിച്ചോ?",
-    "കുറച്ച് വെള്ളം കുടിക്കാം?",
-    "ഒരു ഗ്ലാസ് വെള്ളം ആയാലോ?",
+    "Vellam kudicho?",
+    "Kurachu vellam kudikkam?",
+    "Oru glass vellam ayalo?",
   ],
   food: [
-    "ഭക്ഷണം കഴിച്ചോ?",
-    "ഭക്ഷണം കഴിക്കാൻ സമയമായി.",
+    "Bhakshanam kazhicho?",
+    "Bhakshanam kazhikkan samayayi.",
   ],
   break: [
-    "കുറച്ച് നേരം വിശ്രമിച്ചാലോ?",
-    "സ്ക്രീനിൽ നിന്ന് കുറച്ച് നേരം മാറിയിരിക്കാം.",
+    "Kurachu neram visramichalo?",
+    "Screen-il ninnu kurachu neram mariyirikkam.",
   ],
   move: [
-    "ഒന്ന് എഴുന്നേറ്റ് നടക്കാമോ?",
-    "കുറച്ച് stretch ചെയ്യാം.",
+    "Onnu ezhunneettu nadakkamo?",
+    "Kurachu stretch cheyyam.",
   ],
   sleep: [
-    "ഇനി കുറച്ച് വിശ്രമിക്കാം.",
-    "ഉറങ്ങാൻ സമയമായില്ലേ?",
+    "Ini kurachu visramikkam.",
+    "Urangaan samayayille?",
   ],
 };
 
-export const BUILT_IN_TITLES: Record<string, string> = {
-  water: "വെള്ളം",
-  food: "ഭക്ഷണം",
-  break: "വിശ്രമം",
-  move: "നടത്തം",
-  sleep: "ഉറക്കം",
-};
-
-export const ONBOARDING = {
-  hello: "ഹായ് 👋",
-  intro:
-    "ഞാൻ നില! നിങ്ങളെ സഹായിക്കാൻ വന്ന ഒരു ചെറിയ കൂട്ടുകാരി. " +
-    "വെള്ളം കുടിക്കാനും വിശ്രമിക്കാനും ഞാൻ സ്നേഹത്തോടെ ഓർമ്മിപ്പിക്കാം.",
-  chooseReminders: "ഏതൊക്കെ ഓർമ്മപ്പെടുത്തലുകൾ വേണം?",
-  schedule: "എപ്പോഴൊക്കെ ഓർമ്മിപ്പിക്കണം?",
-  appearance: "എന്നെ എങ്ങനെ കാണണം?",
-  finish: "ശരി, തുടങ്ങാം!",
-} as const;
-
-export const SETTINGS_LABELS = {
-  general: "പൊതുവായത്",
-  reminders: "ഓർമ്മപ്പെടുത്തലുകൾ",
-  character: "കഥാപാത്രം",
-  appearance: "രൂപം",
-  schedule: "സമയം",
-  about: "വിവരം",
-  quietHours: "ശാന്ത സമയം",
-  dailyLimit: "ദിവസ പരിധി",
-  cooldown: "ഇടവേള",
-  startAtLogin: "കമ്പ്യൂട്ടർ ഓൺ ആകുമ്പോൾ തുടങ്ങുക",
-  showCharacter: "കഥാപാത്രത്തെ കാണിക്കുക",
-  sizeSmall: "ചെറുത്",
-  sizeMedium: "ഇടത്തരം",
-  sizeLarge: "വലുത്",
-  animationFull: "പൂർണ്ണം",
-  animationReduced: "കുറച്ചത്",
-  animationOff: "ഒഴിവാക്കുക",
-  themeSystem: "സിസ്റ്റം",
-  themeLight: "വെളിച്ചം",
-  themeDark: "ഇരുട്ട്",
-  sound: "ശബ്ദം",
-  soundNone: "ഇല്ല",
-  soundSoft: "മൃദുവായത്",
-  soundChime: "മണിനാദം",
-  dataSection: "വിവരങ്ങൾ",
-  exportData: "ബാക്കപ്പ് എടുക്കുക",
-  importData: "ബാക്കപ്പ് തിരിച്ചെടുക്കുക",
-  exported: "ബാക്കപ്പ് സൂക്ഷിച്ചു.",
-  imported: "ബാക്കപ്പ് തിരിച്ചെടുത്തു.",
-} as const;
-
-export const ERRORS = {
-  generic: "എന്തോ തെറ്റ് സംഭവിച്ചു. ദയവായി വീണ്ടും ശ്രമിക്കൂ.",
-  noTray: "സിസ്റ്റം ട്രേ കണ്ടെത്തിയില്ല.",
-  importFailed: "ഫയൽ വായിക്കാൻ കഴിഞ്ഞില്ല.",
-  exportFailed: "ബാക്കപ്പ് എടുക്കാൻ കഴിഞ്ഞില്ല.",
-  importInvalid: "ഈ ഫയൽ നിലയുടെ ബാക്കപ്പ് അല്ല.",
-} as const;
-
-/** Pick a message variant deterministically-ish (rotates by count). */
-export function pickVariant(kind: string, count: number): string {
+/** Pick a rotating message variant for a reminder kind. */
+export function pickVariant(kind: string, index: number): string {
   const variants = BUILT_IN_MESSAGES[kind];
   if (!variants || variants.length === 0) return "";
-  return variants[count % variants.length];
+  return variants[index % variants.length];
 }
+
+/** Built-in reminder titles (Manglish). */
+export const BUILT_IN_TITLES: Record<string, string> = {
+  water: "Vellam",
+  food: "Bhakshanam",
+  break: "Visramam",
+  move: "Nadatham",
+  sleep: "Urakkam",
+};
+
+/** First-launch greeting (Manglish). */
+export const ONBOARDING = {
+  hello: "Hi 👋",
+  intro:
+    "Njan Nila! Ningale sahayikkan vannu oru cheriya koottukari. " +
+    "Vellam kudikkanum visramikkanum njan snehathode ormmippikkam.",
+  chooseReminders: "Ethokke ormmappeduthalukal venam?",
+  schedule: "Eppozhokke ormmippikkanam?",
+  appearance: "Enne engane kananam?",
+  finish: "Sheri, thudangam!",
+} as const;
+
+/** Settings panel labels (plain English). */
+export const SETTINGS_LABELS = {
+  general: "General",
+  reminders: "Reminders",
+  character: "Character",
+  appearance: "Appearance",
+  schedule: "Schedule",
+  about: "About",
+  quietHours: "Quiet hours",
+  dailyLimit: "Daily limit",
+  cooldown: "Cooldown",
+  startAtLogin: "Start at login",
+  showCharacter: "Show character",
+  sizeSmall: "Small",
+  sizeMedium: "Medium",
+  sizeLarge: "Large",
+  animationFull: "Full",
+  animationReduced: "Reduced",
+  animationOff: "Off",
+  themeSystem: "System",
+  themeLight: "Light",
+  themeDark: "Dark",
+  sound: "Sound",
+  soundNone: "None",
+  soundSoft: "Soft",
+  soundChime: "Chime",
+  dataSection: "Backup",
+  exportData: "Export backup",
+  importData: "Import backup",
+  exported: "Backup saved.",
+  imported: "Backup restored.",
+} as const;
+
+/** Error messages shown in the panels (plain English). */
+export const ERRORS = {
+  generic: "Something went wrong. Please try again.",
+  noTray: "System tray not found.",
+  importFailed: "Couldn't read the file.",
+  exportFailed: "Couldn't create the backup.",
+  importInvalid: "This file is not a Nila backup.",
+} as const;

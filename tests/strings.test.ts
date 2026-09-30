@@ -9,16 +9,26 @@ import {
   pickVariant,
 } from "../src/lib/strings.ts";
 
-const MALAYALAM = /[\u0D00-\u0D7F]/;
+const MALAYALAM_SCRIPT = /[\u0D00-\u0D7F]/;
 
-describe("Malayalam strings", () => {
+describe("Nila strings", () => {
   it("every built-in kind has titles and multiple message variants", () => {
     for (const kind of ["water", "food", "break", "move", "sleep"]) {
-      assert.match(BUILT_IN_TITLES[kind], MALAYALAM, `${kind} title`);
+      assert.ok(BUILT_IN_TITLES[kind].length > 0, `${kind} title`);
       const variants = BUILT_IN_MESSAGES[kind];
       assert.ok(variants.length >= 2, `${kind} needs >= 2 variants`);
-      for (const v of variants) assert.match(v, MALAYALAM, `${kind} variant`);
+      for (const v of variants) assert.ok(v.length > 0, `${kind} variant`);
     }
+  });
+
+  it("Nila's voice is Manglish (no Malayalam script in reminders)", () => {
+    for (const kind of Object.keys(BUILT_IN_MESSAGES)) {
+      assert.doesNotMatch(BUILT_IN_TITLES[kind], MALAYALAM_SCRIPT, `${kind} title`);
+      for (const v of BUILT_IN_MESSAGES[kind]) {
+        assert.doesNotMatch(v, MALAYALAM_SCRIPT, `${kind} variant`);
+      }
+    }
+    assert.doesNotMatch(ONBOARDING.intro, MALAYALAM_SCRIPT);
   });
 
   it("pickVariant rotates through variants", () => {
@@ -30,20 +40,34 @@ describe("Malayalam strings", () => {
     assert.equal(pickVariant("nope", 0), "");
   });
 
-  it("primary actions are Malayalam", () => {
-    assert.equal(ACTIONS.later, "പിന്നീട്");
-    assert.match(ACTIONS.ok, MALAYALAM);
-    assert.match(ACTIONS.testReminder, MALAYALAM);
+  it("overlay actions are Manglish, panel actions are English", () => {
+    assert.equal(ACTIONS.later, "Pinneed");
+    assert.equal(ACTIONS.ok, "Sheri");
+    assert.equal(ACTIONS.snooze10, "10 minute kazhinj");
+    assert.doesNotMatch(ACTIONS.later, MALAYALAM_SCRIPT);
+    assert.equal(ACTIONS.save, "Save");
+    assert.equal(ACTIONS.cancel, "Cancel");
+    assert.equal(ACTIONS.testReminder, "Try a reminder");
   });
 
-  it("onboarding copy is Malayalam and introduces the character first", () => {
-    assert.match(ONBOARDING.hello, MALAYALAM);
-    assert.match(ONBOARDING.intro, /നില/);
+  it("onboarding greets first and introduces Nila", () => {
+    assert.match(ONBOARDING.hello, /Hi/);
+    assert.match(ONBOARDING.intro, /Nila/);
   });
 
-  it("settings labels cover all required sections", () => {
-    for (const key of ["general", "reminders", "character", "appearance", "schedule", "about"]) {
-      assert.match(SETTINGS_LABELS[key as keyof typeof SETTINGS_LABELS], MALAYALAM, key);
+  it("settings labels are plain English", () => {
+    const expected: Record<string, string> = {
+      general: "General",
+      reminders: "Reminders",
+      character: "Character",
+      appearance: "Appearance",
+      quietHours: "Quiet hours",
+      dailyLimit: "Daily limit",
+      exportData: "Export backup",
+    };
+    for (const [key, value] of Object.entries(expected)) {
+      assert.equal(SETTINGS_LABELS[key as keyof typeof SETTINGS_LABELS], value, key);
+      assert.doesNotMatch(value, MALAYALAM_SCRIPT, key);
     }
   });
 });

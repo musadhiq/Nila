@@ -75,12 +75,34 @@ npm run tauri dev
 
 ## How it works
 
-- **Character first** — the animated character is the product. It wakes,
-  gets your attention, shows a reminder bubble, reacts, and goes back to idle.
+- **Tray-first** — Nila lives in the top-right menu bar (system tray).
+  The floating character window only appears when a reminder is due, or
+  when you open it from the tray menu (left-click toggles it; right-click
+  shows Show Nila / Settings / Pause-resume / Quit). When a reminder
+  fires she glides in from the tray to her spot with a soft chime —
+  reduced/off motion just shows her directly.
+- **She remembers her spot** — drag the character anywhere and Nila
+  returns to that exact position every time (persisted locally, restored
+  on launch; falls back to bottom-right if the saved spot is off-screen).
+- **Expressive moments** — twelve concept-sheet expressions
+  (`character/expressions/`) flash over her state: a surprised gasp and
+  a point at the bubble when a reminder fires, sleepy on snooze, proud
+  when you mark one done, confused on a bad backup import.
+- **Manglish voice, English settings** — Nila speaks Manglish (Malayalam
+  in Latin script, e.g. “Vellam kudicho?”), while the settings and
+  reminders panels use plain English.
 - **Reminders** — built-in (water, food, break, movement, sleep), custom
-  one-time and recurring reminders, snooze (പിന്നീട്), pause, quiet hours
+  one-time and recurring reminders, snooze (Pinneed), pause, quiet hours
   (default 22:00–08:00), daily limits and cooldowns.
 - **Local-first** — SQLite database, JSON import/export, no network needed.
+
+> **GNOME note:** GNOME Shell hides tray icons by default. Install an
+> AppIndicator extension (e.g. “AppIndicator and KStatusNotifierItem
+> Support”) so Nila's tray icon is visible.
+
+> **Icon note:** Tauri requires the app icon PNG to be RGBA. If the build
+> fails with “icon … is not RGBA”, convert it once:
+> `python3 -c "from PIL import Image; p='character/idle.png'; Image.open(p).convert('RGBA').save(p)"`
 
 ## Project layout
 
@@ -88,7 +110,7 @@ npm run tauri dev
 src/                 # React + TypeScript frontend
   character/         # character renderer, state machine, animations
   components/        # reminder bubble, settings, onboarding
-  lib/               # scheduler core, Malayalam strings, types
+  lib/               # scheduler core, Manglish/English strings, types
 src-tauri/           # Rust backend: scheduler, SQLite, platform integration
 docs/                # product spec and engineering docs
 ```
