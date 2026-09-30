@@ -10,12 +10,16 @@
         "decorations": false,
         "height": 300,
         "label": "companion",
-        "resizable": false,
+        "resizable": true,
         "skipTaskbar": true,
         "title": "Nila",
         "transparent": true,
         "visible": false,
-        "width": 220
+        "width": 220,
+        "minWidth": 220,
+        "minHeight": 300,
+        "maxWidth": 220,
+        "maxHeight": 300
       }
     ]
   },
@@ -39,6 +43,6 @@
   "plugins": {
     "sql": {}
   },
-  "productName": "നില",
+  "productName": "\u0d28\u0d3f\u0d32",
   "version": "0.1.0"
 }

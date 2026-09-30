@@ -129,12 +129,21 @@ export default function App() {
     if (!isTauri()) return;
     try {
       const win = getCurrentWindow();
-      await win.setResizable(panel);
+      // Do NOT toggle setResizable(): on GNOME/Wayland the compositor
+      // ignores runtime resizable changes on an undecorated window and
+      // keeps clamping to the creation size. Instead the window is born
+      // resizable (tauri.conf) but locked via min/max; here we just move
+      // the locks.
+      if (panel) {
+        // Settings: a real resizable desktop window.
+        await win.setMinSize(new LogicalSize(720, 480));
+        await win.setMaxSize(null);
+      } else {
+        // Companion: lock back to the small sprite size.
+        await win.setMinSize(new LogicalSize(COMPANION_W, COMPANION_H));
+        await win.setMaxSize(new LogicalSize(COMPANION_W, COMPANION_H));
+      }
       await win.setAlwaysOnTop(!panel);
-      // Guard the usable size: the settings panel must never shrink
-      // below a workable size, and the companion sprite must never
-      // keep a minimum size once it returns to sprite duty.
-      await win.setMinSize(panel ? new LogicalSize(720, 480) : null);
     } catch {
       /* ignore */
     }
