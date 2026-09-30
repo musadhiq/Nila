@@ -20,6 +20,9 @@ const en = {
     title: "Nila Settings",
     quietActive: "Quiet hours until {time} — reminders are paused",
   },
+  companion: {
+    hideNila: "Hide Nila",
+  },
   nav: {
     general: "General",
     reminders: "Reminders",
@@ -336,6 +339,9 @@ const manglish: Dict = {
   window: {
     title: "Nila Settings",
     quietActive: "Quiet hours {time} vare — reminders niruthi vachu",
+  },
+  companion: {
+    hideNila: "Nila ye maraykkuka",
   },
   nav: {
     general: "General",

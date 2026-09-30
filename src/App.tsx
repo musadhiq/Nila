@@ -90,6 +90,7 @@ export default function App() {
    *  (never for side peeks or top hanging). Updated with the transform. */
   const [showGroundShadow, setShowGroundShadow] = useState(true);
   const [bubbleSide, setBubbleSide] = useState<BubbleSide>("above");
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const enterAnimTimer = useRef<number | null>(null);
   // The preset Nila is currently using (may differ from the setting when
   // natural appearances pick another enabled position).
@@ -381,6 +382,14 @@ export default function App() {
   const maybeHideAfterReminder = () => {
     if (manualOpenRef.current) return;
     void dismissCompanion();
+  };
+
+  /** Hide Nila via context menu: persist visibility=hidden and go to tray. */
+  const hideNila = () => {
+    setCtxMenu(null);
+    const s = { ...settingsRef.current, character_visibility: "hidden" as const };
+    void saveSettings(s);
+    hideToTray();
   };
 
   /**
@@ -999,6 +1008,15 @@ export default function App() {
     // otherwise the panel can get stuck at the small sprite size.
     await setPanelChrome(true);
     await resizeWindow(PANEL_W, PANEL_H);
+    // Always center the settings window on the monitor, regardless of
+    // where Nila was standing.
+    if (isTauri()) {
+      try {
+        await getCurrentWindow().center();
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   const minimizeWindow = () => {
@@ -1303,6 +1321,10 @@ export default function App() {
       className="companion"
       onClick={handleCompanionClick}
       onDoubleClick={() => engineRef.current!.playAnimation("happy-bounce")}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setCtxMenu({ x: e.clientX, y: e.clientY });
+      }}
       role="button"
       aria-label="Nila"
       tabIndex={0}
@@ -1311,6 +1333,31 @@ export default function App() {
         if (e.key === "Escape") hideToTray();
       }}
     >
+      {ctxMenu && (
+        <>
+          <div
+            className="ctx-backdrop"
+            onClick={() => setCtxMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setCtxMenu(null);
+            }}
+          />
+          <div
+            className="ctx-menu"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            role="menu"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={hideNila}
+            >
+              {getStrings(settings.language).companion.hideNila}
+            </button>
+          </div>
+        </>
+      )}
       {snap.visible && (
         <div
           className={`nila-stage${stageFading ? " stage-hidden" : ""}${enterAnim ? ` ${enterAnim}` : ""}`}

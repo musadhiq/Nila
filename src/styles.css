@@ -396,3 +396,48 @@ html, body {
 .status-line { font-size: 13px; padding: 8px 10px; border-radius: 8px; }
 .status-line.ok { background: rgba(76, 175, 80, 0.15); color: #2e7d32; }
 .status-line.err { background: rgba(244, 67, 54, 0.12); color: #c62828; }
+
+/* Right-click context menu on Nila */
+.ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+}
+.ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #ffffff;
+  border: 1px solid #d4dcf2;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  min-width: 140px;
+}
+.ctx-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #2b3350;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ctx-menu button:hover {
+  background: #f0f3fd;
+}
+@media (prefers-color-scheme: dark) {
+  .ctx-menu {
+    background: #2c3852;
+    border-color: #4a5b80;
+  }
+  .ctx-menu button {
+    color: #f2f5ff;
+  }
+  .ctx-menu button:hover {
+    background: #3b4a6b;
+  }
+}
