@@ -124,19 +124,17 @@ pub fn get_reminder(conn: &Connection, id: &str) -> rusqlite::Result<Option<Remi
         "SELECT id, title, message, kind, schedule, enabled FROM reminders WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![id])?;
-    Ok(rows
-        .next()?
-        .map(|r| {
-            Ok(Reminder {
-                id: r.get(0)?,
-                title: r.get(1)?,
-                message: r.get(2)?,
-                kind: r.get(3)?,
-                schedule: r.get(4)?,
-                enabled: r.get::<_, i64>(5)? != 0,
-            })
-        })
-        .transpose()?)
+    match rows.next()? {
+        None => Ok(None),
+        Some(r) => Ok(Some(Reminder {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            message: r.get(2)?,
+            kind: r.get(3)?,
+            schedule: r.get(4)?,
+            enabled: r.get::<_, i64>(5)? != 0,
+        })),
+    }
 }
 
 /// All active snoozes as (reminder_id, wake_at UTC). Rows with

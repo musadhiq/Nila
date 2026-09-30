@@ -72,11 +72,11 @@ pub fn next_occurrence(schedule: &Schedule, from: DateTime<Utc>) -> Option<DateT
             if *minutes == 0 { return None; }
             Some(from + Duration::minutes(*minutes as i64))
         }
-        Schedule::Daily { time } => next_daily(time, local, from),
+        Schedule::Daily { time } => next_daily(time, local),
         Schedule::Weekly { days, time } => {
             let mut best: Option<DateTime<Utc>> = None;
             for &d in days {
-                if let Some(c) = next_weekly(d, time, local, from) {
+                if let Some(c) = next_weekly(d, time, local) {
                     best = Some(best.map_or(c, |b: DateTime<Utc>| b.min(c)));
                 }
             }
@@ -94,7 +94,7 @@ fn valid_hhmm(t: &(u32, u32)) -> bool {
     t.0 < 24 && t.1 < 60
 }
 
-fn next_daily(time: &str, local: DateTime<Local>, from: DateTime<Utc>) -> Option<DateTime<Utc>> {
+fn next_daily(time: &str, local: DateTime<Local>) -> Option<DateTime<Utc>> {
     let (h, m) = parse_hhmm(time)?;
     let today = local.date_naive().and_hms_opt(h, m, 0)?;
     let today_local = today.and_local_timezone(Local).single()?;
@@ -105,7 +105,7 @@ fn next_daily(time: &str, local: DateTime<Local>, from: DateTime<Utc>) -> Option
     Some(tomorrow.and_local_timezone(Local).single()?.with_timezone(&Utc))
 }
 
-fn next_weekly(day: u32, time: &str, local: DateTime<Local>, from: DateTime<Utc>) -> Option<DateTime<Utc>> {
+fn next_weekly(day: u32, time: &str, local: DateTime<Local>) -> Option<DateTime<Utc>> {
     use chrono::Datelike;
     let (h, m) = parse_hhmm(time)?;
     let current_wd = local.weekday().num_days_from_sunday();
@@ -117,7 +117,6 @@ fn next_weekly(day: u32, time: &str, local: DateTime<Local>, from: DateTime<Utc>
         let date = local.date_naive() + Duration::days(delta);
         return Some(date.and_hms_opt(h, m, 0)?.and_local_timezone(Local).single()?.with_timezone(&Utc));
     }
-    let _ = from;
     Some(candidate.with_timezone(&Utc))
 }
 
