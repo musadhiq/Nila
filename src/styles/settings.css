@@ -998,3 +998,204 @@ button.srow.as-button:hover {
   border: 3px solid transparent;
   background-clip: content-box;
 }
+
+/* ------------------------------------------------------------------ */
+/* Character presence & positioning (spec 33-57)                       */
+/* ------------------------------------------------------------------ */
+
+.presence-heading {
+  font-size: 17px;
+  font-weight: 650;
+  margin: 4px 0 2px;
+  color: var(--st-text);
+}
+.presence-sub {
+  font-size: 13px;
+  color: var(--st-text-2);
+  margin: 0 0 14px;
+}
+.section-desc {
+  font-size: 12.5px;
+  color: var(--st-text-2);
+  margin: 0 0 10px;
+}
+
+/* Live preview stage: a miniature desktop. */
+.presence-preview {
+  border: 1px solid var(--st-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 18px;
+  background: var(--st-surface-2, transparent);
+}
+.pv-stage {
+  position: relative;
+  aspect-ratio: 16 / 8.2;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(127, 140, 170, 0.10), rgba(127, 140, 170, 0.04));
+  border: 1px dashed var(--st-border);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.pv-stage-label {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  font-size: 11px;
+  color: var(--st-text-2);
+}
+/* The dot is the positioning layer (entrance/exit animation transform);
+   .pv-char inside carries orientation + tilt so they never fight. */
+.pv-dot {
+  position: absolute;
+  width: 13%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+}
+.pv-char {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.pv-char > * {
+  width: 100% !important;
+  height: 100% !important;
+}
+.pv-play {
+  width: 100%;
+}
+
+/* Entrance animations (spec 38). --pvx/--pvy point at the screen edge. */
+@keyframes pv-enter-fade { from { opacity: 0; } to { opacity: 1; } }
+.pv-enter-fade { animation: pv-enter-fade 0.35s ease-out; }
+
+@keyframes pv-enter-slide {
+  from { opacity: 0; transform: translate(-50%, -50%) translate(var(--pvx), var(--pvy)); }
+  to { opacity: 1; transform: translate(-50%, -50%) translate(0, 0); }
+}
+.pv-enter-slide { animation: pv-enter-slide 0.4s cubic-bezier(0.22, 0.9, 0.3, 1); }
+
+@keyframes pv-enter-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.pv-enter-pop { animation: pv-enter-pop 0.38s ease-out; }
+
+@keyframes pv-enter-peek {
+  from { opacity: 0; transform: translate(-50%, -50%) translate(calc(var(--pvx) * 0.55), calc(var(--pvy) * 0.55)); }
+  to { opacity: 1; transform: translate(-50%, -50%) translate(0, 0); }
+}
+.pv-enter-peek { animation: pv-enter-peek 0.42s ease-out; }
+
+@keyframes pv-enter-bounce {
+  0% { opacity: 0; transform: translate(-50%, -50%) translate(0, var(--pvy)); }
+  55% { opacity: 1; transform: translate(-50%, -50%) translate(0, 0); }
+  75% { transform: translate(-50%, -50%) translate(0, -9%); }
+  100% { opacity: 1; transform: translate(-50%, -50%) translate(0, 0); }
+}
+.pv-enter-bounce { animation: pv-enter-bounce 0.45s ease-out; }
+
+@keyframes pv-enter-gentle {
+  from { opacity: 0; transform: translate(-50%, -50%) translate(0, 10%); }
+  to { opacity: 1; transform: translate(-50%, -50%) translate(0, 0); }
+}
+.pv-enter-gentle { animation: pv-enter-gentle 0.45s ease-out; }
+
+/* Exit animations (spec 39). */
+@keyframes pv-exit-fade { to { opacity: 0; } }
+.pv-exit-fade { animation: pv-exit-fade 0.3s ease-in forwards; }
+
+@keyframes pv-exit-slide {
+  to { opacity: 0; transform: translate(-50%, -50%) translate(var(--pvx), var(--pvy)); }
+}
+.pv-exit-slide { animation: pv-exit-slide 0.32s ease-in forwards; }
+
+@keyframes pv-exit-retreat {
+  to { opacity: 0.15; transform: translate(-50%, -50%) translate(calc(var(--pvx) * 0.75), calc(var(--pvy) * 0.75)); }
+}
+.pv-exit-retreat { animation: pv-exit-retreat 0.32s ease-in forwards; }
+
+@keyframes pv-exit-peek {
+  to { opacity: 0; transform: translate(-50%, -50%) translate(calc(var(--pvx) * 0.55), calc(var(--pvy) * 0.55)); }
+}
+.pv-exit-peek { animation: pv-exit-peek 0.3s ease-in forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-dot[class*="pv-enter-"], .pv-dot[class*="pv-exit-"] {
+    animation: pv-enter-fade 0.25s ease-out;
+  }
+}
+
+/* Idle peek preview: the dot rests partly outside the mini desktop,
+   the way the real window hangs off the screen edge. */
+.pv-dot.pv-peek {
+  transform: translate(-50%, -50%) translate(var(--pvpx, 0%), var(--pvpy, 0%));
+}
+
+/* Visual 3x3 position selector (spec 34). */
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 52px);
+  gap: 6px;
+  justify-content: start;
+  margin: 2px 0 4px;
+}
+.pos-cell {
+  width: 52px;
+  height: 40px;
+  border: 1px solid var(--st-border);
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.pos-cell:hover { border-color: var(--st-accent); }
+.pos-cell:focus-visible { outline: 2px solid var(--st-accent); outline-offset: 2px; }
+.pos-cell .pos-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--st-border-strong, #c7c7cc);
+}
+.pos-cell.active {
+  border-color: var(--st-accent);
+  background: color-mix(in srgb, var(--st-accent) 12%, transparent);
+}
+.pos-cell.active .pos-dot { background: var(--st-accent); }
+
+/* Collapsed advanced section (spec 50). */
+.advanced {
+  border-top: 1px solid var(--st-border);
+  margin-top: 4px;
+  padding-top: 6px;
+}
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px 2px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--st-text);
+  cursor: pointer;
+  font-family: inherit;
+}
+.advanced-toggle:focus-visible { outline: 2px solid var(--st-accent); outline-offset: 2px; border-radius: 6px; }
+.advanced-caret {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: var(--st-text-2);
+  font-size: 12px;
+}
+.advanced-caret.open { transform: rotate(90deg); }
+.advanced-body {
+  padding: 2px 0 6px;
+}
