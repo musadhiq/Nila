@@ -81,10 +81,9 @@ npm run tauri dev
 
 ### Download a released build
 
-Every version tag (`v0.1.0`, `v0.2.0`, …) is built automatically by
-GitHub Actions — the `.deb` and `.AppImage` are attached to the
-[release](https://github.com/musadhiq/Nila/releases), stamped with the
-tag's version number. Install the `.deb` with:
+Every release (`v0.1.0`, `v0.2.0`, …) ships a `.deb` and an `.AppImage`
+on the [Releases page](https://github.com/musadhiq/Nila/releases).
+Install the `.deb` with:
 
 ```sh
 sudo apt install ./nila_*.deb
