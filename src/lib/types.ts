@@ -39,6 +39,9 @@ export interface AppSettings {
   appearance: "system" | "light" | "dark";
   sound: "none" | "soft" | "chime";
   start_at_login: boolean;
+  /** Wake-word listener ("Okay Nabu" for now): true = the microphone is
+   * open and Nila can be woken by voice. Can be switched off in settings. */
+  wake_word_enabled: boolean;
   /** First-run setup finished (welcome flow completed). */
   setup_complete: boolean;
   /** Settings UI language. "manglish" = Malayalam in Latin script. */
@@ -147,6 +150,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   appearance: "system",
   sound: "chime",
   start_at_login: true,
+  wake_word_enabled: true,
   setup_complete: false,
   language: "en",
   reminder_behavior: "dock",

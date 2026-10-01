@@ -130,6 +130,17 @@ export function GeneralPage({
             />
           }
         />
+        <SettingsRow
+          title={g.wakeWord}
+          description={g.wakeWordDesc}
+          control={
+            <Switch
+              checked={settings.wake_word_enabled}
+              onChange={(v) => update({ wake_word_enabled: v })}
+              label={g.wakeWord}
+            />
+          }
+        />
       </SettingsSection>
 
       <SettingsSection title={l.section}>
