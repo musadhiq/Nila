@@ -770,7 +770,7 @@ button.srow.as-button:hover {
 
 .text-input,
 .time-input,
-.datetime-input,
+.date-input,
 .number-input {
   width: 100%;
   box-sizing: border-box;
@@ -786,7 +786,7 @@ button.srow.as-button:hover {
 
 .text-input:focus,
 .time-input:focus,
-.datetime-input:focus,
+.date-input:focus,
 .number-input:focus,
 .select:focus {
   outline: none;
@@ -796,6 +796,26 @@ button.srow.as-button:hover {
 
 .text-input.invalid {
   border-color: var(--st-danger);
+}
+
+/* One-time reminder: separate date + time inputs side by side — much
+ * easier to work with on Linux than a single datetime-local widget. */
+.once-row {
+  display: flex;
+  gap: 10px;
+}
+
+.once-cell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-sublabel {
+  font-size: 12px;
+  color: var(--st-text-dim);
 }
 
 .field-error {
