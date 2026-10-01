@@ -32,12 +32,10 @@ const en = {
   nav: {
     welcome: "Welcome",
     general: "General",
+    nila: "Nila",
     reminders: "Reminders",
-    character: "Character",
     appearance: "Appearance",
-    schedule: "Schedule",
-    notifications: "Notifications",
-    language: "Language",
+    accessibility: "Accessibility",
     about: "About",
   },
   page: {
@@ -49,29 +47,21 @@ const en = {
       title: "General",
       subtitle: "Make Nila work the way you like.",
     },
+    nila: {
+      title: "Nila",
+      subtitle: "Customize how Nila appears and reacts.",
+    },
     reminders: {
       title: "Reminders",
       subtitle: "Choose what Nila can remind you about.",
-    },
-    character: {
-      title: "Character",
-      subtitle: "Customize how Nila appears and reacts.",
     },
     appearance: {
       title: "Appearance",
       subtitle: "Adjust how Nila looks on your desktop.",
     },
-    schedule: {
-      title: "Schedule",
-      subtitle: "Control when Nila can interrupt your day.",
-    },
-    notifications: {
-      title: "Notifications",
-      subtitle: "Choose how Nila gets your attention.",
-    },
-    language: {
-      title: "Language",
-      subtitle: "Choose the language for Nila's settings.",
+    accessibility: {
+      title: "Accessibility",
+      subtitle: "Motion and sound, tuned to your comfort.",
     },
     about: {
       title: "About",
@@ -79,15 +69,21 @@ const en = {
     },
   },
   welcome: {
-    tagline: "Your gentle reminder companion for Linux.",
-    step1Title: "Lives in your tray",
-    step1Text: "Nila stays in the top bar and only appears when a reminder is due.",
-    step2Title: "Kind reminders",
-    step2Text: "Water, food, breaks, movement, stretch, exercise, work and sleep — in a friendly Manglish voice.",
-    step3Title: "You're in control",
-    step3Text: "Quiet hours, snooze, pause and daily limits. Everything stays on your machine.",
-    getStarted: "Get started",
-    backToSettings: "Back to settings",
+    headline: "Hi, I'm Nila.",
+    intro:
+      "I'll gently remind you about the little things that matter during your day.",
+    step1Title: "A gentle companion",
+    step1Text:
+      "Nila lives in your top bar and only appears when there's something worth your attention.",
+    step2Title: "Reminders that feel kind",
+    step2Text:
+      "A small card slides in at the top of your screen. Tap the tick when you're done, or snooze it for later.",
+    step3Title: "Yours to shape",
+    step3Text:
+      "Pick a language, theme and accent. Everything stays on your machine.",
+    languageLabel: "Language",
+    createFirst: "Create your first reminder",
+    continue: "Continue",
   },
   general: {
     behaviorSection: "Nila behavior",
@@ -300,6 +296,14 @@ const en = {
     accentRose: "Rose",
     accentIndigo: "Indigo",
   },
+  accessibility: {
+    motionSection: "Motion",
+    motionDesc:
+      "Control how much Nila moves. Reduced keeps a calmer rhythm; Off keeps her still.",
+    motionFull: "Full",
+    motionReduced: "Reduced",
+    motionOff: "Off",
+  },
   schedule: {
     quietSection: "Quiet hours",
     quietDesc: "Nila won't remind you during these hours.",
@@ -339,6 +343,9 @@ const en = {
     github: "GitHub",
     githubValue: "github.com/musadhiq/Nila",
     madeFor: "Made for Linux",
+    helpSection: "Help",
+    welcomeTour: "Welcome to Nila",
+    welcomeTourDesc: "Replay the short first-run tour.",
   },
   common: {
     on: "On",
@@ -380,12 +387,10 @@ const manglish: Dict = {
   nav: {
     welcome: "Welcome",
     general: "General",
+    nila: "Nila",
     reminders: "Reminders",
-    character: "Character",
     appearance: "Appearance",
-    schedule: "Schedule",
-    notifications: "Notifications",
-    language: "Language",
+    accessibility: "Accessibility",
     about: "About",
   },
   page: {
@@ -397,29 +402,21 @@ const manglish: Dict = {
       title: "General",
       subtitle: "Nila ninte ishtam pole work cheyyatte.",
     },
+    nila: {
+      title: "Nila",
+      subtitle: "Nila eppozhaanu kaanunnathu, engane react cheyyunnathu — ivide set cheyyam.",
+    },
     reminders: {
       title: "Reminders",
       subtitle: "Ethokke karyangal Nila ormmippikkanamennu theerumanikku.",
-    },
-    character: {
-      title: "Character",
-      subtitle: "Nila eppozhaanu kaanunnathu, engane react cheyyunnathu — ivide set cheyyam.",
     },
     appearance: {
       title: "Appearance",
       subtitle: "Desktop-il Nila-yude look ivide adjust cheyyam.",
     },
-    schedule: {
-      title: "Schedule",
-      subtitle: "Ninte divasathil eppozhokke Nila vannu disturb cheyyaamennu control cheyyu.",
-    },
-    notifications: {
-      title: "Notifications",
-      subtitle: "Nila ninte shradha engane pidikkana mennu theerumanikku.",
-    },
-    language: {
-      title: "Language",
-      subtitle: "Nila-yude settings eth language-il venamennu theerumanikku.",
+    accessibility: {
+      title: "Accessibility",
+      subtitle: "Motion-um sound-um ninte comfort-inu.",
     },
     about: {
       title: "About",
@@ -427,15 +424,21 @@ const manglish: Dict = {
     },
   },
   welcome: {
-    tagline: "Linux-nu vendi oru gentle reminder companion.",
-    step1Title: "Tray-yil jeevikkum",
-    step1Text: "Nila top bar-il thanne irikkum; oru reminder vannal mathrame screen-il varoo.",
+    headline: "Hi, njan Nila.",
+    intro:
+      "Ninte divasathe cheriya karyangal njan gently ormmippichu tharum.",
+    step1Title: "Oru gentle koottukari",
+    step1Text:
+      "Nila top bar-il jeevikkum; shradhikkendathu ondu vannaal mathrame screen-il varoo.",
     step2Title: "Kind reminders",
-    step2Text: "Vellam, food, break, movement, stretch, exercise, joli, sleep — friendly Manglish voice-il.",
-    step3Title: "Ninte control",
-    step3Text: "Quiet hours, snooze, pause, daily limits. Ellam ninte machine-il thanne.",
-    getStarted: "Thudangam",
-    backToSettings: "Settings-ilekku thirichu pokam",
+    step2Text:
+      "Screen-inde mukalil oru cheriya card varum. Kazhinjal tick cheyyu, allenkil pinneekku snooze cheyyu.",
+    step3Title: "Ninte ishtam pole",
+    step3Text:
+      "Language, theme, accent — ivide select cheyyu. Ellam ninte machine-il thanne.",
+    languageLabel: "Bhasha",
+    createFirst: "Ninte adya reminder undakkuka",
+    continue: "Thudaruka",
   },
   general: {
     behaviorSection: "Nila behavior",
@@ -647,6 +650,14 @@ const manglish: Dict = {
     accentRose: "Rose",
     accentIndigo: "Indigo",
   },
+  accessibility: {
+    motionSection: "Motion",
+    motionDesc:
+      "Nila ethra move cheyyanamennu theerumanikku. Reduced calm aayirikkum; Off ava anangathe irikkum.",
+    motionFull: "Full",
+    motionReduced: "Reduced",
+    motionOff: "Off",
+  },
   schedule: {
     quietSection: "Quiet hours",
     quietDesc: "Ee samayathu Nila ormmippikkilla.",
@@ -686,6 +697,9 @@ const manglish: Dict = {
     github: "GitHub",
     githubValue: "github.com/musadhiq/Nila",
     madeFor: "Linux-nu vendi",
+    helpSection: "Help",
+    welcomeTour: "Welcome to Nila",
+    welcomeTourDesc: "Adya tour veendum kaanam.",
   },
   common: {
     on: "On",

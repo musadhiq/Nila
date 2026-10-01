@@ -99,6 +99,16 @@ export const IconWelcome = (p: IconProps) =>
     </>,
   );
 
+export const IconAccessibility = (p: IconProps) =>
+  base(
+    p,
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="7.6" r="1.4" fill="currentColor" stroke="none" />
+      <path d="M7.5 10.5h9M12 10.8v4.2m0 0-2.6 4.2m2.6-4.2 2.6 4.2" />
+    </>,
+  );
+
 export const IconAbout = (p: IconProps) =>
   base(
     p,

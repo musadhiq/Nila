@@ -11,15 +11,13 @@ import type { Dict } from "../../lib/i18n";
 import { isTauri } from "../../lib/tauri";
 import {
   IconAbout,
+  IconAccessibility,
   IconAppearance,
   IconCharacter,
   IconClose,
   IconGeneral,
-  IconLanguage,
   IconMinus,
-  IconNotifications,
   IconReminders,
-  IconSchedule,
   IconWelcome,
 } from "./icons";
 import idleUrl from "../../../character/states/idle.png";
@@ -27,23 +25,19 @@ import idleUrl from "../../../character/states/idle.png";
 export type PageId =
   | "welcome"
   | "general"
+  | "nila"
   | "reminders"
-  | "character"
   | "appearance"
-  | "schedule"
-  | "notifications"
-  | "language"
+  | "accessibility"
   | "about";
 
 const PAGES: { id: PageId; icon: (p: { className?: string }) => ReactNode }[] = [
   { id: "welcome", icon: IconWelcome },
   { id: "general", icon: IconGeneral },
+  { id: "nila", icon: IconCharacter },
   { id: "reminders", icon: IconReminders },
-  { id: "character", icon: IconCharacter },
   { id: "appearance", icon: IconAppearance },
-  { id: "schedule", icon: IconSchedule },
-  { id: "notifications", icon: IconNotifications },
-  { id: "language", icon: IconLanguage },
+  { id: "accessibility", icon: IconAccessibility },
   { id: "about", icon: IconAbout },
 ];
 
@@ -54,6 +48,8 @@ export function SettingsLayout({
   onClose,
   onMinimize,
   nativeTitlebar,
+  setupMode,
+  onSetupContinue,
   children,
 }: {
   t: Dict;
@@ -63,6 +59,10 @@ export function SettingsLayout({
   onMinimize: () => void;
   /** When true the OS draws the titlebar; hide the custom one. */
   nativeTitlebar?: boolean;
+  /** First-run flow: show a slim Continue footer on non-welcome pages. */
+  setupMode?: boolean;
+  /** Called when the first-run user taps Continue from the footer. */
+  onSetupContinue?: () => void;
   children: ReactNode;
 }) {
   return (
@@ -132,6 +132,17 @@ export function SettingsLayout({
           </header>
           {children}
         </main>
+        {setupMode && active !== "welcome" && (
+          <footer className="setup-footer">
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => onSetupContinue?.()}
+            >
+              {t.welcome.continue}
+            </button>
+          </footer>
+        )}
       </div>
     </div>
   );
