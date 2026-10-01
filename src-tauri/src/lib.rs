@@ -6,12 +6,14 @@
 //   system_monitor — battery / CPU / memory / disk health reminders
 //   platform       — OS providers (notifications, startup, sleep/wake, display)
 //   commands       — Tauri IPC command handlers
+//   wakeword       — microphone wake-word listener (micro-wakeword)
 
 pub mod commands;
 pub mod db;
 pub mod platform;
 pub mod scheduler;
 pub mod system_monitor;
+pub mod wakeword;
 
 use tauri::Manager;
 use tauri::{
@@ -279,6 +281,13 @@ pub fn run() {
                 .unwrap_or(None)
                 .map(|v| v == "true")
                 .unwrap_or(true);
+            // Wake-word toggle: defaults ON so the feature works out of
+            // the box; the user can switch it off in settings, which
+            // releases the microphone entirely (see wakeword::run_forever).
+            let wake_word_on = db::get_setting(&conn, "wake_word_enabled")
+                .unwrap_or(None)
+                .map(|v| v == "true")
+                .unwrap_or(true);
             app.manage(db::DbState::new(conn));
 
             // Scheduler generation counter (wakes the driver on changes).
@@ -321,6 +330,12 @@ pub fn run() {
             scheduler::spawn(app.handle().clone());
             // System health monitor (battery / CPU / memory / disk).
             system_monitor::spawn(app.handle().clone());
+            // Wake-word listener: microphone -> micro-wakeword ->
+            // `nila://wake-detected`. Audio is never recorded or saved;
+            // the detector consumes transient 10 ms blocks only. The
+            // settings toggle flips the worker live (mic released while
+            // off); the initial value comes from the DB read above.
+            wakeword::spawn(app.handle(), wake_word_on);
 
             // Menu-bar tray: the character window stays hidden until a
             // reminder is due (or the user opens it from the tray).
@@ -352,8 +367,15 @@ pub fn run() {
             commands::export_data,
             commands::import_data,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Nila");
+        .build(tauri::generate_context!())
+        .expect("error while building Nila");
+    // Stop the wake-word worker before the process exits. The worker
+    // honors the flag between detections; see wakeword::request_stop.
+    app.run(|app, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            wakeword::request_stop(app);
+        }
+    });
 }
 
 fn default_db_path() -> std::path::PathBuf {

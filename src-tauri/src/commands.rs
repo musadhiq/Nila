@@ -93,6 +93,12 @@ pub fn update_settings(
     if new_lang != prev_lang || autostart_changed {
         crate::refresh_tray_menu(&app);
     }
+    // Keep the wake-word worker in sync with its settings toggle:
+    // switching it off releases the microphone, switching it on resumes
+    // listening — no restart needed.
+    if let Some(v) = obj.get("wake_word_enabled").and_then(|v| v.as_str()) {
+        crate::wakeword::set_enabled(&app, v == "true");
+    }
     Ok(())
 }
 

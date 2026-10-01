@@ -2,7 +2,7 @@
 name = "nila"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.85"
 
 [lib]
 name = "nila_lib"
@@ -23,6 +23,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"
+micro-wakeword = "0.1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
