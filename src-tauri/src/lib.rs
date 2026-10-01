@@ -8,7 +8,7 @@
 //   commands       — Tauri IPC command handlers
 //   wakeword       — microphone wake-word listener (micro-wakeword)
 //   voice          — post-wake voice-command pipeline (sherpa-onnx STT)
-//   models         — first-run download of the STT models into app-data
+//   models         — manual download of the STT models into app-data
 
 pub mod commands;
 pub mod db;
@@ -346,8 +346,8 @@ pub fn run() {
             // locally with sherpa-onnx (INT8 Conformer-CTC). Audio is
             // never recorded or saved; inference runs only during a
             // post-wake session, never while idle. The STT models are not
-            // bundled — they download once into the app-data dir on first
-            // run (see models.rs).
+            // bundled — the user downloads them once, manually, from
+            // Settings (see models.rs); Nila works without them.
             voice::spawn(app.handle());
 
             // Menu-bar tray: the character window stays hidden until a
@@ -379,6 +379,8 @@ pub fn run() {
             commands::record_reminder_action,
             commands::export_data,
             commands::import_data,
+            commands::stt_models_status,
+            commands::download_stt_models,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nila");

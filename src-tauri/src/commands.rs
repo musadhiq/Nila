@@ -382,3 +382,38 @@ pub fn import_data(
     scheduler::notify_data_changed(&app);
     Ok(count)
 }
+
+/// Voice-model download state, for the Settings UI.
+#[derive(Serialize)]
+pub struct SttModelsStatus {
+    pub ready: bool,
+}
+
+/// Whether the STT models are present (downloaded once via Settings, or
+/// pointed at via env overrides). Nila works without them.
+#[tauri::command]
+pub fn stt_models_status(app: AppHandle) -> Result<SttModelsStatus, String> {
+    Ok(SttModelsStatus {
+        ready: crate::models::resolve_models(&app).is_some(),
+    })
+}
+
+/// Result of requesting a manual model download.
+#[derive(Serialize)]
+pub struct SttDownloadResult {
+    /// False when the models were already present — nothing was started.
+    pub started: bool,
+}
+
+/// Start the one-time voice-model download in the background (manual,
+/// from Settings — the option only shows when the wake word is
+/// enabled). Progress arrives on `nila://models-downloading`,
+/// completion on `nila://models-ready`, failure on `nila://models-error`.
+#[tauri::command]
+pub fn download_stt_models(app: AppHandle) -> Result<SttDownloadResult, String> {
+    if crate::models::resolve_models(&app).is_some() {
+        return Ok(SttDownloadResult { started: false });
+    }
+    crate::models::download_in_background(app);
+    Ok(SttDownloadResult { started: true })
+}

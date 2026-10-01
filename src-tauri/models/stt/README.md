@@ -2,16 +2,16 @@
 
 Nila's voice-command pipeline runs fully on-device (sherpa-onnx), but the
 models are **not** shipped with the app and are **not** committed to the
-repo. On first run Nila downloads them once (~80 MB) from the upstream
-sherpa-onnx release into the per-user app data dir:
+repo. The user downloads them once (~80 MB) from the upstream
+sherpa-onnx release, manually, from Settings — the download option only
+appears when the wake word is enabled — into the per-user app data dir:
 
 - Linux: `~/.local/share/nila/models/stt/`
 
-The download starts in the background at app launch, so it is usually
-done before the first "Hi Nila". If the wake word comes first, that first
-voice session waits and shows download progress in the pill. Afterwards
-the files are reused across restarts and updates — reinstalling Nila
-never re-downloads them.
+Nothing downloads automatically. Afterwards the files are reused across
+restarts and updates — reinstalling Nila never re-downloads them. Nila
+works fine without the models: saying the wake word with none present
+just points at Settings instead of transcribing.
 
 ## Files
 
@@ -40,7 +40,7 @@ license before redistributing the packaged app.
 Model resolution order (first hit wins):
 
 1. `NILA_STT_MODEL_DIR` — a directory containing all three files.
-2. `<app-data>/models/stt/` — the first-run download target.
+2. `<app-data>/models/stt/` — the manual download target.
 3. `models/stt/` next to the working directory or the executable (dev convenience).
 4. `NILA_STT_MODEL` / `NILA_STT_TOKENS` / `NILA_STT_VAD_MODEL` — individual file paths, each winning independently.
 

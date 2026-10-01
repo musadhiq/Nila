@@ -24,10 +24,11 @@
 //! existing settings flag) only for the command window, so the microphone
 //! is never double-opened.
 //!
-//! Models are NOT bundled with the app: see `models.rs` — they download
-//! once into the app-data dir on first run, and the engine below loads
-//! lazily on first wake (after `voice:started`, so a first-run download
-//! shows progress in the pill instead of silence).
+//! Models are NOT bundled with the app: see `models.rs` — the user
+//! downloads them once, manually, from Settings (shown only when the
+//! wake word is enabled). The engine below loads lazily on first wake;
+//! a wake with no models present ends gracefully instead of
+//! transcribing.
 //!
 //! Privacy: audio lives only in RAM as transient f32 blocks. Nothing is
 //! ever written to disk.
@@ -161,9 +162,10 @@ pub fn spawn(app: &AppHandle) {
     let _ = app.listen(wakeword::EVENT_WAKE_DETECTED, move |_| {
         let _ = wake_tx.send(());
     });
-    // First-run model fetch starts now, so it is usually done before the
-    // first "Hi Nila" (see models.rs); the worker re-ensures on wake.
-    models::ensure_background(app.clone());
+    // The STT models are a manual, settings-driven download (see
+    // models.rs) — nothing fetches them automatically, so Nila works
+    // fine without them. A wake with no models present ends gracefully
+    // (see ensure_engine) instead of downloading.
     let app = app.clone();
     thread::Builder::new()
         .name("nila-voice-worker".into())
@@ -343,17 +345,15 @@ fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, wake_rx: mpsc::Receiver<
     eprintln!("nila: voice: worker stopped");
 }
 
-/// Load the STT engine on first wake, downloading the models first on a
-/// fresh install (see `models.rs`). The pill is already up
-/// (`voice:started` was emitted before this runs), so a first-run
-/// download shows progress instead of silence.
+/// Load the STT engine on first wake. The models are a manual download
+/// from Settings (shown only when the wake word is enabled) — if they
+/// aren't present the session degrades gracefully with `models_missing`
+/// and the wake listener is restored, so Nila keeps working without
+/// voice commands.
 fn ensure_engine(app: &AppHandle) -> Result<Engine, (&'static str, String)> {
-    models::ensure_blocking(app)
-        .map_err(|e| ("model_error", format!("voice models unavailable: {e}")))?;
     let (model, tokens, vad_model) = models::resolve_models(app).ok_or((
-        "model_error",
-        "voice models missing after download — check your connection and try the wake word again"
-            .to_string(),
+        "models_missing",
+        "voice models not downloaded — available in Settings".to_string(),
     ))?;
     load_engine(&model, &tokens, &vad_model)
         .map_err(|e| ("model_error", format!("STT engine failed to load: {e}")))
@@ -384,9 +384,11 @@ fn run_session(
     emit(app, EVENT_VOICE_STARTED, StartedPayload { kind: "voice:started" });
     eprintln!("nila: voice: session started (wake listener parked)");
 
-    // Lazy engine load on first wake. On a fresh install this downloads
-    // the models first — the pill is already showing, so the wait is
-    // visible via `nila://models-downloading` progress, not silent.
+    // Lazy engine load on first wake. When the models were never
+    // downloaded (a manual, settings-driven step), the session ends
+    // gracefully: the pill shows where to get them and the wake
+    // listener is restored, so Nila keeps working without voice
+    // commands.
     if engine.is_none() {
         match ensure_engine(app) {
             Ok(loaded) => *engine = Some(loaded),

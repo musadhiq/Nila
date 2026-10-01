@@ -1,16 +1,17 @@
-//! First-run model provisioning for the local voice pipeline.
+//! Manual model provisioning for the local voice pipeline.
 //!
 //! The STT models (~80 MB: INT8 Conformer-CTC + tokens + Silero VAD) are
-//! NOT shipped with the app and NOT committed to the repo. On first run
-//! Nila downloads them once from the upstream sherpa-onnx release into
-//! the per-user app data dir (`~/.local/share/nila/models/stt/` on
-//! Linux) and reuses them across restarts and updates — releases stay
-//! small and a reinstall never re-downloads.
+//! NOT shipped with the app and NOT committed to the repo. The user
+//! downloads them once, manually, from Settings — the download option
+//! only appears when the wake word is enabled — into the per-user app
+//! data dir (`~/.local/share/nila/models/stt/` on Linux). Nila reuses
+//! them across restarts and updates, and works fine without them: a
+//! wake with no models present just points the user at Settings instead
+//! of transcribing. Nothing downloads automatically.
 //!
-//! A background fetch starts at app launch ([`ensure_background`]); the
-//! voice worker also calls [`ensure_blocking`] on first wake as a safety
-//! net, which holds that first session until the models arrive while
-//! reporting progress on `nila://models-downloading` for the pill.
+//! [`download_in_background`] runs the one-time fetch on a worker thread
+//! (triggered by the `download_stt_models` command), reporting progress
+//! on `nila://models-downloading` for the settings UI.
 //!
 //! Developers can still point at local files with `NILA_STT_MODEL_DIR`
 //! (or the per-file `NILA_STT_MODEL` / `NILA_STT_TOKENS` /
@@ -25,8 +26,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Frontend event: model download progress. Payload
-/// [`DownloadProgressPayload`]. Only emitted while a download is
-/// actually running (first run, or a retry after failure).
+/// [`DownloadProgressPayload`]. Only emitted while a manual download
+/// from Settings is actually running.
 pub const EVENT_MODELS_DOWNLOADING: &str = "nila://models-downloading";
 /// Frontend event: all voice models are present and verified.
 pub const EVENT_MODELS_READY: &str = "nila://models-ready";
@@ -101,7 +102,7 @@ fn search_dirs(app: &AppHandle) -> Vec<PathBuf> {
             p.display()
         );
     }
-    // The first-run download target (preferred).
+    // The manual download target (preferred).
     if let Ok(d) = dir(app) {
         dirs.push(d);
     }
@@ -164,11 +165,11 @@ pub fn resolve_models(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> {
     }
 }
 
-/// Kick off the first-run download in the background (called once at app
-/// launch). No-op when the models are already present. Failures are
-/// reported on [`EVENT_MODELS_ERROR`]; the voice worker retries
-/// (blocking) on first wake.
-pub fn ensure_background(app: AppHandle) {
+/// Start the one-time model download in the background. Called only
+/// from the manual `download_stt_models` command (Settings) — nothing
+/// in the app triggers a download on its own. No-op when the models are
+/// already present. Failures are reported on [`EVENT_MODELS_ERROR`].
+pub fn download_in_background(app: AppHandle) {
     std::thread::Builder::new()
         .name("nila-models-download".into())
         .spawn(move || {
@@ -187,15 +188,16 @@ pub fn ensure_background(app: AppHandle) {
         .expect("failed to spawn model download thread");
 }
 
-/// Make sure the models exist, downloading them on first run. Serialized
-/// against concurrent callers; emits [`EVENT_MODELS_DOWNLOADING`]
-/// progress and [`EVENT_MODELS_READY`] on success.
+/// Make sure the models exist, downloading them when this is a manual
+/// settings-driven fetch. Serialized against concurrent callers; emits
+/// [`EVENT_MODELS_DOWNLOADING`] progress and [`EVENT_MODELS_READY`] on
+/// success.
 pub fn ensure_blocking(app: &AppHandle) -> Result<(), String> {
     let _guard = DOWNLOAD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if resolve_models(app).is_some() {
         return Ok(());
     }
-    eprintln!("nila: models: first run — downloading voice models (~80 MB, one time)");
+    eprintln!("nila: models: downloading voice models (~80 MB, one time)");
     let dir = dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
 
