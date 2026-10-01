@@ -277,7 +277,7 @@ export default function App() {
   const DOCK_PAD_X = 56;
   const DOCK_PAD_Y = 64;
   /** Pre-measure estimate (typical card) so the first present is sane. */
-  const dockCardSize = useRef({ w: 400, h: 230 });
+  const dockCardSize = useRef({ w: 340, h: 120 });
 
   /** Size + top-center the dock window around the measured card. */
   const fitDockWindow = async () => {
@@ -444,14 +444,10 @@ export default function App() {
         } else {
           return;
         }
-        const behavior = settingsRef.current.reminder_behavior;
         const hidden = settingsRef.current.character_visibility === "hidden";
         // "Hidden" mode: Nila never appears on screen. The scheduler
         // delivers the reminder as an OS notification instead.
         if (hidden) return;
-        // "System notification" mode: the OS notification is the whole
-        // surface (sent by the scheduler); Nila stays in the tray.
-        if (behavior === "system") return;
         // V1: the top-center notification dock is the only on-screen
         // surface. The dock machine queues overlapping reminders and
         // choreographs Nila's gestures; the phase effect seats the
@@ -584,13 +580,10 @@ export default function App() {
   const testReminder = async () => {
     // The dock must be visible: leave the panel first (this was the bug —
     // the reminder fired underneath the open settings panel).
-    // In "system notification" mode there is no dock: the backend sends
-    // an OS notification instead, so Nila stays in the tray. Same for
-    // "hidden" visibility.
-    const behavior = settingsRef.current.reminder_behavior;
+    // In "hidden" visibility there is no dock: Nila stays in the tray.
     const hidden = settingsRef.current.character_visibility === "hidden";
     if (!isTauri()) {
-      if (behavior === "system" || hidden) return;
+      if (hidden) return;
       setView("companion");
       chimeForReminder();
       dock.notify({
