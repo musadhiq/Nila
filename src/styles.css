@@ -510,6 +510,10 @@ html, body {
   line-height: 1.45;
   color: #57514a;
   overflow-wrap: anywhere;
+  /* Pathological lengths (pasted paragraphs) scroll internally instead of
+     growing the card past the screen — normal messages never reach this. */
+  max-height: 320px;
+  overflow-y: auto;
 }
 .dock-pills {
   display: flex;

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   dockReducer,
   initialDockState,
+  isDockActionable,
   isDockOnScreen,
   type DockNotification,
 } from "../src/dock/dockMachine.ts";
@@ -124,6 +125,22 @@ describe("dockMachine", () => {
     assert.equal(isDockOnScreen("hidden"), false);
     for (const p of ["entering", "expanding", "visible", "interacting", "acknowledging", "collapsing"] as const) {
       assert.equal(isDockOnScreen(p), true);
+    }
+  });
+
+  it("isDockActionable matches the phases that honor dismiss", () => {
+    // dismiss is honored from entering/expanding/visible/interacting and
+    // ignored while acknowledging/collapsing/hidden — the guard must
+    // agree exactly, so a second rapid action never reaches the backend.
+    for (const p of ["entering", "expanding", "visible", "interacting"] as const) {
+      assert.equal(isDockActionable(p), true);
+      const s = dockReducer({ ...initialDockState(), phase: p }, { type: "dismiss", action: "completed" });
+      assert.equal(s.phase, "acknowledging");
+    }
+    for (const p of ["acknowledging", "collapsing", "hidden"] as const) {
+      assert.equal(isDockActionable(p), false);
+      const s = dockReducer({ ...initialDockState(), phase: p }, { type: "dismiss", action: "completed" });
+      assert.equal(s.phase, p);
     }
   });
 
