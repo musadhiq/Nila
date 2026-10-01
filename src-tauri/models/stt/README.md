@@ -1,8 +1,17 @@
 # Nila local English STT models (sherpa-onnx)
 
-This directory holds the **local** speech-to-text models used by
-`src-tauri/src/voice.rs`. Everything runs on-device — no network, no
-accounts, no audio ever leaves the machine (or is even written to disk).
+Nila's voice-command pipeline runs fully on-device (sherpa-onnx), but the
+models are **not** shipped with the app and are **not** committed to the
+repo. On first run Nila downloads them once (~80 MB) from the upstream
+sherpa-onnx release into the per-user app data dir:
+
+- Linux: `~/.local/share/nila/models/stt/`
+
+The download starts in the background at app launch, so it is usually
+done before the first "Hi Nila". If the wake word comes first, that first
+voice session waits and shows download progress in the pill. Afterwards
+the files are reused across restarts and updates — reinstalling Nila
+never re-downloads them.
 
 ## Files
 
@@ -12,29 +21,14 @@ accounts, no audio ever leaves the machine (or is even written to disk).
 | `tokens.txt` | Tokenizer vocabulary for the model (lowercase a–z, space, apostrophe) | tiny |
 | `silero_vad.onnx` | Silero voice-activity detector (speech start/end detection) | ~2 MB |
 
-The full-precision `model.onnx` (~81 MB) from the upstream tarball is
-**not** kept — only the INT8 file is needed.
-
-## Download
-
-Binaries are not committed through the usual push flow. Run:
-
-```bash
-bash src-tauri/models/stt/download-stt-model.sh
-```
-
-then commit the three files with normal git:
-
-```bash
-git add src-tauri/models/stt/model.int8.onnx \
-        src-tauri/models/stt/tokens.txt \
-        src-tauri/models/stt/silero_vad.onnx
-git commit -m "Add local English STT models (sherpa-onnx)"
-```
+Only `model.int8.onnx` + `tokens.txt` are extracted from the upstream
+tarball; the full-precision `model.onnx`, test wavs and scripts are
+skipped. Audio is never written to disk — downloads are the only thing
+that touch the network, once.
 
 ## Sources
 
-- ASR: <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-ctc-en-conformer-small.tar.bz2>
+- ASR tarball: <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-ctc-en-conformer-small.tar.bz2>
 - VAD: <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx>
 
 See <https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-ctc/nemo/english.html>
@@ -43,14 +37,14 @@ license before redistributing the packaged app.
 
 ## Configuration
 
-The worker resolves models in this order:
+Model resolution order (first hit wins):
 
 1. `NILA_STT_MODEL_DIR` — a directory containing all three files.
-2. `NILA_STT_MODEL` / `NILA_STT_TOKENS` / `NILA_STT_VAD_MODEL` — individual file paths.
-3. `models/stt/` next to the working directory, the executable, or the
-   Tauri resource dir (the `./models/stt/` → `models/stt/` resource
-   mapping in `tauri.conf.json` covers packaged builds; in dev it is
-   this directory).
+2. `<app-data>/models/stt/` — the first-run download target.
+3. `models/stt/` next to the working directory or the executable (dev convenience).
+4. `NILA_STT_MODEL` / `NILA_STT_TOKENS` / `NILA_STT_VAD_MODEL` — individual file paths, each winning independently.
+
+Explicit env paths skip the download entirely.
 
 Session timeouts are also tunable:
 
@@ -63,6 +57,13 @@ Session timeouts are also tunable:
 
 ## Replacing the model later
 
-Drop a new `model.int8.onnx` + matching `tokens.txt` here (same
-Conformer-CTC family) and restart Nila — no code changes needed. The
-VAD model can be swapped the same way.
+Drop a new `model.int8.onnx` + matching `tokens.txt` into the app-data
+dir above (same Conformer-CTC family) and restart Nila — no code changes
+needed. The VAD model can be swapped the same way. Or point
+`NILA_STT_MODEL_DIR` at a directory holding your files.
+
+## Offline installs
+
+The one-time download needs internet. For an offline machine, fetch the
+three files elsewhere and place them in `~/.local/share/nila/models/stt/`
+manually (`model.int8.onnx` + `tokens.txt` come from the tarball above).
