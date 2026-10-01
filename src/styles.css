@@ -30,7 +30,10 @@ html, body {
 .companion .gear-btn,
 .companion .reminder-bubble,
 .companion .ctx-menu,
-.companion .ctx-backdrop {
+.companion .ctx-backdrop,
+/* The settings panel is a real desktop window: everything inside it must
+ * stay clickable even though the companion root is click-through. */
+.companion .panel-wrap {
   pointer-events: auto;
 }
 .companion .char-drag { cursor: pointer; }
