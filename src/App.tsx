@@ -8,9 +8,14 @@ import {
   primaryMonitor,
   type Monitor,
 } from "@tauri-apps/api/window";
-import { CharacterEngine, NilaCharacter } from "./character";
+import { CharacterEngine, CharacterLab, NilaCharacter, peekSequenceForPreset, useFramePlayback } from "./character";
 import type { CharacterSnapshot } from "./character";
 import type { ExpressionName } from "./character/expressions";
+import {
+  backgroundPreloadAll,
+  frameUrl,
+  preloadForFirstAppearance,
+} from "./character/motionAssets";
 import {
   characterTransformCSS,
   effectiveEntrance,
@@ -94,6 +99,8 @@ export default function App() {
   const [bubbleLayout, setBubbleLayout] = useState<ReminderLayout | null>(null);
   /** Staggered reveal: Nila appears first, the bubble fades in after. */
   const [bubbleVisible, setBubbleVisible] = useState(false);
+  // Dev-only Character Lab (spec 24).
+  const [labOpen, setLabOpen] = useState(false);
   const bubbleTimer = useRef<number | null>(null);
   const enterAnimTimer = useRef<number | null>(null);
   /** Cancels the in-flight window glide so a new one never fights it. */
@@ -110,6 +117,61 @@ export default function App() {
   // Last reminder window layout, so a "retreat" exit can shrink back
   // around the character without her jumping.
   const reminderLayoutRef = useRef<ReminderLayout | null>(null);
+  // Resolved motion-frame URL for the engine's current frame (with the
+  // fallback hierarchy applied); null falls back to the legacy image.
+  const frameSrc = snap.frame ? frameUrl(snap.frame.key) : null;
+  // Dev-only character debug overlay (?nila-debug or localStorage).
+  const [nilaDebug] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      (window.location.search.includes("nila-debug") ||
+        window.localStorage.getItem("nila.debug") === "1"),
+  );
+  // Frame-sequence playback: per-frame timers + idle blink injection.
+  useFramePlayback(engineRef.current, snap);
+  /**
+   * Full frame motion reads the live settings ref — the reminder/presence
+   * callbacks below outlive renders, so a render-scoped snapshot value
+   * would go stale here.
+   */
+  const fullFrames = () => settingsRef.current.animation === "full";
+  // Chain multi-beat frame sequences: reminder-enter -> (bubble) ->
+  // point -> wait loop, and wave -> idle.
+  const seqEndTimer = useRef<number | null>(null);
+  /** The enter sequence used for the current reminder (peek or reminder-enter). */
+  const reminderEnterRef = useRef<string>("reminder-enter");
+  useEffect(() => {
+    const engine = engineRef.current!;
+    const off = engine.onSequenceEnd((name) => {
+      if (name === "wave") {
+        if (waveTimer.current !== null) {
+          window.clearTimeout(waveTimer.current);
+          waveTimer.current = null;
+        }
+        engine.returnToIdle();
+        return;
+      }
+      if (name === "celebration") {
+        engine.returnToIdle();
+        return;
+      }
+      if (name === reminderEnterRef.current) {
+        // She has settled: wait a beat, then the bubble appears and she
+        // points at it, then waits. (Sequence-driven; the legacy
+        // bubbleTimer path covers reduced/off motion.)
+        if (seqEndTimer.current !== null) window.clearTimeout(seqEndTimer.current);
+        seqEndTimer.current = window.setTimeout(() => {
+          seqEndTimer.current = null;
+          setBubbleVisible(true);
+          engine.playChain(["reminder-point", "reminder-wait"]);
+        }, 130);
+      }
+    });
+    return () => {
+      off();
+      if (seqEndTimer.current !== null) window.clearTimeout(seqEndTimer.current);
+    };
+  }, []);
 
   // Window lifecycle: Nila lives in the menu-bar tray. The floating window
   // only appears when a reminder is due, or when opened from the tray.
@@ -437,7 +499,7 @@ export default function App() {
    * Reveal the companion using the configured presence (spec 47/54):
    * position, entrance behavior, orientation, tilt.
    */
-  const presentCompanion = async (mode: "idle" | "reminder" = "idle") => {
+  const presentCompanion = async (mode: "idle" | "reminder" = "idle", keepFrames = false) => {
     if (!isTauri()) return;
     const win = getCurrentWindow();
     const s = settingsRef.current;
@@ -490,6 +552,18 @@ export default function App() {
         }
       }
       await win.setFocus().catch(() => {});
+      // Frame motion: a peek entrance plays her peek frames (held on the
+      // last frame while she waits); other entrances settle into the
+      // idle loop. Skipped when the caller owns the frames already
+      // (a reminder sequence is playing).
+      if (!keepFrames && fullFrames()) {
+        const engine = engineRef.current!;
+        const peek =
+          entrance === "peek"
+            ? peekSequenceForPreset(target.preset, s.top_hang)
+            : null;
+        engine.playSequence(peek ? peek.enter : "idle");
+      }
       // Idle presence "hidden": Nila slips away right after arriving —
       // unless she is meant to stay visible anyway.
       if (
@@ -508,7 +582,8 @@ export default function App() {
     }
   };
 
-  /** Seat Nila at her presence spot without any entrance animation. */
+  /** Seat Nila at her presence spot. Glides when she is visible so a
+   *  settings change never teleports her (spec 29). */
   const seatCompanion = async () => {
     if (!isTauri()) return;
     const target = await resolveIdleTarget();
@@ -518,7 +593,15 @@ export default function App() {
       const win = getCurrentWindow();
       const cs = companionSize();
       await win.setSize(new LogicalSize(cs.w, cs.h));
-      await win.setPosition(new PhysicalPosition(target.x, target.y));
+      const to = { x: target.x, y: target.y };
+      const from = await win.outerPosition().catch(() => null);
+      if (from && Math.hypot(to.x - from.x, to.y - from.y) > 2) {
+        await glidePosition({ x: from.x, y: from.y }, to, 320, (x, y) => {
+          void win.setPosition(new PhysicalPosition(x, y)).catch(() => {});
+        }, startGlide());
+      } else {
+        await win.setPosition(new PhysicalPosition(to.x, to.y));
+      }
     } catch {
       /* ignore */
     }
@@ -553,6 +636,12 @@ export default function App() {
       if (!target || !from || !size) {
         await win.hide();
         return;
+      }
+      // Frame motion: slipping back out through the edge plays her peek
+      // frames in reverse while the window glides.
+      if (fullFrames() && (exit === "peek-out" || exit === "slide")) {
+        const peek = peekSequenceForPreset(target.preset, s.top_hang);
+        if (peek) engineRef.current!.playSequence(peek.exit);
       }
       const info = await monitorInfo();
       const mon = info.rects[target.monitor];
@@ -739,6 +828,20 @@ export default function App() {
       const entrance = effectiveEntrance(s.entrance, s.animation);
       const cls = entranceClassFor(entrance);
       const ms = s.entrance_ms;
+      // Frame motion: a peek entrance plays her peek frames while the
+      // window glides in; the reminder arc continues when they land
+      // (bubble -> point -> wait via the sequence-end handler).
+      if (fullFrames() && entrance === "peek") {
+        const peek = peekSequenceForPreset(target.preset, s.top_hang);
+        if (peek) {
+          reminderEnterRef.current = peek.enter;
+          engineRef.current!.playSequence(peek.enter);
+        } else {
+          reminderEnterRef.current = "reminder-enter";
+        }
+      } else {
+        reminderEnterRef.current = "reminder-enter";
+      }
       if (entrance === "slide" || entrance === "peek") {
         // The whole reminder window glides in from her edge (spec 47).
         const edges = presetEdges(target.preset);
@@ -767,11 +870,15 @@ export default function App() {
           (x, y) => placeAt(x, y),
           startGlide(),
         );
-        // Nila has arrived; now the bubble fades in (staggered).
-        bubbleTimer.current = window.setTimeout(() => {
-          bubbleTimer.current = null;
-          setBubbleVisible(true);
-        }, 120);
+        // Nila has arrived; now the bubble fades in (staggered). With
+        // full frame motion the sequence-end handler reveals it after
+        // her enter frames land instead.
+        if (!fullFrames()) {
+          bubbleTimer.current = window.setTimeout(() => {
+            bubbleTimer.current = null;
+            setBubbleVisible(true);
+          }, 120);
+        }
       } else {
         placeAt(fixed.x, fixed.y);
         await win.show();
@@ -783,11 +890,14 @@ export default function App() {
             setEnterAnim(null);
           }, ms + 80);
         }
-        // Staggered bubble reveal for non-glide entrances too.
-        bubbleTimer.current = window.setTimeout(() => {
-          bubbleTimer.current = null;
-          setBubbleVisible(true);
-        }, 120);
+        // Staggered bubble reveal for non-glide entrances too
+        // (sequence-driven under full frame motion).
+        if (!fullFrames()) {
+          bubbleTimer.current = window.setTimeout(() => {
+            bubbleTimer.current = null;
+            setBubbleVisible(true);
+          }, 120);
+        }
       }
       await win.setFocus().catch(() => {});
     } catch {
@@ -979,6 +1089,18 @@ export default function App() {
         setPaused(isPausedSettings(merged));
         engineRef.current!.setSize(merged.character_size);
         engineRef.current!.setMotion(merged.animation);
+        // Motion assets: preload the first-appearance set (idle loop +
+        // this position's peek frames) before she can appear, then the
+        // rest in the background.
+        if (merged.animation === "full") {
+          const peek = peekSequenceForPreset(
+            merged.position_preset,
+            merged.top_hang,
+          );
+          void preloadForFirstAppearance(
+            peek ? [peek.enter, peek.exit] : [],
+          ).then(() => backgroundPreloadAll());
+        }
         // "Always visible": Nila stays on screen from launch.
         if (merged.character_visibility === "always") void presentCompanion("idle");
       } catch {
@@ -1038,7 +1160,7 @@ export default function App() {
           pendingReminderRef.current = r;
           chimeForReminder();
           setView("companion");
-          void presentCompanion("idle");
+          void presentCompanion("idle", true);
           exitAfterBeat(30000);
           return;
         }
@@ -1047,12 +1169,16 @@ export default function App() {
         // the bubble opening toward the desktop. The overlay takes over
         // the window.
         setActiveReminder(r);
-        // She gasps, then points at the reminder bubble.
-        flashExpression("surprised", 800);
-        exprTimers.current.push(
-          window.setTimeout(() => engineRef.current!.showExpression("point"), 800),
-          window.setTimeout(() => engineRef.current!.clearExpression(), 1800),
-        );
+        // She gasps, then points at the reminder bubble. With full frame
+        // motion the reminder-enter sequence does this instead, so the
+        // legacy expression flashes are skipped there.
+        if (settingsRef.current.animation !== "full") {
+          flashExpression("surprised", 800);
+          exprTimers.current.push(
+            window.setTimeout(() => engineRef.current!.showExpression("point"), 800),
+            window.setTimeout(() => engineRef.current!.clearExpression(), 1800),
+          );
+        }
         chimeForReminder();
         void presentReminder(r);
       });
@@ -1170,14 +1296,22 @@ export default function App() {
       /* demo mode */
     }
     hideBubbleThen(() => {
-      engineRef.current!.dismissReminder();
+      engineRef.current!.dismissReminder(action === "completed");
       if (action === "completed") {
-        // She beams with pride, then leaves with her exit behavior.
-        flashExpression("proud", 1600);
-        exitAfterBeat(1300);
+        // Bubble out first; she gives a thumbs-up, then leaves.
+        const frames = settingsRef.current.animation === "full";
+        if (!frames) flashExpression("proud", 1600);
+        exitAfterBeat(frames ? 1600 : 1300);
         return;
       }
-      maybeHideAfterReminder();
+      // Plain dismiss: with full motion she reacts, then retreats, and
+      // only then does the window exit (so the beats stay visible).
+      // Legacy motion keeps the immediate exit.
+      if (settingsRef.current.animation === "full") {
+        exitAfterBeat(2300); // react (1550) + retreat (340) + beat
+      } else {
+        maybeHideAfterReminder();
+      }
     });
   };
 
@@ -1189,9 +1323,10 @@ export default function App() {
     }
     hideBubbleThen(() => {
       engineRef.current!.snoozeReminder();
-      // She gets drowsy, then leaves with her exit behavior.
-      flashExpression("sleepy", 1400);
-      exitAfterBeat(1200);
+      // A nod of acknowledgment, then she leaves.
+      const frames = settingsRef.current.animation === "full";
+      if (!frames) flashExpression("sleepy", 1400);
+      exitAfterBeat(frames ? 1700 : 1200);
     });
   };
 
@@ -1265,7 +1400,9 @@ export default function App() {
         kind: "water",
       };
       engineRef.current!.beginReminder("water");
-      flashExpression("surprised", 1200);
+      // Legacy attention beat (reduced/off motion); full frame motion plays
+      // the reminder-enter sequence instead.
+      if (settingsRef.current.animation !== "full") flashExpression("surprised", 1200);
       chimeForReminder();
       setActiveReminder(r);
       return;
@@ -1314,6 +1451,14 @@ export default function App() {
     engine.setSize(s.character_size);
     engine.setMotion(s.animation);
     engine.setIdleBehavior(s.idle_behavior);
+    // Frame motion (re)enabled or the presence spot changed: warm the
+    // asset cache so her next appearance doesn't stall on image loads.
+    if (s.animation === "full") {
+      const peek = peekSequenceForPreset(s.position_preset, s.top_hang);
+      void preloadForFirstAppearance(peek ? [peek.enter, peek.exit] : []).then(
+        () => backgroundPreloadAll(),
+      );
+    }
     try {
       await invokeCommand("update_settings", { settings: settingsToRecord(s) });
     } catch {
@@ -1512,6 +1657,10 @@ export default function App() {
                     dark={dark}
                     expression={snap.expression}
                     groundShadow={showGroundShadow}
+                    frame={snap.frame}
+                    frameSrc={frameSrc}
+                    debug={nilaDebug}
+                    debugPosition={activePresetRef.current}
                   />
                 </div>
               </div>
@@ -1556,6 +1705,10 @@ export default function App() {
                     dark={dark}
                     expression={snap.expression}
                     groundShadow={showGroundShadow}
+                    frame={snap.frame}
+                    frameSrc={frameSrc}
+                    debug={nilaDebug}
+                    debugPosition={activePresetRef.current}
                   />
                 </div>
               </div>
@@ -1581,6 +1734,10 @@ export default function App() {
                   dark={dark}
                   expression={snap.expression}
                   groundShadow={showGroundShadow}
+                  frame={snap.frame}
+                  frameSrc={frameSrc}
+                  debug={nilaDebug}
+                  debugPosition={activePresetRef.current}
                 />
               </div>
             </div>
@@ -1604,6 +1761,21 @@ export default function App() {
         >
           <IconGeneral />
         </button>
+      )}
+      {import.meta.env.DEV && nilaDebug && view === "companion" && (
+        <button
+          type="button"
+          className="lab-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setLabOpen(true);
+          }}
+        >
+          Lab
+        </button>
+      )}
+      {import.meta.env.DEV && nilaDebug && labOpen && (
+        <CharacterLab onClose={() => setLabOpen(false)} />
       )}
       {view !== "companion" && (
         <div className="panel-wrap">
