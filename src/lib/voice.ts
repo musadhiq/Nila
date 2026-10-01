@@ -29,6 +29,36 @@ export const VOICE_EVENTS = {
 
 export type VoiceEventName = (typeof VOICE_EVENTS)[keyof typeof VOICE_EVENTS];
 
+/**
+ * Model provisioning events, emitted by the Rust model downloader
+ * (`src-tauri/src/models.rs`). The STT models are not bundled with the
+ * app: they download once into the app-data dir on first run (~80 MB).
+ * `downloading` only fires while a download is actually running; the UI
+ * surfaces its progress inside an active voice session's bubble and
+ * otherwise stays silent.
+ */
+export const MODEL_EVENTS = {
+  downloading: "nila://models-downloading",
+  ready: "nila://models-ready",
+  error: "nila://models-error",
+} as const;
+
+export type ModelEventName = (typeof MODEL_EVENTS)[keyof typeof MODEL_EVENTS];
+
+export interface ModelsDownloadingPayload {
+  type: "nila://models-downloading";
+  /** Which file is being fetched ("model.int8.onnx" or "silero_vad.onnx"). */
+  file: string;
+  downloaded_bytes: number;
+  /** 0 when the server didn't report a length. */
+  total_bytes: number;
+}
+
+export interface ModelsErrorPayload {
+  type: "nila://models-error";
+  message: string;
+}
+
 /** UI-side phase of a voice session. Mirrors the backend state machine. */
 export type VoicePhase = "idle" | "listening" | "recording" | "processing" | "error";
 

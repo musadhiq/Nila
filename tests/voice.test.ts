@@ -1,8 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  MODEL_EVENTS,
   VOICE_EVENTS,
   voiceErrorLabel,
+  type ModelsDownloadingPayload,
   type VoiceErrorCode,
 } from "../src/lib/voice.ts";
 import { STRINGS, type Language } from "../src/lib/i18n.ts";
@@ -37,5 +39,32 @@ describe("voice event contract", () => {
     const labels = (["speech_timeout", "empty_transcript", "mic_error", "model_error"] as VoiceErrorCode[])
       .map((c) => voiceErrorLabel(c, STRINGS.en.voice));
     assert.equal(new Set(labels).size, labels.length);
+  });
+});
+
+describe("model provisioning events", () => {
+  it("uses the exact event names the backend emits", () => {
+    assert.equal(MODEL_EVENTS.downloading, "nila://models-downloading");
+    assert.equal(MODEL_EVENTS.ready, "nila://models-ready");
+    assert.equal(MODEL_EVENTS.error, "nila://models-error");
+  });
+
+  it("download progress payload carries byte counts for the UI", () => {
+    const p: ModelsDownloadingPayload = {
+      type: "nila://models-downloading",
+      file: "model.int8.onnx",
+      downloaded_bytes: 42,
+      total_bytes: 100,
+    };
+    assert.equal(p.type, MODEL_EVENTS.downloading);
+    assert.equal(p.file, "model.int8.onnx");
+    assert.ok(p.downloaded_bytes <= p.total_bytes);
+  });
+
+  it("has a non-empty downloading line in both languages", () => {
+    for (const lang of ["en", "manglish"] as Language[]) {
+      const line = STRINGS[lang].voice.modelsDownloading;
+      assert.ok(line.trim().length > 0, `${lang}: empty modelsDownloading`);
+    }
   });
 });
