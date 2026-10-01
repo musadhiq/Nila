@@ -602,18 +602,16 @@ html, body {
   transform-origin: 50% 85%;
 }
 
-/* Blink beat: a quick, soft vertical dip suggesting a blink. There are
- * no eyelid frames in the asset set, so this is an approximation — the
- * whole figure settles ~6% for 180ms on an irregular 3–7s interval.
- * transform-origin sits near the eye line. */
-@keyframes dock-nila-blink {
-  0% { transform: scaleY(1); }
-  40% { transform: scaleY(0.94); }
-  100% { transform: scaleY(1); }
-}
-.dock-nila-fig.is-blink {
-  animation: dock-nila-blink 180ms ease-out;
-  transform-origin: 50% 30%;
+/* Blink beat: a real lid-frame overlay, hard-cut like a natural blink.
+ * The overlay swaps in the current expression's half/closed frames for
+ * ~200ms on an irregular 3–7s interval. Absolutely positioned so it
+ * never disturbs layout; it matches the base portrait's box exactly. */
+.dock-nila-xfade img.dock-nila-blink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* Expression crossfade: old and new expressions overlap briefly. */
@@ -669,14 +667,12 @@ html, body {
 /* ---- Reduced motion: no idle, no blink, no one-shots, instant swaps. ---- */
 @media (prefers-reduced-motion: reduce) {
   .dock-nila-fig { animation: none; }
-  .dock-nila-fig.is-blink { animation: none; }
   .dock-nila-xfade img.is-new { animation: none; }
   .dock-nila-xfade img.is-prev { display: none; }
   .dock-nila-cheer, .dock-nila-droop, .dock-nila-huff { animation: none; }
   .dock-wrap.is-entering .dock-nila { animation: dock-fade-in 140ms ease-out both; }
 }
 .dock-root.reduce-motion .dock-nila-fig { animation: none; }
-.dock-root.reduce-motion .dock-nila-fig.is-blink { animation: none; }
 .dock-root.reduce-motion .dock-nila-xfade img.is-new { animation: none; }
 .dock-root.reduce-motion .dock-nila-xfade img.is-prev { display: none; }
 .dock-root.reduce-motion .dock-nila-cheer,
