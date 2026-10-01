@@ -10,34 +10,48 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ExpressionSlot } from "./expressionSlots";
+import { blinkFrames } from "./blinkFrames";
 import { dockNilaAnimClass, dockNilaAnimForReaction } from "./dockNilaAnim";
 
 const CROSSFADE_MS = 240;
-const BLINK_MS = 180;
+const BLINK_HALF_MS = 60;
+const BLINK_CLOSED_MS = 70;
 const BLINK_MIN_GAP_MS = 3200;
 const BLINK_MAX_GAP_MS = 7000;
 
+/** A blink beat plays half-blink -> fully-closed -> half-blink, like a real lid. */
+type BlinkPhase = "half" | "closed" | null;
+
 /**
- * Irregular blink beat. Returns true for ~180ms on a randomized
- * 3.2–7s cadence, like a natural blink rhythm. Disabled entirely under
- * reduced motion.
+ * Irregular blink beat. Yields the current blink frame phase on a
+ * randomized 3.2–7s cadence, like a natural blink rhythm. Disabled
+ * entirely under reduced motion.
  */
-function useBlinkBeat(enabled: boolean): boolean {
-  const [blinking, setBlinking] = useState(false);
+function useBlinkPhase(enabled: boolean, resetKey: string): BlinkPhase {
+  const [phase, setPhase] = useState<BlinkPhase>(null);
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
     let timer = 0;
     const loop = () => {
-      const gap = BLINK_MIN_GAP_MS + Math.random() * (BLINK_MAX_GAP_MS - BLINK_MIN_GAP_MS);
+      const gap =
+        BLINK_MIN_GAP_MS + Math.random() * (BLINK_MAX_GAP_MS - BLINK_MIN_GAP_MS);
       timer = window.setTimeout(() => {
         if (!alive) return;
-        setBlinking(true);
+        setPhase("half");
         timer = window.setTimeout(() => {
           if (!alive) return;
-          setBlinking(false);
-          loop();
-        }, BLINK_MS);
+          setPhase("closed");
+          timer = window.setTimeout(() => {
+            if (!alive) return;
+            setPhase("half");
+            timer = window.setTimeout(() => {
+              if (!alive) return;
+              setPhase(null);
+              loop();
+            }, BLINK_HALF_MS);
+          }, BLINK_CLOSED_MS);
+        }, BLINK_HALF_MS);
       }, gap);
     };
     loop();
@@ -46,10 +60,17 @@ function useBlinkBeat(enabled: boolean): boolean {
       window.clearTimeout(timer);
     };
   }, [enabled]);
-  return blinking;
+  // A new expression cancels a mid-blink beat so a stale frame from the
+  // previous face can never overlay the incoming one.
+  useEffect(() => {
+    setPhase(null);
+  }, [resetKey]);
+  return phase;
 }
 
 interface DockNilaFigureProps {
+  /** Current expression slot — selects the matching blink frames. */
+  slot: ExpressionSlot;
   /** Current expression image URL. */
   src: string;
   alt: string;
@@ -58,7 +79,7 @@ interface DockNilaFigureProps {
   reducedMotion: boolean;
 }
 
-export function DockNilaFigure({ src, alt, reaction, reducedMotion }: DockNilaFigureProps) {
+export function DockNilaFigure({ slot, src, alt, reaction, reducedMotion }: DockNilaFigureProps) {
   // Crossfade bookkeeping: keep the previous src mounted briefly so the
   // old expression fades out under the incoming one.
   const [[current, previous], setPair] = useState<[string, string | null]>([src, null]);
@@ -78,15 +99,24 @@ export function DockNilaFigure({ src, alt, reaction, reducedMotion }: DockNilaFi
     return () => window.clearTimeout(t);
   }, [previous]);
 
-  const blinking = useBlinkBeat(!reducedMotion);
+  const blinkPhase = useBlinkPhase(!reducedMotion, current);
   const animClass = reducedMotion ? "" : dockNilaAnimClass(dockNilaAnimForReaction(reaction));
 
-  const figClass = ["dock-nila-fig", blinking && !reducedMotion ? "is-blink" : ""]
-    .filter(Boolean)
-    .join(" ");
+  // Preload this slot's blink frames so the first beat swaps instantly.
+  useEffect(() => {
+    const frames = blinkFrames(slot);
+    for (const url of [frames.half, frames.closed]) {
+      const img = new Image();
+      img.src = url;
+    }
+  }, [slot]);
+
+  // Hard-cut overlay: a real blink swaps lid frames, it doesn't fade.
+  const blinkSrc =
+    !reducedMotion && blinkPhase ? blinkFrames(slot)[blinkPhase] : null;
 
   return (
-    <div className={figClass}>
+    <div className="dock-nila-fig">
       <div className="dock-nila-xfade">
         {previous && !reducedMotion && (
           <img key={`prev-${previous}`} src={previous} alt="" aria-hidden className="is-prev" draggable={false} />
@@ -99,6 +129,16 @@ export function DockNilaFigure({ src, alt, reaction, reducedMotion }: DockNilaFi
           className={previous && !reducedMotion ? `is-new ${animClass}`.trim() : animClass}
           draggable={false}
         />
+        {blinkSrc && (
+          <img
+            key={blinkSrc}
+            src={blinkSrc}
+            alt=""
+            aria-hidden
+            className="dock-nila-blink"
+            draggable={false}
+          />
+        )}
       </div>
     </div>
   );

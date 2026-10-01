@@ -129,3 +129,67 @@ export const SLOT_FILENAMES: Record<ExpressionSlot, string> = {
   sad: "sad.png",
   annoyed: "annoyed.png",
 };
+
+/**
+ * Slot -> blink frame PNG filenames under `character/expressions/`.
+ * Every slot has a half-blink and a fully-closed frame, generated from
+ * its own expression PNG (eyelids only — same pose, framing, and
+ * transparent canvas). `blinkFrames.ts` binds these to bundled URLs;
+ * `tests/expression-assets.test.ts` asserts every file exists on disk.
+ */
+export interface BlinkFilenames {
+  half: string;
+  closed: string;
+}
+
+export const SLOT_BLINK_FILENAMES: Record<ExpressionSlot, BlinkFilenames> = {
+  greeting: {
+    half: "blink/curious_blink_half.png",
+    closed: "blink/curious_blink_closed.png",
+  },
+  hungry: {
+    half: "blink/hungry_blink_half.png",
+    closed: "blink/hungry_blink_closed.png",
+  },
+  thirsty: {
+    half: "blink/thirsty_blink_half.png",
+    closed: "blink/thirsty_blink_closed.png",
+  },
+  stretching: {
+    half: "blink/stretching_blink_half.png",
+    closed: "blink/stretching_blink_closed.png",
+  },
+  sleepy: {
+    half: "blink/sleepy_blink_half.png",
+    closed: "blink/sleepy_blink_closed.png",
+  },
+  energetic: {
+    half: "blink/energetic_blink_half.png",
+    closed: "blink/energetic_blink_closed.png",
+  },
+  relaxed: {
+    half: "blink/rest_chin_blink_half.png",
+    closed: "blink/rest_chin_blink_closed.png",
+  },
+  focused: {
+    half: "blink/focused_blink_half.png",
+    closed: "blink/focused_blink_closed.png",
+  },
+  pointing: {
+    half: "blink/point_blink_half.png",
+    closed: "blink/point_blink_closed.png",
+  },
+  playful: {
+    half: "blink/playful_blink_half.png",
+    closed: "blink/playful_blink_closed.png",
+  },
+  happy: {
+    half: "blink/happy_blink_half.png",
+    closed: "blink/happy_blink_closed.png",
+  },
+  sad: { half: "blink/sad_blink_half.png", closed: "blink/sad_blink_closed.png" },
+  annoyed: {
+    half: "blink/annoyed_blink_half.png",
+    closed: "blink/annoyed_blink_closed.png",
+  },
+};
