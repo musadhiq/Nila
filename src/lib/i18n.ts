@@ -39,6 +39,7 @@ const en = {
     emptyTranscript: "Sorry, I didn't catch that.",
     micError: "Microphone unavailable.",
     modelError: "Voice models missing.",
+    modelsDownloading: "Downloading voice models…",
   },
   nav: {
     welcome: "Welcome",
@@ -421,6 +422,7 @@ const manglish: Dict = {
     emptyTranscript: "Sorry, manassilayilla.",
     micError: "Microphone kittiyilla.",
     modelError: "Voice models illa.",
+    modelsDownloading: "Voice models download cheythondirikkunnu…",
   },
   nav: {
     welcome: "Welcome",
