@@ -139,6 +139,8 @@ const en = {
       minutesLabel: "Every",
       minutesUnit: "minutes",
       onceLabel: "Date and time",
+      onceDateLabel: "Date",
+      onceTimeLabel: "Time",
       save: "Save reminder",
       cancel: "Cancel",
       delete: "Delete reminder",
@@ -148,6 +150,7 @@ const en = {
       titleRequired: "Please add a title.",
       messageRequired: "Please add a message.",
       scheduleRequired: "Please choose when it should repeat.",
+      pastError: "That time has already passed — pick a time in the future.",
       kind: {
         water: "Water",
         food: "Food",
@@ -493,6 +496,8 @@ const manglish: Dict = {
       minutesLabel: "Ethra",
       minutesUnit: "minute-koodumbol",
       onceLabel: "Date-um samayavum",
+      onceDateLabel: "Theeyathi",
+      onceTimeLabel: "Samayam",
       save: "Reminder save cheyyuka",
       cancel: "Cancel",
       delete: "Reminder delete cheyyuka",
@@ -502,6 +507,7 @@ const manglish: Dict = {
       titleRequired: "Oru title kodukku.",
       messageRequired: "Oru message ezhuthu.",
       scheduleRequired: "Eppozhokke repeat cheyyanamen nu theerumanikku.",
+      pastError: "Aa samayam kazhinju poyi — bhaviyilulla samayam theranjedukku.",
       kind: {
         water: "Vellam",
         food: "Bhakshanam",
@@ -745,7 +751,7 @@ export function describeScheduleIn(s: Schedule, lang: Language): string {
   const t = getStrings(lang).reminders.schedule;
   switch (s.type) {
     case "once":
-      return fill(t.once, { at: s.at });
+      return fill(t.once, { at: formatLocalDateTime(s.at) });
     case "daily":
       return fill(t.daily, { time: s.time });
     case "weekly": {
@@ -758,6 +764,25 @@ export function describeScheduleIn(s: Schedule, lang: Language): string {
     case "interval":
       return fill(t.interval, { minutes: s.minutes });
   }
+}
+
+/**
+ * Format an ISO instant in the user's local timezone for display,
+ * e.g. "2 Oct 2026, 3:30 pm". Both UI languages use Latin script, so a
+ * single en-IN style keeps dates readable for English and Manglish.
+ * Returns the input unchanged when it isn't a valid instant.
+ */
+export function formatLocalDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 /**
