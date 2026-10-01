@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Dict } from "../../lib/i18n";
 import type { Reminder, ReminderKind, Schedule } from "../../lib/types";
+import { isPastIso, onceToIso } from "../../lib/reminders";
 import { Segmented, TextField } from "./ui";
 import { IconTrash } from "./icons";
 
@@ -54,9 +55,12 @@ export function ReminderEditor({
   const [minutes, setMinutes] = useState(
     initial?.schedule.type === "interval" ? initial.schedule.minutes : 60,
   );
-  const [onceAt, setOnceAt] = useState(
-    initial?.schedule.type === "once" ? toLocalInput(initial.schedule.at) : "",
-  );
+  const initialOnce =
+    initial?.schedule.type === "once"
+      ? { date: toLocalDate(initial.schedule.at), time: toLocalTime(initial.schedule.at) }
+      : defaultOnce();
+  const [onceDate, setOnceDate] = useState(initialOnce.date);
+  const [onceTime, setOnceTime] = useState(initialOnce.time);
   const [titleError, setTitleError] = useState("");
   const [messageError, setMessageError] = useState("");
   const [scheduleError, setScheduleError] = useState("");
@@ -90,9 +94,11 @@ export function ReminderEditor({
       case "interval":
         return minutes > 0 ? { type: "interval", minutes } : null;
       case "once": {
-        if (!onceAt) return null;
-        const at = new Date(onceAt).toISOString();
-        return Number.isNaN(Date.parse(at)) ? null : { type: "once", at };
+        const at = onceToIso(onceDate, onceTime);
+        // A one-time reminder in the past could never fire — reject it
+        // here instead of saving a silently dead reminder.
+        if (!at || isPastIso(at)) return null;
+        return { type: "once", at };
       }
     }
   };
@@ -100,11 +106,13 @@ export function ReminderEditor({
   const handleSave = () => {
     const titleBad = !title.trim();
     const messageBad = !message.trim();
-    const schedule = buildSchedule();
+    const onceIso = schedType === "once" ? onceToIso(onceDate, onceTime) : null;
+    const pastBad = onceIso !== null && isPastIso(onceIso);
+    const schedule = pastBad ? null : buildSchedule();
     const scheduleBad = !schedule;
     setTitleError(titleBad ? e.titleRequired : "");
     setMessageError(messageBad ? e.messageRequired : "");
-    setScheduleError(scheduleBad ? e.scheduleRequired : "");
+    setScheduleError(pastBad ? e.pastError : scheduleBad ? e.scheduleRequired : "");
     if (titleBad || messageBad || scheduleBad || !schedule) {
       // Move focus to the first problem for keyboard/screen-reader users.
       if (titleBad) titleRef.current?.focus();
@@ -255,16 +263,46 @@ export function ReminderEditor({
 
         {schedType === "once" && (
           <div className="field">
-            <label className="field-label" htmlFor="re-once">
+            <span className="field-label" id="re-once-label">
               {e.onceLabel}
-            </label>
-            <input
-              id="re-once"
-              type="datetime-local"
-              className="datetime-input"
-              value={onceAt}
-              onChange={(ev) => setOnceAt(ev.target.value)}
-            />
+            </span>
+            <div
+              className="once-row"
+              role="group"
+              aria-labelledby="re-once-label"
+            >
+              <div className="once-cell">
+                <label className="field-sublabel" htmlFor="re-once-date">
+                  {e.onceDateLabel}
+                </label>
+                <input
+                  id="re-once-date"
+                  type="date"
+                  className="date-input"
+                  value={onceDate}
+                  min={localToday()}
+                  onChange={(ev) => {
+                    setOnceDate(ev.target.value);
+                    setScheduleError("");
+                  }}
+                />
+              </div>
+              <div className="once-cell">
+                <label className="field-sublabel" htmlFor="re-once-time">
+                  {e.onceTimeLabel}
+                </label>
+                <input
+                  id="re-once-time"
+                  type="time"
+                  className="time-input"
+                  value={onceTime}
+                  onChange={(ev) => {
+                    setOnceTime(ev.target.value);
+                    setScheduleError("");
+                  }}
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -323,13 +361,31 @@ export function ReminderEditor({
   );
 }
 
-/** Convert an ISO instant to a datetime-local input value. */
-function toLocalInput(iso: string): string {
+/** Split an ISO instant into local calendar date + time parts for the editor. */
+function toLocalDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  );
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function toLocalTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Today's local date as YYYY-MM-DD, used as the picker's minimum. */
+function localToday(): string {
+  return toLocalDate(new Date().toISOString());
+}
+
+/**
+ * Friendly default for a new one-time reminder: one hour from now,
+ * so the most common case needs no picker fiddling at all.
+ */
+function defaultOnce(): { date: string; time: string } {
+  const iso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  return { date: toLocalDate(iso), time: toLocalTime(iso) };
 }
