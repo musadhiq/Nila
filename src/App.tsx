@@ -33,6 +33,7 @@ import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
 import { NotificationDock } from "./dock/NotificationDock";
 import { useNotificationDock } from "./dock/useNotificationDock";
+import { expressionForKind } from "./dock/kindExpressions";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockOnScreen } from "./dock/dockMachine";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -844,8 +845,10 @@ export default function App() {
   /**
    * The dock presents notifications with character *expressions* (not the
    * reminder motion frames — `nila_reminder_point.png` was corrupted, so
-   * the motion-frame attention gesture is retired from the dock). The
-   * expression crossfades on change; the engine sequences keep playing
+   * the motion-frame attention gesture is retired from the dock). Each
+   * built-in reminder kind gets its own expression (see kindExpressions);
+   * user-configured events fall back to the pointing attention face.
+   * Expressions crossfade on change; the engine sequences keep playing
    * silently underneath and are ignored while an expression is set.
    */
   const dockExpression = ((): ExpressionName => {
@@ -857,10 +860,9 @@ export default function App() {
           ? "sleepy"
           : "confused";
     }
-    if (dock.current?.kind === "greeting") return "playful";
     if (dock.phase === "entering" || dock.phase === "expanding")
       return "surprised";
-    return "point";
+    return expressionForKind(dock.current?.kind);
   })();
 
   return (
