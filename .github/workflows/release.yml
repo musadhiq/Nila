@@ -1,0 +1,98 @@
+# Build the Linux packages and attach them to the GitHub Release.
+#
+# Trigger: push a version tag, e.g.
+#   git tag v0.2.0
+#   git push origin v0.2.0
+#
+# The workflow stamps the tag's version (0.2.0) into tauri.conf.json and
+# Cargo.toml before building, so the .deb / .AppImage carry the tagged
+# version number.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux packages
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "Tag must look like v0.2.0, got: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version $VERSION"
+
+      - name: Stamp the tag version into the build
+        run: |
+          python3 - "${{ steps.version.outputs.version }}" <<'EOF'
+          import json, re, sys
+
+          version = sys.argv[1]
+
+          conf_path = "src-tauri/tauri.conf.json"
+          conf = json.load(open(conf_path))
+          conf["version"] = version
+          with open(conf_path, "w") as f:
+              json.dump(conf, f, indent=2, ensure_ascii=False)
+              f.write("\n")
+
+          cargo_path = "src-tauri/Cargo.toml"
+          src = open(cargo_path).read()
+          src, n = re.subn(r'(?m)^version = "[^"]*"$',
+                           f'version = "{version}"', src, count=1)
+          assert n == 1, "expected exactly one package version in Cargo.toml"
+          open(cargo_path, "w").write(src)
+
+          print(f"stamped version {version}")
+          EOF
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential curl wget file pkg-config \
+            libssl-dev libxdo-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build the frontend
+        run: npm run build
+
+      - name: Build packages and publish the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Nila ${{ github.ref_name }}"
+          releaseBody: "Linux packages for Nila ${{ github.ref_name }} — install the .deb with `sudo apt install ./nila_*.deb`, or `chmod +x` the .AppImage and run it directly."
+          releaseDraft: false
+          prerelease: false
