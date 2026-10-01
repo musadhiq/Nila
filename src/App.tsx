@@ -98,6 +98,18 @@ export default function App() {
   // listener is registered once).
   const dockRef = useRef(dock);
   dockRef.current = dock;
+  // Nila's current expression slot: an acknowledgement reaction
+  // overrides the kind expression while it plays. Resolved once here so
+  // the portrait and its blink frames always agree.
+  const nilaSlot =
+    dock.reaction ??
+    (dock.current
+      ? expressionSlotForContext(
+          dock.current.id.startsWith("greeting-")
+            ? { type: "greeting" }
+            : { type: "kind", kind: dock.current.kind },
+        )
+      : "greeting");
   // The dock machine drives the window: when the first notification
   // starts entering, seat the window top-center and show it; when the
   // last one finishes collapsing, hide back to the tray. The settings
@@ -901,14 +913,8 @@ export default function App() {
              * without touching the card layout. */
             dock.current ? (
               <DockNilaFigure
-                src={expressionUrl(
-                  dock.reaction ??
-                    expressionSlotForContext(
-                      dock.current.id.startsWith("greeting-")
-                        ? { type: "greeting" }
-                        : { type: "kind", kind: dock.current.kind },
-                    ),
-                )}
+                slot={nilaSlot}
+                src={expressionUrl(nilaSlot)}
                 alt={getStrings(settings.language).dock.nilaAlt}
                 reaction={dock.reaction}
                 reducedMotion={settings.animation !== "full" || prefersReducedMotion}
