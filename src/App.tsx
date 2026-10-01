@@ -35,6 +35,7 @@ import { invokeCommand, isTauri, listenEvent } from "./lib/tauri";
 import { playReminderChime } from "./lib/sound";
 import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
+import { WakePill } from "./components/WakePill";
 import { NotificationDock } from "./dock/NotificationDock";
 import { DockNilaFigure } from "./dock/DockNila";
 import { expressionSlotForContext } from "./dock/expressionSlots";
@@ -66,6 +67,13 @@ export default function App() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [view, setView] = useState<View>("companion");
   const [paused, setPaused] = useState(false);
+  /**
+   * Wake-word state: true while Nila is in the LISTENING_FOR_COMMAND
+   * visual window after the wake word was detected. The pill only
+   * renders while the notification dock is hidden (the dock owns the
+   * window while a reminder is on screen).
+   */
+  const [wakeListening, setWakeListening] = useState(false);
   /** First-run setup flow: the panel opens on the welcome page with a
    *  finish button. Cleared once the user completes setup. */
   const [setupMode, setSetupMode] = useState(false);
@@ -138,6 +146,20 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dock.phase, view]);
+  // The wake-word pill drives the window too, but only while the dock is
+  // hidden: the notification dock owns the window whenever a reminder is
+  // on screen, and the settings panel owns it while open. When the wake
+  // listen window ends, the window returns to the tray — unless the dock
+  // is on screen (it never stopped being live).
+  useEffect(() => {
+    if (view !== "companion" || !isTauri()) return;
+    if (wakeListening) {
+      if (dockRef.current.phase === "hidden") void presentWakeWindow();
+    } else if (dockRef.current.phase === "hidden") {
+      void hideDockWindow();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wakeListening, view]);
   // Window lifecycle: Nila lives in the menu-bar tray. The floating window
   // only appears when a reminder is due, or when opened from the tray.
   // `manualOpen` tracks a user-opened window so reminder dismissal doesn't
@@ -384,6 +406,55 @@ export default function App() {
   };
 
   /**
+   * Present the window for the wake-word listening pill: a small
+   * top-center window, same seating as the dock, shown without stealing
+   * focus. Deliberately separate from fitDockWindow — the pill has a
+   * fixed, known size, so no measurement round-trip is needed.
+   */
+  const presentWakeWindow = async () => {
+    if (!isTauri()) return;
+    try {
+      const win = getCurrentWindow();
+      // Clear any locks left by the settings panel — the pill owns its
+      // size while it is on screen.
+      await win.setMinSize(null);
+      await win.setMaxSize(null);
+      await win.setDecorations(false);
+      await win.setAlwaysOnTop(true);
+      // Pill (~200x54) + breathing room for the entrance animation and
+      // the soft shadow. Fixed: no measurement needed.
+      const winW = 320;
+      const winH = 120;
+      await win.setSize(new LogicalSize(winW, winH));
+      const info = await monitorInfo();
+      if (info.rects.length === 0) return;
+      let mi = info.primary;
+      const cur = await currentMonitor().catch(() => null);
+      if (cur) {
+        const i = info.rects.findIndex(
+          (r) => r.x === cur.position.x && r.y === cur.position.y,
+        );
+        if (i >= 0) mi = i;
+      }
+      const mon = info.rects[mi];
+      const scale = info.scales[mi] ?? 1;
+      const o = dockWindowOrigin(
+        NotificationPosition.TOP_CENTER,
+        mon,
+        Math.round(winW * scale),
+        Math.round(winH * scale),
+        Math.round(DOCK_SAFE_MARGIN * scale),
+      );
+      await win.setPosition(new PhysicalPosition(o.x, o.y));
+      await win.show();
+      // Deliberately no setFocus(): waking must not steal keyboard focus
+      // from the user's work.
+    } catch {
+      /* best-effort: the pill simply won't be visible */
+    }
+  };
+
+  /**
    * Reveal the companion using the configured presence (spec 47/54):
    * position, entrance behavior, orientation, tilt.
    *
@@ -504,6 +575,42 @@ export default function App() {
     return () => {
       cancelled = true;
       unlisten?.();
+    };
+  }, []);
+
+  /**
+   * Wake-word events from the Rust listener (micro-wakeword). On
+   * `nila://wake-detected` Nila wakes visually: the listening pill
+   * renders and the window-ownership effect below seats the window
+   * top-center without stealing focus. On `nila://wake-idle` (or the
+   * listen window ending) she returns to the tray. "Hidden" mode keeps
+   * her off-screen for wake words too, like reminders.
+   */
+  useEffect(() => {
+    let unlistenDetected: (() => void) | null = null;
+    let unlistenIdle: (() => void) | null = null;
+    // Same StrictMode double-effect guard as the REMINDER_DUE listener.
+    let cancelled = false;
+    (async () => {
+      const offDetected = await listenEvent("nila://wake-detected", () => {
+        if (settingsRef.current.character_visibility === "hidden") return;
+        setWakeListening(true);
+      });
+      const offIdle = await listenEvent("nila://wake-idle", () => {
+        setWakeListening(false);
+      });
+      if (cancelled) {
+        offDetected();
+        offIdle();
+        return;
+      }
+      unlistenDetected = offDetected;
+      unlistenIdle = offIdle;
+    })();
+    return () => {
+      cancelled = true;
+      unlistenDetected?.();
+      unlistenIdle?.();
     };
   }, []);
 
@@ -978,6 +1085,17 @@ export default function App() {
           onMeasure={handleDockMeasure}
         />
       )}
+      {/* Wake-word listening pill: only while the dock is hidden — the
+       * dock owns the window whenever a reminder is on screen. */}
+      {view === "companion" &&
+        wakeListening &&
+        dock.phase === "hidden" && (
+          <WakePill
+            label={getStrings(settings.language).wake.listening}
+            alt={getStrings(settings.language).wake.nilaAlt}
+            reducedMotion={settings.animation !== "full" || prefersReducedMotion}
+          />
+        )}
       {import.meta.env.DEV && nilaDebug && view === "companion" && (
         <button
           type="button"
