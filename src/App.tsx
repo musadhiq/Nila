@@ -949,19 +949,20 @@ export default function App() {
           reducedMotion={settings.animation !== "full" || prefersReducedMotion}
           nila={
             /* Centralized contextual expressions: the slot is resolved
-             * by meaning (kind / greeting / success / rejection),
-             * never picked by hand in the component. An acknowledgement
-             * reaction (happy on success; an understanding thumbs-up on
-             * snooze; sad, or annoyed after a streak, on rejection)
-             * overrides the kind expression while it plays. DockNilaFigure adds gentle life — idle breathe,
-             * blink beats, expression crossfades, one-shot reactions —
-             * without touching the card layout. */
+             * by meaning (kind / greeting / rejection), never picked by
+             * hand in the component. A dismissal reaction (sad, or
+             * annoyed after a streak) overrides the kind expression while
+             * it plays; done/snooze keep her face and answer with one
+             * subtle blink instead. DockNilaFigure adds gentle life —
+             * idle breathe, blink beats, expression crossfades, one-shot
+             * reactions — without touching the card layout. */
             dock.current ? (
               <DockNilaFigure
                 slot={nilaSlot}
                 src={expressionUrl(nilaSlot)}
                 alt={getStrings(settings.language).dock.nilaAlt}
                 reaction={dock.reaction}
+                blinkSignal={dock.blinkSignal}
                 reducedMotion={settings.animation !== "full" || prefersReducedMotion}
               />
             ) : null
