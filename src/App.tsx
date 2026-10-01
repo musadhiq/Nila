@@ -692,9 +692,9 @@ export default function App() {
         await listenEvent<ModelsDownloadingPayload>(
           MODEL_EVENTS.downloading,
           (p) => {
-            // First-run model fetch: surface progress in the active
-            // session's bubble. Silent when no voice session owns the
-            // surface (the usual background-download case).
+            // Manual model download (from Settings): surface progress in
+            // the active session's bubble if one happens to own the
+            // surface right now. Silent otherwise.
             if (!voiceActiveRef.current) return;
             const pct =
               p.total_bytes > 0
