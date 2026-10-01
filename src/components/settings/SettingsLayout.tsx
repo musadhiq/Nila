@@ -20,10 +20,12 @@ import {
   IconNotifications,
   IconReminders,
   IconSchedule,
+  IconWelcome,
 } from "./icons";
 import idleUrl from "../../../character/states/idle.png";
 
 export type PageId =
+  | "welcome"
   | "general"
   | "reminders"
   | "character"
@@ -34,6 +36,7 @@ export type PageId =
   | "about";
 
 const PAGES: { id: PageId; icon: (p: { className?: string }) => ReactNode }[] = [
+  { id: "welcome", icon: IconWelcome },
   { id: "general", icon: IconGeneral },
   { id: "reminders", icon: IconReminders },
   { id: "character", icon: IconCharacter },

@@ -3,6 +3,7 @@
  * Every control applies immediately; there is no Save button.
  */
 import { useRef, useState } from "react";
+import { enable, disable } from "@tauri-apps/plugin-autostart";
 import { fill, type Dict } from "../../../lib/i18n";
 import { invokeCommand, isTauri } from "../../../lib/tauri";
 import type { AppSettings } from "../../../lib/types";
@@ -91,6 +92,19 @@ export function GeneralPage({
     }
   };
 
+  /**
+   * Start-at-login toggle: persist the preference AND apply it to the OS
+   * immediately via the autostart plugin. The backend also re-syncs this
+   * setting on every launch, so the two can never drift apart.
+   */
+  const onToggleAutostart = (v: boolean) => {
+    update({ start_at_login: v });
+    if (!isTauri()) return;
+    void (v ? enable() : disable()).catch(() => {
+      /* backend re-syncs on next launch */
+    });
+  };
+
   const pausedLabel = (() => {
     if (!paused || !pausedUntil) return null;
     const d = new Date(pausedUntil);
@@ -109,7 +123,7 @@ export function GeneralPage({
           control={
             <Switch
               checked={settings.start_at_login}
-              onChange={(v) => update({ start_at_login: v })}
+              onChange={(v) => onToggleAutostart(v)}
               label={g.startAtLogin}
             />
           }

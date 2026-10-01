@@ -89,6 +89,16 @@ export const IconLanguage = (p: IconProps) =>
     </>,
   );
 
+export const IconWelcome = (p: IconProps) =>
+  base(
+    p,
+    <>
+      <path d="M4 21V5a1 1 0 0 1 1-1h9v16" />
+      <path d="M4 21h11" />
+      <path d="M13 12h7m-2.2-2.2 2.2 2.2-2.2 2.2" />
+    </>,
+  );
+
 export const IconAbout = (p: IconProps) =>
   base(
     p,

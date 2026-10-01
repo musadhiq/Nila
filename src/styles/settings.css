@@ -1288,3 +1288,60 @@ button.srow.as-button:hover {
   gap: 8px;
   margin: 2px 0 12px;
 }
+
+/* Welcome page */
+.welcome-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 26px 16px 10px;
+}
+.welcome-hero img {
+  max-width: 220px;
+  height: auto;
+  margin-bottom: 10px;
+}
+.welcome-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 4px;
+}
+.welcome-num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--st-accent);
+  background: var(--st-accent-soft);
+}
+.welcome-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.welcome-step-title {
+  font-size: 13.5px;
+  font-weight: 650;
+}
+.welcome-step-text {
+  font-size: 12.5px;
+  opacity: 0.75;
+  line-height: 1.45;
+}
+.welcome-cta {
+  display: flex;
+  justify-content: center;
+  padding: 18px 0 8px;
+}
+.welcome-cta .btn {
+  min-width: 180px;
+  padding: 10px 22px;
+  font-size: 14px;
+}
