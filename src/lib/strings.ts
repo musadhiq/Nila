@@ -43,6 +43,18 @@ export const BUILT_IN_MESSAGES: Record<string, string[]> = {
     "Onnu ezhunneettu nadakkamo?",
     "Kurachu stretch cheyyam.",
   ],
+  stretch: [
+    "Onnu ezhunneettu stretch cheyyamo?",
+    "Tholukal onnu vilichu neettam.",
+  ],
+  exercise: [
+    "Onnu exercise cheyyan samayayi!",
+    "Kurachu neram body onnu anakkam.",
+  ],
+  work: [
+    "Joli thudangan samayayi.",
+    "Focus cheyyam, phone maatti vekkam.",
+  ],
   sleep: [
     "Ini kurachu visramikkam.",
     "Urangaan samayayille?",
@@ -62,6 +74,9 @@ export const BUILT_IN_TITLES: Record<string, string> = {
   food: "Bhakshanam",
   break: "Visramam",
   move: "Nadatham",
+  stretch: "Stretch",
+  exercise: "Vyayamam",
+  work: "Joli",
   sleep: "Urakkam",
 };
 

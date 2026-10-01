@@ -1,14 +1,17 @@
 /**
- * Semantic expression slots for the notification dock — pure mapping,
- * no asset imports (kept importable from node:test).
+ * Nila's centralized contextual expression system.
  *
- * Components never pick an image directly. They ask for a *meaning*
- * (a reminder kind, a greeting, a dismissal) and this module resolves
- * it to a slot; `expressions.ts` turns the slot into a bundled URL.
+ * This is the single source of truth for *which face Nila shows and
+ * when*. Components never pick an image directly — they describe the
+ * *context* (a reminder kind, a greeting, a success, a rejection) and
+ * this module resolves it to an expression slot. `expressions.ts` then
+ * turns the slot into a bundled PNG URL.
+ *
  * The face and body language must communicate the notification even
- * without reading the text.
+ * without reading the text. Negative reactions stay cute and brief —
+ * never guilt-tripping.
  *
- * Negative reactions stay cute and brief — never guilt-tripping.
+ * Kept PNG-free on purpose so node --test can import it directly.
  */
 
 /**
@@ -25,13 +28,23 @@ export type ExpressionSlot =
   | "focused" // work/study: intent, thinking
   | "pointing" // custom/unknown: gets your attention
   | "playful" // warm fallback
-  | "sad" // one dismissal: brief, cute, no guilt
-  | "annoyed"; // repeated dismissals: mild huff, still cute
+  | "happy" // success: the reminder was completed
+  | "sad" // one rejection: brief, cute, no guilt
+  | "annoyed"; // repeated rejections: mild huff, still cute
+
+/**
+ * Every moment Nila can react to. Exactly one resolver —
+ * {@link expressionSlotForContext} — turns a context into a slot, so
+ * the mapping can't drift between call sites.
+ */
+export type ExpressionContext =
+  | { type: "kind"; kind: string }
+  | { type: "greeting" }
+  | { type: "success" }
+  | { type: "rejected"; consecutiveRejections: number };
 
 /**
  * Reminder kind -> the expression slot that reads without the text.
- * "stretch" / "exercise" / "work" are not reminder kinds yet; the
- * slots are mapped so the expressions light up as soon as they are.
  */
 export function expressionSlotForKind(kind: string): ExpressionSlot {
   switch (kind) {
@@ -60,13 +73,59 @@ export function expressionSlotForGreeting(): ExpressionSlot {
   return "greeting";
 }
 
+/** The reminder was completed — Nila is happy about it. */
+export function expressionSlotForSuccess(): ExpressionSlot {
+  return "happy";
+}
+
 /**
- * Negative-action reaction. `consecutiveDismissals` counts back-to-back
+ * Negative-action reaction. `consecutiveRejections` counts back-to-back
  * dismissals in this session (reset by done/snooze). One rejection gets
  * a brief sad beat; a streak of three or more gets a mild annoyed huff.
  */
 export function expressionSlotForDismissal(
-  consecutiveDismissals: number,
+  consecutiveRejections: number,
 ): ExpressionSlot {
-  return consecutiveDismissals >= 3 ? "annoyed" : "sad";
+  return consecutiveRejections >= 3 ? "annoyed" : "sad";
 }
+
+/**
+ * The single entry point: resolve any expression context to its slot.
+ * Prefer this over the granular helpers at new call sites.
+ */
+export function expressionSlotForContext(
+  ctx: ExpressionContext,
+): ExpressionSlot {
+  switch (ctx.type) {
+    case "kind":
+      return expressionSlotForKind(ctx.kind);
+    case "greeting":
+      return expressionSlotForGreeting();
+    case "success":
+      return expressionSlotForSuccess();
+    case "rejected":
+      return expressionSlotForDismissal(ctx.consecutiveRejections);
+  }
+}
+
+/**
+ * Slot -> committed PNG filename under `character/expressions/`.
+ * The single binding table: `expressions.ts` must bind every entry
+ * here, and `tests/expression-assets.test.ts` asserts every file
+ * exists on disk so a slot can never point at a missing asset.
+ */
+export const SLOT_FILENAMES: Record<ExpressionSlot, string> = {
+  greeting: "curious.png",
+  hungry: "hungry.png",
+  thirsty: "thirsty.png",
+  stretching: "stretching.png",
+  sleepy: "sleepy.png",
+  energetic: "energetic.png",
+  relaxed: "rest_chin.png",
+  focused: "focused.png",
+  pointing: "point.png",
+  playful: "playful.png",
+  happy: "happy.png",
+  sad: "sad.png",
+  annoyed: "annoyed.png",
+};

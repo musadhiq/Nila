@@ -31,10 +31,7 @@ import { playReminderChime } from "./lib/sound";
 import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
 import { NotificationDock } from "./dock/NotificationDock";
-import {
-  expressionSlotForGreeting,
-  expressionSlotForKind,
-} from "./dock/expressionSlots";
+import { expressionSlotForContext } from "./dock/expressionSlots";
 import { expressionUrl } from "./dock/expressions";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
@@ -893,18 +890,21 @@ export default function App() {
           reminder={dock.current}
           reducedMotion={settings.animation !== "full" || prefersReducedMotion}
           nila={
-            /* Semantic expressions: the slot is resolved by meaning
-             * (kind / greeting / dismissal reaction), never picked by
-             * hand in the component. A dismissal reaction (sad, or
-             * annoyed after a streak) overrides the kind expression
-             * while it is acknowledged. Single static frames — calm. */
+            /* Centralized contextual expressions: the slot is resolved
+             * by meaning (kind / greeting / success / rejection),
+             * never picked by hand in the component. An acknowledgement
+             * reaction (happy on success; sad, or annoyed after a
+             * streak, on rejection) overrides the kind expression while
+             * it plays. Single static frames — calm. */
             dock.current ? (
               <img
                 src={expressionUrl(
                   dock.reaction ??
-                    (dock.current.id.startsWith("greeting-")
-                      ? expressionSlotForGreeting()
-                      : expressionSlotForKind(dock.current.kind)),
+                    expressionSlotForContext(
+                      dock.current.id.startsWith("greeting-")
+                        ? { type: "greeting" }
+                        : { type: "kind", kind: dock.current.kind },
+                    ),
                 )}
                 width={192}
                 height={192}

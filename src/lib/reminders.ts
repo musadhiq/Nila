@@ -274,11 +274,15 @@ export const BUILT_IN_TEMPLATES: BuiltInTemplate[] = (Object.keys(BUILT_IN_TITLE
         ? { type: "interval", minutes: 60 }
         : kind === "break"
           ? { type: "interval", minutes: 90 }
-          : kind === "move"
+          : kind === "move" || kind === "stretch"
             ? { type: "interval", minutes: 120 }
             : kind === "food"
               ? { type: "daily", time: "13:00" }
-              : { type: "daily", time: "22:30" },
+              : kind === "exercise"
+                ? { type: "daily", time: "07:00" }
+                : kind === "work"
+                  ? { type: "daily", time: "09:00" }
+                  : { type: "daily", time: "22:30" },
   }));
 
 /**

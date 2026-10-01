@@ -14,7 +14,7 @@ import { IconChevronRight, IconPlus, IconReminders } from "../icons";
 import { ReminderEditor, type ReminderInput } from "../ReminderEditor";
 import idleUrl from "../../../../character/states/idle.png";
 
-const BUILT_IN_KINDS: ReminderKind[] = ["water", "food", "break", "move", "sleep"];
+const BUILT_IN_KINDS: ReminderKind[] = ["water", "food", "break", "move", "stretch", "exercise", "work", "sleep"];
 
 export function RemindersPage({
   t,

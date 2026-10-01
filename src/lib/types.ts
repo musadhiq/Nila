@@ -1,6 +1,6 @@
 // Shared frontend types. Mirrors the Rust backend models.
 
-export type ReminderKind = "water" | "food" | "break" | "move" | "sleep" | "custom";
+export type ReminderKind = "water" | "food" | "break" | "move" | "sleep" | "stretch" | "exercise" | "work" | "custom";
 
 export type Schedule =
   | { type: "once"; at: string }

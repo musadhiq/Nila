@@ -88,9 +88,18 @@ describe("settings merge", () => {
 });
 
 describe("built-in templates", () => {
-  it("covers the five core kinds with valid schedules", () => {
+  it("covers the eight core kinds with valid schedules", () => {
     const kinds = BUILT_IN_TEMPLATES.map((t) => t.kind).sort();
-    assert.deepEqual(kinds, ["break", "food", "move", "sleep", "water"]);
+    assert.deepEqual(kinds, [
+      "break",
+      "exercise",
+      "food",
+      "move",
+      "sleep",
+      "stretch",
+      "water",
+      "work",
+    ]);
     for (const t of BUILT_IN_TEMPLATES) {
       assert.ok(t.title.length > 0);
       assert.ok(t.message.length > 0);

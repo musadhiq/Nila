@@ -63,12 +63,17 @@ export const EXPRESSION_LABEL: Record<ExpressionName, string> = {
 /**
  * Where each expression is used. Expressions without a moment are
  * reserved for future beats (documented here so they don't rot).
+ *
+ * NOTE: notification-context expressions (which face Nila shows for a
+ * reminder kind, a success, or a rejection) are owned by the
+ * centralized system in `dock/expressionSlots.ts` — not here. This
+ * table only covers the engine's momentary overlay flashes.
  */
 export const EXPRESSION_MOMENTS: Record<ExpressionName, string> = {
-  surprised: "reminder fires — the attention beat before the overlay",
-  point: "follows surprised — points at the reminder bubble",
-  sleepy: "reminder snoozed",
-  proud: "reminder marked done",
+  surprised: "engine overlay — attention beat",
+  point: "engine overlay — points at something",
+  sleepy: "engine overlay — snoozed beat",
+  proud: "engine overlay — encouragement moments",
   confused: "backup import failed",
   idea: "reserved — e.g. a reminder was just created",
   curious: "reserved — idle variety",

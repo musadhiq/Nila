@@ -19,7 +19,7 @@ export interface ReminderInput {
 
 type ScheduleType = Schedule["type"];
 
-const KINDS: ReminderKind[] = ["water", "food", "break", "move", "sleep", "custom"];
+const KINDS: ReminderKind[] = ["water", "food", "break", "move", "stretch", "exercise", "work", "sleep", "custom"];
 
 export function ReminderEditor({
   t,

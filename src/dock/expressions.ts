@@ -2,13 +2,16 @@
  * Expression slot -> bundled image URL.
  *
  * The semantic mapping lives in `expressionSlots.ts` (pure, tested);
- * this module only binds each slot to its PNG.
+ * this module only binds each slot to its PNG. Every slot in
+ * `SLOT_FILENAMES` must have a binding here — the asset test enforces
+ * it.
  */
 
 import annoyedUrl from "../../character/expressions/annoyed.png";
 import curiousUrl from "../../character/expressions/curious.png";
 import energeticUrl from "../../character/expressions/energetic.png";
 import focusedUrl from "../../character/expressions/focused.png";
+import happyUrl from "../../character/expressions/happy.png";
 import hungryUrl from "../../character/expressions/hungry.png";
 import playfulUrl from "../../character/expressions/playful.png";
 import pointUrl from "../../character/expressions/point.png";
@@ -30,6 +33,7 @@ const EXPRESSION_URLS: Record<ExpressionSlot, string> = {
   focused: focusedUrl,
   pointing: pointUrl,
   playful: playfulUrl,
+  happy: happyUrl,
   sad: sadUrl,
   annoyed: annoyedUrl,
 };

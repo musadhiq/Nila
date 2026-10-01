@@ -7,7 +7,7 @@ import {
   type DockPhase,
 } from "./dockMachine";
 import {
-  expressionSlotForDismissal,
+  expressionSlotForContext,
   type ExpressionSlot,
 } from "./expressionSlots";
 
@@ -26,7 +26,8 @@ import {
  *   leaning on the card — no pose changes, no extra chrome.
  * - acknowledging: a short beat, then the card collapses away. A
  *   dismissal holds ~1s on Nila's reaction (sad, or annoyed after a
- *   streak of dismissals) before collapsing; done/snooze collapse fast.
+ *   streak of dismissals) before collapsing; completing the reminder
+ *   holds ~1s on her happy beat; snooze collapses fast.
  * - collapsing (260ms): dock contracts away; then the next queued
  *   notification enters (or the dock hides and Nila returns to idle).
  *
@@ -60,9 +61,10 @@ export interface NotificationDockApi {
   /** The action being acknowledged (set during acknowledging/collapsing). */
   ackAction: DockAckAction | null;
   /**
-   * Nila's negative-action reaction, set while a dismissal is being
-   * acknowledged (sad, or annoyed after a streak). Null otherwise —
-   * the card then shows the per-kind expression.
+   * Nila's acknowledgement reaction, set while an action is being
+   * acknowledged: happy on success, sad on a rejection (or annoyed
+   * after a streak of rejections). Null otherwise — the card then
+   * shows the per-kind expression.
    */
   reaction: ExpressionSlot | null;
   notify: (n: DockNotification) => void;
@@ -138,11 +140,20 @@ export function useNotificationDock(opts: {
           // guilt-tripping. The reaction holds ~1s, then collapses.
           dismissStreak.current += 1;
           setReaction(
-            expressionSlotForDismissal(dismissStreak.current),
+            expressionSlotForContext({
+              type: "rejected",
+              consecutiveRejections: dismissStreak.current,
+            }),
           );
           later(t.react, () => dispatch({ type: "ack-done" }));
+        } else if (state.ackAction === "completed") {
+          // Success: Nila is happy about it. The happy beat holds ~1s,
+          // then collapses. Resets the rejection streak.
+          dismissStreak.current = 0;
+          setReaction(expressionSlotForContext({ type: "success" }));
+          later(t.react, () => dispatch({ type: "ack-done" }));
         } else {
-          // Done/snooze reset the streak and collapse without a beat.
+          // Snooze resets the streak and collapses without a beat.
           dismissStreak.current = 0;
           later(t.ack, () => dispatch({ type: "ack-done" }));
         }
