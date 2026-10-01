@@ -109,6 +109,7 @@ const en = {
   reminders: {
     builtInSection: "Built-in reminders",
     customSection: "Custom reminders",
+    systemSection: "System reminders",
     newReminder: "New reminder",
     emptyCustom: "No custom reminders yet.",
     emptyCustomDesc:
@@ -160,6 +161,10 @@ const en = {
         exercise: "Exercise",
         work: "Work / Study",
         sleep: "Sleep",
+        battery: "Battery",
+        cpu: "CPU load",
+        memory: "Memory",
+        disk: "Disk space",
         custom: "Custom",
       } as Record<string, string>,
     },
@@ -168,6 +173,12 @@ const en = {
       daily: "Daily · {time}",
       weekly: "{days} · {time}",
       interval: "Every {minutes} min",
+      system: {
+        battery_low: "When battery drops below 20%",
+        cpu_high: "When CPU load stays above 85%",
+        memory_high: "When memory runs low",
+        disk_low: "When disk space runs low",
+      },
       daysShort: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     },
   },
@@ -467,6 +478,7 @@ const manglish: Dict = {
   reminders: {
     builtInSection: "Built-in reminders",
     customSection: "Custom reminders",
+    systemSection: "System reminders",
     newReminder: "Puthiya reminder",
     emptyCustom: "Custom reminders onnum illa.",
     emptyCustomDesc: "Nila ethengilum ormmikkanamennu thonnumbol ivide create cheyyam.",
@@ -517,6 +529,10 @@ const manglish: Dict = {
         exercise: "Vyayamam",
         work: "Joli",
         sleep: "Urakkam",
+        battery: "Battery",
+        cpu: "CPU load",
+        memory: "Memory",
+        disk: "Disk space",
         custom: "Custom",
       } as Record<string, string>,
     },
@@ -525,6 +541,12 @@ const manglish: Dict = {
       daily: "Dinasavum · {time}",
       weekly: "{days} · {time}",
       interval: "{minutes} minute-koodumbol",
+      system: {
+        battery_low: "Battery 20%-ilum kurayumbol",
+        cpu_high: "CPU load 85%-ilum koodumbol",
+        memory_high: "Memory kurayumbol",
+        disk_low: "Disk space kurayumbol",
+      },
       daysShort: ["Nja", "Thi", "Cho", "Bud", "Vya", "Vel", "Sha"],
     },
   },
@@ -763,6 +785,8 @@ export function describeScheduleIn(s: Schedule, lang: Language): string {
     }
     case "interval":
       return fill(t.interval, { minutes: s.minutes });
+    case "system":
+      return t.system[s.metric];
   }
 }
 
