@@ -906,9 +906,9 @@ export default function App() {
             /* Centralized contextual expressions: the slot is resolved
              * by meaning (kind / greeting / success / rejection),
              * never picked by hand in the component. An acknowledgement
-             * reaction (happy on success; sad, or annoyed after a
-             * streak, on rejection) overrides the kind expression while
-             * it plays. DockNilaFigure adds gentle life — idle breathe,
+             * reaction (happy on success; an understanding thumbs-up on
+             * snooze; sad, or annoyed after a streak, on rejection)
+             * overrides the kind expression while it plays. DockNilaFigure adds gentle life — idle breathe,
              * blink beats, expression crossfades, one-shot reactions —
              * without touching the card layout. */
             dock.current ? (
