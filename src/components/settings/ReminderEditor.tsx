@@ -87,6 +87,10 @@ export function ReminderEditor({
 
   const buildSchedule = (): Schedule | null => {
     switch (schedType) {
+      case "system":
+        // System reminders are watched by the backend monitor and never
+        // open the editor; their condition *is* the schedule.
+        return null;
       case "daily":
         return { type: "daily", time };
       case "weekly":

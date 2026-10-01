@@ -13,6 +13,7 @@ import type {
   ReminderKind,
   SavedPresencePos,
   Schedule,
+  SystemMetric,
 } from "./types.ts";
 import { POSITION_PRESETS } from "./types.ts";
 import { BUILT_IN_MESSAGES, BUILT_IN_TITLES } from "./strings.ts";
@@ -29,7 +30,7 @@ export interface ReminderDto {
 }
 
 export function parseSchedule(raw: string): Schedule {
-  const v = JSON.parse(raw) as { type?: string; at?: unknown; time?: unknown; days?: unknown; minutes?: unknown };
+  const v = JSON.parse(raw) as { type?: string; at?: unknown; time?: unknown; days?: unknown; minutes?: unknown; metric?: unknown };
   switch (v.type) {
     case "once":
       return { type: "once", at: String(v.at ?? "") };
@@ -43,6 +44,11 @@ export function parseSchedule(raw: string): Schedule {
       };
     case "interval":
       return { type: "interval", minutes: Math.max(1, Number(v.minutes ?? 60) || 60) };
+    case "system": {
+      const metric = String(v.metric ?? "battery_low");
+      const known: SystemMetric[] = ["battery_low", "cpu_high", "memory_high", "disk_low"];
+      return { type: "system", metric: (known as string[]).includes(metric) ? (metric as SystemMetric) : "battery_low" };
+    }
     default:
       throw new Error(`unknown schedule type: ${String(v.type)}`);
   }
@@ -95,6 +101,8 @@ export function describeSchedule(s: Schedule): string {
     }
     case "interval":
       return `Every ${s.minutes} min`;
+    case "system":
+      return `System · ${s.metric}`;
   }
 }
 

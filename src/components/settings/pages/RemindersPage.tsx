@@ -18,6 +18,14 @@ import idleUrl from "../../../../character/states/idle.png";
 
 const BUILT_IN_KINDS: ReminderKind[] = ["water", "food", "break", "move", "stretch", "exercise", "work", "sleep"];
 
+/**
+ * System health reminders, watched by the backend monitor. They have no
+ * editable schedule — the condition *is* the schedule — so the row is
+ * toggle-only: no editor, no delete. (The backend re-seeds them by id,
+ * so deleting would just bring them back on next launch.)
+ */
+const SYSTEM_KINDS: ReminderKind[] = ["battery", "cpu", "memory", "disk"];
+
 /** Shape of the backend's startup_report command. */
 interface StartupReport {
   issues: { reminder_id: string; reason: string }[];
@@ -133,6 +141,27 @@ export function RemindersPage({
                   />
                   <IconChevronRight className="srow-chevron" />
                 </>
+              }
+            />
+          );
+        })}
+      </SettingsSection>
+
+      <SettingsSection title={r.systemSection}>
+        {SYSTEM_KINDS.map((kind) => {
+          const rem = byKind(kind);
+          if (!rem) return null;
+          return (
+            <SettingsRow
+              key={rem.id}
+              title={rem.title}
+              description={describeScheduleIn(rem.schedule, lang)}
+              control={
+                <Switch
+                  checked={rem.enabled}
+                  onChange={(v) => onToggle(rem.id, v)}
+                  label={`${r.enabled}: ${rem.title}`}
+                />
               }
             />
           );

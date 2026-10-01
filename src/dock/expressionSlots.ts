@@ -65,6 +65,17 @@ export function expressionSlotForKind(kind: string): ExpressionSlot {
       return "focused";
     case "move":
       return "stretching";
+    // System health reminders: low battery reads as drained/sleepy,
+    // a pegged CPU as fired-up energetic, strained memory as focused,
+    // and a full disk gets a nudge (pointing).
+    case "battery":
+      return "sleepy";
+    case "cpu":
+      return "energetic";
+    case "memory":
+      return "focused";
+    case "disk":
+      return "pointing";
     default:
       return "pointing";
   }
