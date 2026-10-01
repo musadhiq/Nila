@@ -1,4 +1,4 @@
-# Nila — Motion Asset Library (Batches 1–2)
+# Nila — Motion Asset Library (Batches 1–3)
 
 Animation-ready transparent PNG frames generated from the character reference
 sheet (`character/states/concept-sheet.png`, the single source of truth).
@@ -20,6 +20,8 @@ back as-is.
 | `peek/top-left/` | 8 | `nila_corner_tl_01` … `nila_corner_tl_08` |
 | `peek/top-right/` | 6 | `nila_corner_tr_01` … `nila_corner_tr_06` |
 | `peek/bottom-left/` | 6 | `nila_corner_bl_01` … `nila_corner_bl_06` |
+| `peek/bottom-right/` | 6 | `nila_corner_br_01` … `nila_corner_br_06` |
+| `reminder/` | 12 | `nila_reminder_idle`, `notice`, `look`, `enter`, `settle`, `point`, `wait`, `wait_blink`, `react`, `goodbye`, `retreat_01`, `retreat_02` |
 
 `sheets/` keeps the original generated contact sheets (regeneration source).
 
@@ -40,7 +42,18 @@ back as-is.
   center, in all frames.
 - **corner peeks**: play `01 → N` to lean in, hold the last frame, reverse to
   retreat. Eye direction per corner: top-left looks down-right, top-right
-  looks down-left, bottom-left looks up-right (toward screen center).
+  looks down-left, bottom-left looks up-right, bottom-right looks up-left
+  (toward screen center).
+- **reminder**: full 10-beat arc in playback order —
+  `idle → notice → look → enter → settle → point → wait → (wait_blink) →
+  react → goodbye → retreat_01 → retreat_02`.
+  Suggested staging: fade/slide Nila in on `idle`, play `notice → look`
+  (~150 ms apart), hold `enter → settle`, raise the bubble while holding
+  `point` (her hand gestures toward the bubble side, eyes glance that way),
+  loop `wait ↔ wait_blink` while the reminder is visible, then on user action
+  play `react → goodbye → retreat_01 → retreat_02`. All frames gaze at the
+  viewer except `point` (glances toward the bubble). Calm and caring
+  throughout — no bouncy easing.
 
 ## Processing
 
@@ -70,9 +83,29 @@ Verified on dark backgrounds — no white halo.
   flags were legitimate detail (kurta embroidery, eye whites, hair-strand
   highlights/gaps); no background remnants needed clearing.
 
+## Batch 3 notes (peek library complete + reminder sequence)
+
+- `peek/bottom-right` finishes the peek library: all four edges and all four
+  corners are now covered.
+- The reminder sequence was generated as two 6-frame contact sheets (one
+  generation per sheet keeps character/camera/lighting consistent *within*
+  each half). Frames are registered within each sheet; the two halves have
+  slightly different canvas sizes, which is fine since `point → wait` is a
+  natural cut point.
+- **Rejected and regenerated**: the first take of the reminder's first half
+  came back with a white/cream kurta instead of the reference sage-green —
+  an identity deviation per the spec, so it was discarded and regenerated
+  with an explicit outfit lock. The rejected sheet is NOT in the deliverable.
+- Reminder frames use semantic names (`nila_reminder_idle`,
+  `nila_reminder_point`, …) matching the spec's naming examples.
+- Batch-3 QC: dark-background montage of all 18 frames plus close-up
+  inspection of every enclosed-white region the automated scan flagged — all
+  flags were legitimate detail (hair-strand gaps, kurta embroidery); no
+  background remnants needed clearing.
+
 ## Planned next batches
 
-- Remaining peek: `peek/bottom-right` corner (`nila_corner_br_01 …`)
-- Batch 3: `reminder/` sequence (attention → point at bubble → wait → done)
+- Batch 4: `interaction/` (thumbs-up, point, celebrate, stretch, drink)
+- Batch 5: `sleep/`, `celebration/`, upside-down hanging variant
 - Batch 4: `interaction/` (thumbs-up, point, celebrate, stretch, drink, sleep)
 - Batch 5: `sleep/`, `celebration/`, upside-down hanging variant
