@@ -30,6 +30,7 @@ const en = {
     nilaAlt: "Nila peeking over the notification",
   },
   nav: {
+    welcome: "Welcome",
     general: "General",
     reminders: "Reminders",
     character: "Character",
@@ -40,6 +41,10 @@ const en = {
     about: "About",
   },
   page: {
+    welcome: {
+      title: "Welcome",
+      subtitle: "Let's get Nila set up on your desktop.",
+    },
     general: {
       title: "General",
       subtitle: "Make Nila work the way you like.",
@@ -72,6 +77,17 @@ const en = {
       title: "About",
       subtitle: "A little companion for your day.",
     },
+  },
+  welcome: {
+    tagline: "Your gentle reminder companion for Linux.",
+    step1Title: "Lives in your tray",
+    step1Text: "Nila stays in the top bar and only appears when a reminder is due.",
+    step2Title: "Kind reminders",
+    step2Text: "Water, food, breaks, movement and sleep — in a friendly Manglish voice.",
+    step3Title: "You're in control",
+    step3Text: "Quiet hours, snooze, pause and daily limits. Everything stays on your machine.",
+    getStarted: "Get started",
+    backToSettings: "Back to settings",
   },
   general: {
     behaviorSection: "Nila behavior",
@@ -353,6 +369,7 @@ const manglish: Dict = {
     nilaAlt: "Notification-nokkiya Nila",
   },
   nav: {
+    welcome: "Welcome",
     general: "General",
     reminders: "Reminders",
     character: "Character",
@@ -363,6 +380,10 @@ const manglish: Dict = {
     about: "About",
   },
   page: {
+    welcome: {
+      title: "Swagatham",
+      subtitle: "Nila-ye ninte desktop-il set cheyyam.",
+    },
     general: {
       title: "General",
       subtitle: "Nila ninte ishtam pole work cheyyatte.",
@@ -395,6 +416,17 @@ const manglish: Dict = {
       title: "About",
       subtitle: "Ninte divasathilekku oru cheriya koottukari.",
     },
+  },
+  welcome: {
+    tagline: "Linux-nu vendi oru gentle reminder companion.",
+    step1Title: "Tray-yil jeevikkum",
+    step1Text: "Nila top bar-il thanne irikkum; oru reminder vannal mathrame screen-il varoo.",
+    step2Title: "Kind reminders",
+    step2Text: "Vellam, food, break, movement, sleep — friendly Manglish voice-il.",
+    step3Title: "Ninte control",
+    step3Text: "Quiet hours, snooze, pause, daily limits. Ellam ninte machine-il thanne.",
+    getStarted: "Thudangam",
+    backToSettings: "Settings-ilekku thirichu pokam",
   },
   general: {
     behaviorSection: "Nila behavior",

@@ -30,6 +30,8 @@ export interface AppSettings {
   appearance: "system" | "light" | "dark";
   sound: "none" | "soft" | "chime";
   start_at_login: boolean;
+  /** First-run setup finished (welcome flow completed). */
+  setup_complete: boolean;
   /** Settings UI language. "manglish" = Malayalam in Latin script. */
   language: "en" | "manglish";
   /** How a due reminder presents itself. */
@@ -136,6 +138,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   appearance: "system",
   sound: "chime",
   start_at_login: true,
+  setup_complete: false,
   language: "en",
   reminder_behavior: "dock",
   desktop_notifications: false,

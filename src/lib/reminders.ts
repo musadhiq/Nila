@@ -114,6 +114,7 @@ export function mergeSettings(raw: Record<string, string>): AppSettings {
     s.sound = raw.sound;
   }
   if (raw.start_at_login !== undefined) s.start_at_login = raw.start_at_login === "true";
+  if (raw.setup_complete !== undefined) s.setup_complete = raw.setup_complete === "true";
   if (raw.language === "en" || raw.language === "manglish") {
     s.language = raw.language;
   }
@@ -227,6 +228,7 @@ export function settingsToRecord(s: AppSettings): Record<string, string> {
     appearance: s.appearance,
     sound: s.sound,
     start_at_login: s.start_at_login ? "true" : "false",
+    setup_complete: s.setup_complete ? "true" : "false",
     language: s.language,
     reminder_behavior: s.reminder_behavior,
     desktop_notifications: s.desktop_notifications ? "true" : "false",
