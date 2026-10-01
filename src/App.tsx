@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   availableMonitors,
   currentMonitor,
@@ -8,8 +8,13 @@ import {
   primaryMonitor,
   type Monitor,
 } from "@tauri-apps/api/window";
-import { CharacterEngine, CharacterLab, peekSequenceForPreset, useFramePlayback } from "./character";
-import type { CharacterSnapshot } from "./character";
+import { CharacterEngine } from "./character/engine";
+import { peekSequenceForPreset } from "./character/motionManifest";
+// CharacterLab is dev-only: lazy-load it so the character asset library
+// (NilaCharacter's ~22 state PNGs) never rides the production bundle.
+const CharacterLab = lazy(() =>
+  import("./character/CharacterLab").then((m) => ({ default: m.CharacterLab })),
+);
 import type { ExpressionName } from "./character/expressions";
 import {
   backgroundPreloadAll,
@@ -36,8 +41,9 @@ import { expressionSlotForContext } from "./dock/expressionSlots";
 import { expressionUrl } from "./dock/expressions";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
-import { isDockOnScreen } from "./dock/dockMachine";
+import { isDockActionable, isDockOnScreen } from "./dock/dockMachine";
 import { SettingsPanel } from "./components/SettingsPanel";
+import type { PageId } from "./components/settings/SettingsLayout";
 import type { ReminderInput } from "./components/settings/ReminderEditor";
 
 type View = "companion" | "settings";
@@ -56,7 +62,6 @@ function isPausedSettings(s: AppSettings): boolean {
 export default function App() {
   const engineRef = useRef<CharacterEngine | null>(null);
   if (!engineRef.current) engineRef.current = new CharacterEngine();
-  const [snap, setSnap] = useState<CharacterSnapshot>(() => engineRef.current!.snapshot());
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [view, setView] = useState<View>("companion");
@@ -67,6 +72,10 @@ export default function App() {
   /** Bumped every time the panel opens so it mounts fresh on the
    *  right page (welcome for setup, general otherwise). */
   const [panelKey, setPanelKey] = useState(0);
+  /** Tray "New Reminder" lands the panel on the reminders page ... */
+  const [panelPage, setPanelPage] = useState<PageId | null>(null);
+  /** ... and opens the reminder editor immediately. */
+  const [panelAutoNew, setPanelAutoNew] = useState(false);
   /** True while the settings panel uses native OS window decorations
    *  (titlebar + resize handles). The custom titlebar hides then. */
   const [decorated, setDecorated] = useState(false);
@@ -79,8 +88,11 @@ export default function App() {
       (window.location.search.includes("nila-debug") ||
         window.localStorage.getItem("nila.debug") === "1"),
   );
-  // Frame-sequence playback: per-frame timers + idle blink injection.
-  useFramePlayback(engineRef.current, snap);
+  // Frame-sequence playback (idle loop + blink injection) lives in
+  // useFramePlayback and only runs while a frame renderer is mounted.
+  // NilaCharacter mounts solely in the dev-only Character Lab, so in
+  // production no per-frame timers or engine subscriptions exist: the
+  // app sits fully idle in the tray until a reminder fires.
   /**
    * V1 notification surface: the top-center dock. The hook owns the
    * dock state machine (hidden -> entering -> expanding -> visible ->
@@ -374,12 +386,13 @@ export default function App() {
   /**
    * Reveal the companion using the configured presence (spec 47/54):
    * position, entrance behavior, orientation, tilt.
+   *
+   * NOTE: the engine is driven imperatively (showExpression / setMotion /
+   * pause / resume); there is deliberately no onChange subscription here.
+   * Subscribing the App root to engine ticks re-rendered the whole tree
+   * every animation frame even while idle in the tray, so playback now
+   * only runs inside a mounted frame renderer (dev-only Character Lab).
    */
-  // Engine -> React state.
-  useEffect(() => {
-    const off = engineRef.current!.onChange(setSnap);
-    return off;
-  }, []);
 
   // Load settings + reminders; seed built-ins on first launch.
   useEffect(() => {
@@ -511,12 +524,19 @@ export default function App() {
   /**
    * Open the settings panel. "setup" is the first-run flow: the panel
    * opens on the welcome page with a finish button; "settings" opens
-   * normally on the general page.
+   * normally on the general page. `opts.page` overrides the landing page
+   * (tray "New Reminder" opens straight on reminders) and `opts.autoNew`
+   * opens the reminder editor immediately.
    */
-  const openPanel = (mode: "settings" | "setup") => {
+  const openPanel = (
+    mode: "settings" | "setup",
+    opts?: { page?: PageId; autoNew?: boolean },
+  ) => {
     const setup = mode === "setup";
     void refreshSettings();
     setSetupMode(setup);
+    setPanelPage(opts?.page ?? null);
+    setPanelAutoNew(opts?.autoNew ?? false);
     setView("settings");
     // Remount so the panel starts on the right page.
     setPanelKey((k) => k + 1);
@@ -563,6 +583,13 @@ export default function App() {
    * the window when the last notification finishes.
    */
   const dismissActive = async (id: string, action: "dismissed" | "completed") => {
+    // The first action wins: ignore rapid double-actions (Done then
+    // Snooze, double-click Done, or a click racing the 15s auto-hide).
+    // The machine would ignore the second dismiss, but without this
+    // guard the backend would still record both — e.g. a completion
+    // plus a snooze on the same reminder, resurrecting a finished
+    // one-time reminder.
+    if (!isDockActionable(dockRef.current.phase)) return;
     if (!id.startsWith("greeting-")) {
       try {
         await invokeCommand("record_reminder_action", { id, action });
@@ -575,6 +602,8 @@ export default function App() {
 
   /** Dock chat pill: snooze 10 minutes, then acknowledge. */
   const snoozeActive = async (id: string, minutes: 10 | 30 | 60) => {
+    // Same first-action-wins guard as dismissActive.
+    if (!isDockActionable(dockRef.current.phase)) return;
     if (!id.startsWith("greeting-")) {
       try {
         await invokeCommand("snooze_reminder", { id, minutes });
@@ -789,6 +818,7 @@ export default function App() {
     let offShow: (() => void) | null = null;
     let offPause: (() => void) | null = null;
     let offHidden: (() => void) | null = null;
+    let offAutostart: (() => void) | null = null;
     // Same StrictMode double-effect guard as the REMINDER_DUE listener:
     // the first pass's registrations arrive after its cleanup ran.
     let cancelled = false;
@@ -797,6 +827,10 @@ export default function App() {
         if (mode === "settings" || mode === "setup") {
           // Panel opens: normal settings, or the first-run setup flow.
           openPanel(mode);
+        } else if (mode === "new-reminder") {
+          // Tray "New Reminder": settings panel on the reminders page
+          // with the editor already open.
+          openPanel("settings", { page: "reminders", autoNew: true });
         } else {
           // V1: "Show Nila" opens the dock with a greeting card (tray-first:
           // she lives in the tray when idle; there is no floating character).
@@ -834,12 +868,23 @@ export default function App() {
       } else {
         offHidden = hidden;
       }
+      // Tray "Launch on startup" checkbox: keep an open settings panel
+      // in sync so a later save can't overwrite the new value.
+      const autostartEvt = await listenEvent<boolean>("TRAY_AUTOSTART", (on) => {
+        setSettings((prev) => ({ ...prev, start_at_login: on }));
+      });
+      if (cancelled) {
+        autostartEvt();
+      } else {
+        offAutostart = autostartEvt;
+      }
     })();
     return () => {
       cancelled = true;
       offShow?.();
       offPause?.();
       offHidden?.();
+      offAutostart?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -945,7 +990,9 @@ export default function App() {
         </button>
       )}
       {import.meta.env.DEV && nilaDebug && labOpen && (
-        <CharacterLab onClose={() => setLabOpen(false)} />
+        <Suspense fallback={null}>
+          <CharacterLab onClose={() => setLabOpen(false)} />
+        </Suspense>
       )}
       {view !== "companion" && (
         <div className="panel-wrap" key={panelKey}>
@@ -954,7 +1001,8 @@ export default function App() {
             paused={paused}
             reminders={reminders}
             nativeTitlebar={decorated}
-            initialPage={setupMode ? "welcome" : undefined}
+            initialPage={setupMode ? "welcome" : (panelPage ?? undefined)}
+            autoNewReminder={panelAutoNew}
             setupMode={setupMode}
             onSetupComplete={() => setSetupMode(false)}
             onSave={(s) => void saveSettings(s)}

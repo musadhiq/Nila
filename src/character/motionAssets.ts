@@ -125,6 +125,9 @@ export function preloadForFirstAppearance(peekSeqNames: string[]): Promise<void>
  * paint is never blocked by sleep/corner assets.
  */
 export function backgroundPreloadAll(chunkMs = 400): void {
+  // No motion assets on disk (the generated library was retired): don't
+  // arm a chain of wake-up timers for nothing.
+  if (KEY_TO_URL.size === 0) return;
   const remaining = allManifestKeys().filter((k) => !preloaded.has(k));
   let i = 0;
   const step = () => {
