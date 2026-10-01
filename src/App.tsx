@@ -423,8 +423,13 @@ export default function App() {
   // Scheduler -> overlay.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    // React 18 StrictMode (tauri dev) runs this effect twice: setup,
+    // cleanup, setup. The await below resolves after the first cleanup,
+    // so the cleanup alone cannot undo the registration — the flag
+    // catches the late arrival and unregisters it immediately.
+    let cancelled = false;
     (async () => {
-      unlisten = await listenEvent<unknown>("REMINDER_DUE", (payload) => {
+      const off = await listenEvent<unknown>("REMINDER_DUE", (payload) => {
         let r: DueReminder;
         if (typeof payload === "string") {
           r = {
@@ -456,8 +461,14 @@ export default function App() {
         chimeForReminder();
         dockRef.current.notify({ id: r.id, title: r.title, message: r.message, kind: r.kind });
       });
+      if (cancelled) {
+        off();
+        return;
+      }
+      unlisten = off;
     })();
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, []);
@@ -693,17 +704,25 @@ export default function App() {
   useEffect(() => {
     if (!isTauri()) return;
     let unlisten: (() => void) | null = null;
+    // Same StrictMode double-effect guard as the REMINDER_DUE listener.
+    let cancelled = false;
     (async () => {
       try {
-        unlisten = await getCurrentWindow().onCloseRequested((e) => {
+        const off = await getCurrentWindow().onCloseRequested((e) => {
           e.preventDefault();
           hideToTray();
         });
+        if (cancelled) {
+          off();
+          return;
+        }
+        unlisten = off;
       } catch {
         /* ignore */
       }
     })();
     return () => {
+      cancelled = true;
       unlisten?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -713,8 +732,11 @@ export default function App() {
     let offShow: (() => void) | null = null;
     let offPause: (() => void) | null = null;
     let offHidden: (() => void) | null = null;
+    // Same StrictMode double-effect guard as the REMINDER_DUE listener:
+    // the first pass's registrations arrive after its cleanup ran.
+    let cancelled = false;
     (async () => {
-      offShow = await listenEvent<string>("TRAY_SHOW", (mode) => {
+      const show = await listenEvent<string>("TRAY_SHOW", (mode) => {
         if (mode === "settings") {
           void refreshSettings();
           setView("settings");
@@ -738,17 +760,33 @@ export default function App() {
           });
         }
       });
-      offPause = await listenEvent("TRAY_PAUSE", () => {
+      if (cancelled) {
+        show();
+      } else {
+        offShow = show;
+      }
+      const pause = await listenEvent("TRAY_PAUSE", () => {
         if (pausedRef.current) void resumeAll();
         else void pauseAll(60);
       });
-      offHidden = await listenEvent("TRAY_HIDDEN", () => {
+      if (cancelled) {
+        pause();
+      } else {
+        offPause = pause;
+      }
+      const hidden = await listenEvent("TRAY_HIDDEN", () => {
         dockRef.current.forceHide();
         if (viewRef.current === "companion") void hideDockWindow();
         setView("companion");
       });
+      if (cancelled) {
+        hidden();
+      } else {
+        offHidden = hidden;
+      }
     })();
     return () => {
+      cancelled = true;
       offShow?.();
       offPause?.();
       offHidden?.();
