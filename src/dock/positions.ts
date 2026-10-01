@@ -2,10 +2,9 @@
  * Notification positioning API.
  *
  * V1 implements exactly one position: TOP_CENTER — a notification dock
- * directly below the camera/notch area (or a small safe margin from the
- * top edge when there is none). The enum and the rect helper are shaped
- * so future positions (TOP_LEFT, BOTTOM_CENTER, corners, ...) slot in
- * without changing call sites.
+ * hanging just below the system top bar. The enum and the rect helper
+ * are shaped so future positions (TOP_LEFT, BOTTOM_CENTER, corners, ...)
+ * slot in without changing call sites.
  */
 
 export const NotificationPosition = {
@@ -26,8 +25,8 @@ export interface PxRect {
 
 /**
  * Top-left origin (physical pixels) for a window of `winW` x `winH`
- * placed at `position` on `monitor`. `safeMargin` is the gap below the
- * top edge (camera/notch area) in physical pixels.
+ * placed at `position` on `monitor`. `safeMargin` is the clearance
+ * below the system top bar in physical pixels.
  */
 export function dockWindowOrigin(
   position: NotificationPosition,

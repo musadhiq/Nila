@@ -266,12 +266,13 @@ export default function App() {
   /**
    * Dock window geometry. The transparent window is fitted tightly
    * around the measured dock card (plus breathing room for Nila's
-   * shadow and the entry animation) so the invisible window area never
-   * blocks more of the desktop than necessary. The card reports its
-   * layout size via onMeasure; before the first report we use a sane
-   * estimate and correct on arrival.
+   * shadow) so the invisible window area never blocks more of the
+   * desktop than necessary. The card reports its layout size via
+   * onMeasure; before the first report we use a sane estimate and
+   * correct on arrival.
    */
-  const DOCK_SAFE_MARGIN = 12;
+  /** Top clearance: the dock hangs just below the system top bar. */
+  const DOCK_SAFE_MARGIN = 34;
   /** Window padding around the card: shadow spread + animation overshoot. */
   const DOCK_PAD_X = 56;
   const DOCK_PAD_Y = 64;
