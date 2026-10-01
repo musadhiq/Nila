@@ -55,6 +55,28 @@ fn tray_strings(lang: &str) -> TrayStrings {
     }
 }
 
+/// True once the user has finished the first-run setup.
+fn setup_complete(app: &tauri::AppHandle) -> bool {
+    app.try_state::<db::DbState>()
+        .and_then(|st| {
+            // The lock guard must not escape this closure (it borrows `st`).
+            let conn = st.0.lock().ok()?;
+            db::get_setting(&conn, "setup_complete").ok().flatten()
+        })
+        .map(|v| v == "true")
+        .unwrap_or(false)
+}
+
+/// Which panel a launch should open: the setup flow on first run,
+/// the settings afterwards.
+fn launch_mode(app: &tauri::AppHandle) -> &'static str {
+    if setup_complete(app) {
+        "settings"
+    } else {
+        "setup"
+    }
+}
+
 /// Read the current settings language from the database.
 fn current_language(app: &tauri::AppHandle) -> String {
     app.try_state::<db::DbState>()
@@ -106,7 +128,8 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let menu = tray_menu(app, &lang)?;
 
     // tauri::image::Image takes raw RGBA pixels — decode the PNG first.
-    let icon_png = include_bytes!("../../character/states/idle.png");
+    // The tray uses the Nila wordmark logo (wide aspect suits the top bar).
+    let icon_png = include_bytes!("../../character/nila-logo.png");
     let rgba = image::load_from_memory(icon_png)
         .expect("failed to decode tray icon PNG")
         .to_rgba8();
@@ -164,12 +187,23 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // Second launch while Nila is running: focus the existing
+        // instance instead of spawning another process (and tray icon).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_window(app, launch_mode(app));
+        }))
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
         .setup(move |app| {
             // Open (and migrate) the local database on startup.
             let conn = db::open(&db_path).expect("failed to open Nila database");
             db::migrate(&conn).expect("failed to migrate Nila database");
+            // Prefs the backend applies itself, read before the connection
+            // moves into managed state.
+            let autostart_on = db::get_setting(&conn, "start_at_login")
+                .unwrap_or(None)
+                .map(|v| v == "true")
+                .unwrap_or(true);
             app.manage(db::DbState::new(conn));
 
             // Scheduler generation counter (wakes the driver on changes).
@@ -182,6 +216,14 @@ pub fn run() {
             // Menu-bar tray: the character window stays hidden until a
             // reminder is due (or the user opens it from the tray).
             build_tray(app.handle()).expect("failed to build Nila tray icon");
+
+            // Apply the saved autostart preference to the OS on every
+            // launch — the settings toggle persists it; this enforces it.
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let m = app.handle().autostart();
+                let _ = if autostart_on { m.enable() } else { m.disable() };
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
