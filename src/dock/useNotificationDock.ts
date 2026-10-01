@@ -12,15 +12,12 @@ import {
  * Nila's gesture choreography (via the character engine's playSequence).
  *
  * Phase choreography (full motion):
- * - entering (300ms): dock slides/fades in; Nila peeks over the top
- *   edge (`peek-top`) — she hangs from behind the top bar, then the
- *   card settles and she takes her kind expression.
- * - expanding (400ms): card settles to full size; the peek holds.
- * - visible: the dock card presents a character *expression*
- *   (per kind — see kindExpressions) instead of motion frames. The old
- *   `reminder-point` attention image was corrupted and is retired.
- * - acknowledging: Done -> `thumbsup`; Snooze -> `snooze-ack`;
- *   Dismiss -> `reminder-react`.
+ * - entering (300ms): the chat card slides in from behind the top bar
+ *   while Nila leans in over its top-left corner (`peek-top-left`).
+ * - expanding (400ms): card settles; the lean-in holds its last frame.
+ * - visible: the bubble holds for 15s, then auto-hides. Nila keeps
+ *   leaning on the card — no pose changes, no extra chrome.
+ * - acknowledging: a short beat, then the card collapses away.
  * - collapsing (260ms): dock contracts away; then the next queued
  *   notification enters (or the dock hides and Nila returns to idle).
  *
@@ -31,17 +28,15 @@ const TIMING = {
   full: {
     entering: 300,
     expanding: 400,
-    ackCompleted: 1100,
-    ackDismissed: 1600,
-    ackSnoozed: 1200,
+    autoHide: 15000,
+    ack: 450,
     collapsing: 260,
   },
   reduced: {
     entering: 120,
     expanding: 120,
-    ackCompleted: 400,
-    ackDismissed: 400,
-    ackSnoozed: 400,
+    autoHide: 15000,
+    ack: 200,
     collapsing: 120,
   },
 } as const;
@@ -102,25 +97,22 @@ export function useNotificationDock(opts: {
     };
     switch (state.phase) {
       case "entering":
-        playRef.current("peek-top");
+        playRef.current("peek-top-left");
         later(t.entering, () => dispatch({ type: "enter-done" }));
         break;
       case "expanding":
         later(t.expanding, () => dispatch({ type: "expand-done" }));
         break;
       case "visible":
-        playRef.current("reminder-wait");
+        // The chat bubble auto-hides after 15s. Hovering (interacting)
+        // clears this timer; leaving restarts it.
+        later(t.autoHide, () => dispatch({ type: "dismiss", action: "dismissed" }));
         break;
-      case "acknowledging": {
-        const ack = state.ackAction;
-        playRef.current(
-          ack === "completed" ? "thumbsup" : ack === "snoozed" ? "snooze-ack" : "reminder-react",
-        );
-        const ms =
-          ack === "completed" ? t.ackCompleted : ack === "snoozed" ? t.ackSnoozed : t.ackDismissed;
-        later(ms, () => dispatch({ type: "ack-done" }));
+      case "acknowledging":
+        // No gesture swap: Nila keeps leaning on the card while it
+        // collapses away. Minimal and powerful.
+        later(t.ack, () => dispatch({ type: "ack-done" }));
         break;
-      }
       case "collapsing":
         later(t.collapsing, () => dispatch({ type: "collapse-done" }));
         break;

@@ -344,8 +344,7 @@ export function allManifestKeys(): string[] {
 export const CORE_SEQUENCE_NAMES = [
   "idle",
   "wave",
-  "peek-top",
-  "peek-right",
+  "peek-top-left",
   "reminder-enter",
   "reminder-wait",
   "reminder-react",

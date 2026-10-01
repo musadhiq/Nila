@@ -33,7 +33,6 @@ import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
 import { NotificationDock } from "./dock/NotificationDock";
 import { useNotificationDock } from "./dock/useNotificationDock";
-import { expressionForKind } from "./dock/kindExpressions";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockOnScreen } from "./dock/dockMachine";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -532,6 +531,21 @@ export default function App() {
     dock.dismiss(action);
   };
 
+  /** Dock chat pill: snooze 10 minutes, then acknowledge. */
+  const snoozeActive = async (id: string, minutes: 10 | 30 | 60) => {
+    if (!id.startsWith("greeting-")) {
+      try {
+        await invokeCommand("snooze_reminder", { id, minutes });
+      } catch {
+        /* demo mode */
+      }
+      dock.dismiss("snoozed");
+    } else {
+      // Greetings have no backend reminder to reschedule: just acknowledge.
+      dock.dismiss("dismissed");
+    }
+  };
+
   const pauseAll = async (minutes: 30 | 60 | null) => {
     try {
       await invokeCommand("pause_all", { minutes });
@@ -842,59 +856,6 @@ export default function App() {
 
   const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 
-  /**
-   * The dock presents notifications with character *expressions* (not the
-   * reminder motion frames — `nila_reminder_point.png` was corrupted, so
-   * the motion-frame attention gesture is retired from the dock). Each
-   * built-in reminder kind gets its own expression (see kindExpressions);
-   * user-configured events fall back to the pointing attention face.
-   * Two beats use the peek library instead: on entry she peeks over the
-   * top edge (`peek-top`, held through expanding), and when another
-   * reminder queues behind the visible one she glances sideways
-   * (`peek-right`). Expressions crossfade on change; the engine sequences
-   * keep playing silently underneath and are ignored while an expression
-   * is set.
-   */
-  const [queuePeek, setQueuePeek] = useState(false);
-  const prevQueueLen = useRef(0);
-  const queuePeekTimer = useRef<number | null>(null);
-  useEffect(() => {
-    const q = dock.queueLength;
-    const grew = q > prevQueueLen.current;
-    prevQueueLen.current = q;
-    if (
-      grew &&
-      (dock.phase === "visible" || dock.phase === "interacting") &&
-      !queuePeek
-    ) {
-      engineRef.current?.playSequence("peek-right");
-      setQueuePeek(true);
-      if (queuePeekTimer.current !== null)
-        window.clearTimeout(queuePeekTimer.current);
-      queuePeekTimer.current = window.setTimeout(() => {
-        setQueuePeek(false);
-        queuePeekTimer.current = null;
-      }, 1000);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dock.queueLength, dock.phase]);
-
-  const dockExpression = ((): ExpressionName | null => {
-    const ack = dock.ackAction;
-    if (dock.phase === "acknowledging" || dock.phase === "collapsing") {
-      return ack === "completed"
-        ? "thumbs-up"
-        : ack === "snoozed"
-          ? "sleepy"
-          : "confused";
-    }
-    // Peek beats: entry hangs from the top edge; a queued arrival gets a
-    // sideways glance. Frames show while no expression is set.
-    if (queuePeek) return null;
-    if (dock.phase === "entering" || dock.phase === "expanding") return null;
-    return expressionForKind(dock.current?.kind);
-  })();
-
   return (
     <div
       className="companion"
@@ -907,7 +868,6 @@ export default function App() {
         <NotificationDock
           phase={dock.phase}
           reminder={dock.current}
-          queueCount={dock.queueLength}
           reducedMotion={settings.animation !== "full" || prefersReducedMotion}
           nila={
             <NilaCharacter
@@ -915,13 +875,16 @@ export default function App() {
               animation={snap.animation}
               size="small"
               dark={dark}
-              expression={dockExpression}
               frame={snap.frame}
               frameSrc={frameSrc}
               shadow="soft"
             />
           }
-          onDone={dismissActive}
+          okayLabel={getStrings(settings.language).dock.okay}
+          snoozeLabel={getStrings(settings.language).dock.in10min}
+          onAcknowledge={(id) => void dismissActive(id, "completed")}
+          onSnooze={(id, minutes) => void snoozeActive(id, minutes)}
+          onDismiss={(id) => void dismissActive(id, "dismissed")}
           onInteract={dock.interact}
           onDisengage={dock.disengage}
           onKeyDismiss={(id) => void dismissActive(id, "dismissed")}
