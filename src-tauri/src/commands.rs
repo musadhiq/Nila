@@ -383,19 +383,12 @@ pub fn import_data(
     Ok(count)
 }
 
-/// Voice-model download state, for the Settings UI.
-#[derive(Serialize)]
-pub struct SttModelsStatus {
-    pub ready: bool,
-}
-
-/// Whether the STT models are present (downloaded once via Settings, or
-/// pointed at via env overrides). Nila works without them.
+/// Voice-model state for the Settings UI: installed / not installed /
+/// downloading / error, plus the installed size and the last download
+/// error. See [`crate::models::ModelInfo`].
 #[tauri::command]
-pub fn stt_models_status(app: AppHandle) -> Result<SttModelsStatus, String> {
-    Ok(SttModelsStatus {
-        ready: crate::models::resolve_models(&app).is_some(),
-    })
+pub fn stt_models_status(app: AppHandle) -> Result<crate::models::ModelInfo, String> {
+    Ok(crate::models::ModelManager::new(&app).get_status())
 }
 
 /// Result of requesting a manual model download.
@@ -411,9 +404,19 @@ pub struct SttDownloadResult {
 /// completion on `nila://models-ready`, failure on `nila://models-error`.
 #[tauri::command]
 pub fn download_stt_models(app: AppHandle) -> Result<SttDownloadResult, String> {
-    if crate::models::resolve_models(&app).is_some() {
+    let mgr = crate::models::ModelManager::new(&app);
+    if mgr.is_installed() {
         return Ok(SttDownloadResult { started: false });
     }
-    crate::models::download_in_background(app);
+    mgr.download_in_background();
     Ok(SttDownloadResult { started: true })
+}
+
+/// Delete the downloaded voice models from the app-managed directory
+/// (env-override paths are never touched). Returns true when at least
+/// one file was removed. The voice worker unloads its in-memory engine
+/// on the next wake when the models are gone, so RAM is freed too.
+#[tauri::command]
+pub fn delete_stt_models(app: AppHandle) -> Result<bool, String> {
+    crate::models::ModelManager::new(&app).delete()
 }

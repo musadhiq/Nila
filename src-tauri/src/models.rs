@@ -9,17 +9,35 @@
 //! wake with no models present just points the user at Settings instead
 //! of transcribing. Nothing downloads automatically.
 //!
-//! [`download_in_background`] runs the one-time fetch on a worker thread
-//! (triggered by the `download_stt_models` command), reporting progress
-//! on `nila://models-downloading` for the settings UI.
+//! The [`ModelManager`] is the single place that knows where model
+//! files live and what state they are in:
+//!
+//! ```text
+//! ModelManager
+//! ├── is_installed()   — files present AND verified
+//! ├── get_status()     — NotInstalled / Downloading / Installed (+ error)
+//! ├── download()       — blocking manual fetch with progress events
+//! ├── download_in_background()
+//! ├── verify()         — size/shape sanity before a set counts as installed
+//! ├── delete()         — remove the managed files (never env overrides)
+//! ├── get_path()       — the app-managed model directory
+//! └── get_size()       — total bytes of the installed set
+//! ```
+//!
+//! Downloads are staged: every file lands as a `.part` file first and
+//! is atomically renamed only after it verifies. An interrupted
+//! download (or an interrupted extraction) can therefore never leave a
+//! half-written file that counts as installed. Stale `.part` files are
+//! cleaned at the start of each download.
 //!
 //! Developers can still point at local files with `NILA_STT_MODEL_DIR`
 //! (or the per-file `NILA_STT_MODEL` / `NILA_STT_TOKENS` /
 //! `NILA_STT_VAD_MODEL`); explicit env paths always win and skip the
-//! download entirely.
+//! download entirely. `delete()` never touches env-pointed files.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -55,10 +73,22 @@ const VAD_URL: &str =
 /// the 76 MB tarball is the big one).
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(1800);
 
-/// Serializes concurrent downloads (the launch-time background fetch and
-/// a first-wake blocking ensure): whoever gets the lock downloads, the
-/// other waits and then finds the models ready.
+/// Verification floors/ceilings (k2-fsa/sherpa-onnx `asr-models`
+/// release, checked 2026-10-01: tarball 76,482,338 bytes, VAD 643,854
+/// bytes). A truncated or wrong file fails these and never counts as
+/// installed; the real check — loading the model — happens on first
+/// wake, which surfaces `model_error` if the bytes are corrupt.
+const EXPECTED_MODEL_MIN_BYTES: u64 = 40_000_000; // real file is ~44 MB
+const EXPECTED_VAD_MIN_BYTES: u64 = 600_000; // real file is 643,854 bytes
+const EXPECTED_TOKENS_MAX_BYTES: u64 = 1_000_000;
+
+/// Serializes concurrent downloads: whoever gets the lock downloads,
+/// the other waits and then finds the models ready.
 static DOWNLOAD_LOCK: Mutex<()> = Mutex::new(());
+/// True while a download thread is actively fetching.
+static DOWNLOADING: AtomicBool = AtomicBool::new(false);
+/// The last download failure, if any (surfaced via [`ModelManager::get_status`]).
+static LAST_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 /// Payload for [`EVENT_MODELS_DOWNLOADING`]. `total_bytes` is 0 when the
 /// server didn't report a length.
@@ -77,6 +107,265 @@ pub struct ModelsErrorPayload {
     #[serde(rename = "type")]
     pub kind: &'static str,
     pub message: String,
+}
+
+/// The three model files, in load order.
+#[derive(Clone, Debug)]
+pub struct ModelPaths {
+    pub model: PathBuf,
+    pub tokens: PathBuf,
+    pub vad: PathBuf,
+}
+
+/// Lifecycle state of the STT model set. "Update available" is not
+/// supported: the upstream release is pinned, so there is nothing to
+/// check against.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelStatus {
+    NotInstalled,
+    Downloading,
+    Installed,
+}
+
+/// What Settings shows: status, size when installed, and the last
+/// download error (if any) so failures are visible without re-running.
+#[derive(Clone, serde::Serialize)]
+pub struct ModelInfo {
+    pub status: ModelStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// The single owner of model lifecycle knowledge. The voice pipeline
+/// asks the manager for paths; it never locates files itself.
+pub struct ModelManager {
+    app: AppHandle,
+}
+
+impl ModelManager {
+    pub fn new(app: &AppHandle) -> Self {
+        Self { app: app.clone() }
+    }
+
+    /// The app-managed directory downloads go to. Never the
+    /// source/project directory.
+    pub fn get_path(&self) -> Result<PathBuf, String> {
+        dir(&self.app)
+    }
+
+    /// The installed file set, if every file resolves.
+    pub fn resolve(&self) -> Option<ModelPaths> {
+        resolve_models(&self.app).map(|(model, tokens, vad)| ModelPaths { model, tokens, vad })
+    }
+
+    /// True only when the files resolve AND pass verification. A
+    /// half-written or truncated set never counts as installed.
+    pub fn is_installed(&self) -> bool {
+        self.verify().is_ok()
+    }
+
+    /// Verify a resolved set: every file exists and has a sane size.
+    /// Returns the paths on success.
+    pub fn verify(&self) -> Result<ModelPaths, String> {
+        let paths = self
+            .resolve()
+            .ok_or_else(|| "STT model files are missing".to_string())?;
+        verify_paths(&paths)?;
+        Ok(paths)
+    }
+
+    /// Total bytes of the installed set, for the Settings UI.
+    pub fn get_size(&self) -> Option<u64> {
+        let paths = self.resolve()?;
+        let total = [paths.model, paths.tokens, paths.vad]
+            .iter()
+            .filter_map(|p| std::fs::metadata(p).ok())
+            .map(|m| m.len())
+            .sum();
+        Some(total)
+    }
+
+    /// Snapshot for Settings: NotInstalled / Downloading / Installed,
+    /// plus size and the last download error.
+    pub fn get_status(&self) -> ModelInfo {
+        let downloading = DOWNLOADING.load(Ordering::SeqCst);
+        let status = if downloading {
+            ModelStatus::Downloading
+        } else if self.is_installed() {
+            ModelStatus::Installed
+        } else {
+            ModelStatus::NotInstalled
+        };
+        let error = LAST_ERROR.lock().ok().and_then(|g| g.clone());
+        ModelInfo {
+            status,
+            size_bytes: if status == ModelStatus::Installed {
+                self.get_size()
+            } else {
+                None
+            },
+            // A stale error from an old attempt shouldn't linger once the
+            // models are actually installed.
+            error: if status == ModelStatus::Installed {
+                None
+            } else {
+                error
+            },
+        }
+    }
+
+    /// Blocking manual download (Settings → Download). Serialized;
+    /// no-op when the models are already installed and verified. Emits
+    /// [`EVENT_MODELS_DOWNLOADING`] progress and [`EVENT_MODELS_READY`]
+    /// on success, [`EVENT_MODELS_ERROR`] on failure.
+    pub fn download(&self) -> Result<(), String> {
+        let _guard = DOWNLOAD_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if self.is_installed() {
+            eprintln!("nila: models: already installed and verified — skipping download");
+            return Ok(());
+        }
+        DOWNLOADING.store(true, Ordering::SeqCst);
+        if let Ok(mut last) = LAST_ERROR.lock() {
+            last.take();
+        }
+        let result = self.download_locked();
+        DOWNLOADING.store(false, Ordering::SeqCst);
+        if let Err(e) = &result {
+            eprintln!("nila: models: download failed: {e}");
+            *LAST_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = Some(e.clone());
+            emit(
+                &self.app,
+                EVENT_MODELS_ERROR,
+                ModelsErrorPayload {
+                    kind: "nila://models-error",
+                    message: e.clone(),
+                },
+            );
+        }
+        result
+    }
+
+    /// The actual fetch. The caller holds [`DOWNLOAD_LOCK`].
+    fn download_locked(&self) -> Result<(), String> {
+        eprintln!("nila: models: downloading voice models (~80 MB, one time)");
+        let dir = self.get_path()?;
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+        // A previous interrupted run may have left `.part` files behind;
+        // they are stale by definition (a good file is renamed away).
+        clean_stale_parts(&dir);
+
+        // VAD first: small, validates the whole pipeline quickly.
+        download_file(&self.app, VAD_URL, &dir.join(VAD_FILE), VAD_FILE)?;
+        download_asr_tarball(&self.app, &dir)?;
+
+        match self.verify() {
+            Ok(_) => {
+                eprintln!("nila: models: ready");
+                emit(
+                    &self.app,
+                    EVENT_MODELS_READY,
+                    serde_json::json!({"type": "nila://models-ready"}),
+                );
+                Ok(())
+            }
+            Err(e) => Err(format!("download finished but verification failed: {e}")),
+        }
+    }
+
+    /// Start the one-time model download in the background. Called only
+    /// from the manual `download_stt_models` command (Settings) —
+    /// nothing in the app triggers a download on its own. No-op when a
+    /// download is already running or the models are installed.
+    pub fn download_in_background(&self) {
+        if DOWNLOADING.load(Ordering::SeqCst) {
+            eprintln!("nila: models: download already running");
+            return;
+        }
+        if self.is_installed() {
+            return;
+        }
+        let mgr = ModelManager::new(&self.app);
+        std::thread::Builder::new()
+            .name("nila-models-download".into())
+            .spawn(move || {
+                if let Err(e) = mgr.download() {
+                    eprintln!("nila: models: background download failed: {e}");
+                }
+            })
+            .expect("failed to spawn model download thread");
+    }
+
+    /// Delete the downloaded model files from the app-managed
+    /// directory. Env-override paths are NEVER touched: if the models
+    /// resolve outside the managed dir there is nothing to delete.
+    /// Returns true when at least one file was removed.
+    pub fn delete(&self) -> Result<bool, String> {
+        let dir = self.get_path()?;
+        let mut removed = false;
+        for name in [MODEL_FILE, TOKENS_FILE, VAD_FILE] {
+            let p = dir.join(name);
+            // Only files inside the managed dir, never env overrides.
+            if p.is_file() {
+                std::fs::remove_file(&p).map_err(|e| format!("delete {}: {e}", p.display()))?;
+                removed = true;
+            }
+            // A stale `.part` next to it goes too.
+            let part = p.with_extension("part");
+            if part.is_file() {
+                std::fs::remove_file(&part).ok();
+            }
+        }
+        if removed {
+            eprintln!("nila: models: deleted downloaded models from {}", dir.display());
+        }
+        Ok(removed)
+    }
+}
+
+fn file_len(p: &Path) -> Result<u64, String> {
+    std::fs::metadata(p)
+        .map(|m| m.len())
+        .map_err(|e| format!("stat {}: {e}", p.display()))
+}
+
+/// Size/shape sanity for a resolved model set. Pure function over
+/// paths so it is unit-testable without a Tauri [`AppHandle`].
+fn verify_paths(paths: &ModelPaths) -> Result<(), String> {
+    let model_len = file_len(&paths.model)?;
+    let vad_len = file_len(&paths.vad)?;
+    let tokens_len = file_len(&paths.tokens)?;
+    if model_len < EXPECTED_MODEL_MIN_BYTES {
+        return Err(format!(
+            "model.int8.onnx is only {model_len} bytes — incomplete download?"
+        ));
+    }
+    if vad_len < EXPECTED_VAD_MIN_BYTES {
+        return Err(format!(
+            "silero_vad.onnx is only {vad_len} bytes — incomplete download?"
+        ));
+    }
+    if tokens_len == 0 || tokens_len > EXPECTED_TOKENS_MAX_BYTES {
+        return Err(format!(
+            "tokens.txt has an unexpected size ({tokens_len} bytes)"
+        ));
+    }
+    Ok(())
+}
+
+/// Remove stale `.part` staging files left by an interrupted download.
+fn clean_stale_parts(dir: &Path) {
+    for name in [MODEL_FILE, TOKENS_FILE, VAD_FILE] {
+        let part = dir.join(name).with_extension("part");
+        if part.is_file() {
+            eprintln!("nila: models: removing stale {}", part.display());
+            std::fs::remove_file(&part).ok();
+        }
+    }
 }
 
 /// Where downloaded models live: `<app-data>/models/stt/`
@@ -148,6 +437,9 @@ fn resolve_one_file(env: &str, name: &str, dir: Option<&Path>) -> Option<PathBuf
 /// complete `models/stt/` found by [`search_dirs`]) supplies the
 /// defaults, and [`ENV_MODEL`]/[`ENV_TOKENS`]/[`ENV_VAD_MODEL`] each
 /// override their own file independently.
+///
+/// Prefer [`ModelManager::verify`] when "installed" must mean "usable":
+/// this only checks presence, not integrity.
 pub fn resolve_models(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> {
     let found = search_dirs(app).into_iter().find(|d| {
         d.join(MODEL_FILE).is_file()
@@ -170,22 +462,7 @@ pub fn resolve_models(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> {
 /// in the app triggers a download on its own. No-op when the models are
 /// already present. Failures are reported on [`EVENT_MODELS_ERROR`].
 pub fn download_in_background(app: AppHandle) {
-    std::thread::Builder::new()
-        .name("nila-models-download".into())
-        .spawn(move || {
-            if let Err(e) = ensure_blocking(&app) {
-                eprintln!("nila: models: background download failed: {e}");
-                emit(
-                    &app,
-                    EVENT_MODELS_ERROR,
-                    ModelsErrorPayload {
-                        kind: "nila://models-error",
-                        message: e,
-                    },
-                );
-            }
-        })
-        .expect("failed to spawn model download thread");
+    ModelManager::new(&app).download_in_background();
 }
 
 /// Make sure the models exist, downloading them when this is a manual
@@ -193,35 +470,13 @@ pub fn download_in_background(app: AppHandle) {
 /// [`EVENT_MODELS_DOWNLOADING`] progress and [`EVENT_MODELS_READY`] on
 /// success.
 pub fn ensure_blocking(app: &AppHandle) -> Result<(), String> {
-    let _guard = DOWNLOAD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    if resolve_models(app).is_some() {
-        return Ok(());
-    }
-    eprintln!("nila: models: downloading voice models (~80 MB, one time)");
-    let dir = dir(app)?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-
-    // VAD first: small, validates the whole pipeline quickly.
-    download_file(app, VAD_URL, &dir.join(VAD_FILE), VAD_FILE)?;
-    download_asr_tarball(app, &dir)?;
-
-    match resolve_models(app) {
-        Some(_) => {
-            eprintln!("nila: models: ready");
-            emit(
-                app,
-                EVENT_MODELS_READY,
-                serde_json::json!({"type": "nila://models-ready"}),
-            );
-            Ok(())
-        }
-        _ => Err("download finished but the model files are still missing".to_string()),
-    }
+    ModelManager::new(app).download()
 }
 
-/// Stream `url` to `dest` (via a `.part` file, renamed on success),
-/// emitting progress events as it goes. A failed download never leaves a
-/// half-written file behind.
+/// Stream `url` to `dest` (via a `.part` staging file, atomically
+/// renamed on success), emitting progress events as it goes. A failed
+/// or interrupted download never leaves a half-written file behind —
+/// the `.part` is removed on error and cleaned at the next start.
 fn download_file(
     app: &AppHandle,
     url: &str,
@@ -265,23 +520,32 @@ fn download_file(
     }
     emit_progress(app, label, downloaded, total);
     drop(file);
+    // `verify()` runs after the whole set lands; the rename itself is
+    // the atomic commit point — an interrupted download leaves only the
+    // `.part`, which never counts as installed.
     std::fs::rename(&part, dest).map_err(|e| format!("rename {}: {e}", part.display()))?;
     eprintln!("nila: models: downloaded {label} ({downloaded} bytes)");
     Ok(())
 }
 
 /// Download the Conformer-CTC tarball and extract just `model.int8.onnx`
-/// + `tokens.txt` into `dir` (the full-precision model, test wavs and
-/// scripts are skipped).
+/// + `tokens.txt` (the full-precision model, test wavs and scripts are
+/// skipped). The tarball itself goes to the OS temp dir, never the
+/// project tree.
 fn download_asr_tarball(app: &AppHandle, dir: &Path) -> Result<(), String> {
     let tarball = std::env::temp_dir().join("nila-stt-asr.tar.bz2");
-    download_file(app, ASR_TARBALL_URL, &tarball, MODEL_FILE)?;
-    let result = extract_asr_tarball(&tarball, dir);
-    // Never keep a tarball we couldn't use: the next launch re-downloads.
+    let result = (|| -> Result<(), String> {
+        download_file(app, ASR_TARBALL_URL, &tarball, MODEL_FILE)?;
+        extract_asr_tarball(&tarball, dir)
+    })();
+    // Never keep a tarball we couldn't use: the next attempt re-downloads.
     std::fs::remove_file(&tarball).ok();
     result
 }
 
+/// Extract the two wanted members straight into `.part` staging files
+/// (streamed, no 44 MB transient buffer), then verify and atomically
+/// rename. An interrupted extraction leaves only `.part` files behind.
 fn extract_asr_tarball(tarball: &Path, dir: &Path) -> Result<(), String> {
     // Only the two files we need, matched by file name so the tarball's
     // top-level directory prefix doesn't matter. Destinations are fully
@@ -301,35 +565,52 @@ fn extract_asr_tarball(tarball: &Path, dir: &Path) -> Result<(), String> {
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
-        let dest = match wanted_entry(&name) {
+        let dest_name = match wanted_entry(&name) {
             Some(MODEL_FILE) => {
                 found_model = true;
-                dir.join(MODEL_FILE)
+                MODEL_FILE
             }
             Some(TOKENS_FILE) => {
                 found_tokens = true;
-                dir.join(TOKENS_FILE)
+                TOKENS_FILE
             }
             _ => continue,
         };
-        // Read the entry ourselves and write it to the controlled
-        // destination (avoids `unpack` path semantics entirely).
-        let mut buf = Vec::new();
-        std::io::Read::read_to_end(&mut entry, &mut buf)
+        // Stream straight to a `.part` staging file — no giant buffer,
+        // and the rename below is the atomic commit point.
+        let part = dir.join(dest_name).with_extension("part");
+        let mut out =
+            std::fs::File::create(&part).map_err(|e| format!("create {}: {e}", part.display()))?;
+        std::io::copy(&mut entry, &mut out)
             .map_err(|e| format!("extract {name}: {e}"))?;
-        std::fs::write(&dest, &buf).map_err(|e| format!("write {}: {e}", dest.display()))?;
+        drop(out);
     }
     if !(found_model && found_tokens) {
+        clean_stale_parts(dir);
         return Err("tarball didn't contain model.int8.onnx and tokens.txt".to_string());
     }
-    let size = std::fs::metadata(dir.join(MODEL_FILE))
-        .map_err(|e| format!("stat model: {e}"))?
-        .len();
-    if size < 10_000_000 {
+    // Verify sizes BEFORE the rename: a truncated member must never
+    // become the installed model.
+    let model_part = dir.join(MODEL_FILE).with_extension("part");
+    let tokens_part = dir.join(TOKENS_FILE).with_extension("part");
+    let model_len = file_len(&model_part)?;
+    let tokens_len = file_len(&tokens_part)?;
+    if model_len < EXPECTED_MODEL_MIN_BYTES {
+        clean_stale_parts(dir);
         return Err(format!(
-            "extracted model is only {size} bytes — corrupt download?"
+            "extracted model is only {model_len} bytes — corrupt download?"
         ));
     }
+    if tokens_len == 0 || tokens_len > EXPECTED_TOKENS_MAX_BYTES {
+        clean_stale_parts(dir);
+        return Err(format!(
+            "extracted tokens.txt has an unexpected size ({tokens_len} bytes)"
+        ));
+    }
+    std::fs::rename(&model_part, dir.join(MODEL_FILE))
+        .map_err(|e| format!("rename model: {e}"))?;
+    std::fs::rename(&tokens_part, dir.join(TOKENS_FILE))
+        .map_err(|e| format!("rename tokens: {e}"))?;
     Ok(())
 }
 
@@ -422,5 +703,61 @@ mod tests {
         assert_eq!(v["file"], "model.int8.onnx");
         assert_eq!(v["downloaded_bytes"], 42);
         assert_eq!(v["total_bytes"], 100);
+    }
+
+    #[test]
+    fn verify_rejects_truncated_model() {
+        let tmp = std::env::temp_dir().join("nila-models-test-verify");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let model = tmp.join(MODEL_FILE);
+        let tokens = tmp.join(TOKENS_FILE);
+        let vad = tmp.join(VAD_FILE);
+        // All three files exist, but the model is a stub.
+        std::fs::write(&model, b"too small").unwrap();
+        std::fs::write(&tokens, b"a 1\n").unwrap();
+        std::fs::write(&vad, vec![0u8; 650_000]).unwrap();
+
+        let paths = ModelPaths { model, tokens, vad };
+        let err = verify_paths(&paths).unwrap_err();
+        assert!(err.contains("only 9 bytes"), "unexpected: {err}");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn verify_rejects_missing_and_empty_tokens() {
+        let tmp = std::env::temp_dir().join("nila-models-test-verify2");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let model = tmp.join(MODEL_FILE);
+        let tokens = tmp.join(TOKENS_FILE);
+        let vad = tmp.join(VAD_FILE);
+        std::fs::write(&model, vec![0u8; 41_000_000]).unwrap();
+        std::fs::write(&tokens, b"").unwrap();
+        std::fs::write(&vad, vec![0u8; 650_000]).unwrap();
+
+        let paths = ModelPaths {
+            model: model.clone(),
+            tokens: tokens.clone(),
+            vad: vad.clone(),
+        };
+        assert!(verify_paths(&paths).is_err());
+
+        // Missing file also fails.
+        std::fs::remove_file(&vad).unwrap();
+        let paths = ModelPaths { model, tokens, vad };
+        assert!(verify_paths(&paths).is_err());
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn stale_parts_are_cleaned() {
+        let tmp = std::env::temp_dir().join("nila-models-test-parts");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let part = tmp.join(MODEL_FILE).with_extension("part");
+        std::fs::write(&part, b"interrupted").unwrap();
+        clean_stale_parts(&tmp);
+        assert!(!part.exists());
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }
