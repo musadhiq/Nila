@@ -3,11 +3,21 @@ import assert from "node:assert/strict";
 import {
   MODEL_EVENTS,
   VOICE_EVENTS,
+  downloadSttModels,
+  getSttModelsStatus,
   voiceErrorLabel,
   type ModelsDownloadingPayload,
   type VoiceErrorCode,
 } from "../src/lib/voice.ts";
 import { STRINGS, type Language } from "../src/lib/i18n.ts";
+
+const ALL_CODES: VoiceErrorCode[] = [
+  "speech_timeout",
+  "empty_transcript",
+  "mic_error",
+  "model_error",
+  "models_missing",
+];
 
 describe("voice event contract", () => {
   it("uses the exact event names the backend emits", () => {
@@ -21,14 +31,8 @@ describe("voice event contract", () => {
   });
 
   it("maps every error code to a non-empty label in both languages", () => {
-    const codes: VoiceErrorCode[] = [
-      "speech_timeout",
-      "empty_transcript",
-      "mic_error",
-      "model_error",
-    ];
     for (const lang of ["en", "manglish"] as Language[]) {
-      for (const code of codes) {
+      for (const code of ALL_CODES) {
         const label = voiceErrorLabel(code, STRINGS[lang].voice);
         assert.ok(label.trim().length > 0, `${lang}/${code}: empty label`);
       }
@@ -36,9 +40,20 @@ describe("voice event contract", () => {
   });
 
   it("error labels differ per code (no accidental aliasing)", () => {
-    const labels = (["speech_timeout", "empty_transcript", "mic_error", "model_error"] as VoiceErrorCode[])
-      .map((c) => voiceErrorLabel(c, STRINGS.en.voice));
+    const labels = ALL_CODES.map((c) => voiceErrorLabel(c, STRINGS.en.voice));
     assert.equal(new Set(labels).size, labels.length);
+  });
+
+  it("models_missing points at Settings in both languages", () => {
+    for (const lang of ["en", "manglish"] as Language[]) {
+      const label = voiceErrorLabel("models_missing", STRINGS[lang].voice);
+      assert.ok(label.includes("Settings"), `${lang}: ${label}`);
+      assert.notEqual(
+        label,
+        voiceErrorLabel("model_error", STRINGS[lang].voice),
+        `${lang}: models_missing aliases model_error`,
+      );
+    }
   });
 });
 
@@ -66,5 +81,31 @@ describe("model provisioning events", () => {
       const line = STRINGS[lang].voice.modelsDownloading;
       assert.ok(line.trim().length > 0, `${lang}: empty modelsDownloading`);
     }
+  });
+
+  it("settings download strings exist in both languages", () => {
+    for (const lang of ["en", "manglish"] as Language[]) {
+      const g = STRINGS[lang].general;
+      for (const key of [
+        "voiceModelsSection",
+        "voiceModelsDesc",
+        "voiceModelsReady",
+        "voiceModelsMissing",
+        "voiceModelsDownload",
+        "voiceModelsDownloading",
+        "voiceModelsFailed",
+      ] as const) {
+        assert.ok(g[key].trim().length > 0, `${lang}: empty ${key}`);
+      }
+      // The progress template carries a {pct} placeholder.
+      assert.ok(g.voiceModelsDownloading.includes("{pct}"));
+    }
+  });
+});
+
+describe("manual model download commands", () => {
+  it("rejects outside Tauri (settings UI gates on isTauri)", async () => {
+    await assert.rejects(getSttModelsStatus(), /tauri-unavailable/);
+    await assert.rejects(downloadSttModels(), /tauri-unavailable/);
   });
 });
