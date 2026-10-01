@@ -1,4 +1,4 @@
-# Nila — Motion Asset Library (Batches 1–3)
+# Nila — Motion Asset Library (Batches 1–5)
 
 Animation-ready transparent PNG frames generated from the character reference
 sheet (`character/states/concept-sheet.png`, the single source of truth).
@@ -22,6 +22,10 @@ back as-is.
 | `peek/bottom-left/` | 6 | `nila_corner_bl_01` … `nila_corner_bl_06` |
 | `peek/bottom-right/` | 6 | `nila_corner_br_01` … `nila_corner_br_06` |
 | `reminder/` | 12 | `nila_reminder_idle`, `notice`, `look`, `enter`, `settle`, `point`, `wait`, `wait_blink`, `react`, `goodbye`, `retreat_01`, `retreat_02` |
+| `interaction/` (batch 4) | 30 | `nila_thumbsup_01…06`, `nila_point_01…06`, `nila_cheer_01…06`, `nila_stretch_01…06`, `nila_drink_01…06` |
+| `sleep/` | 6 | `nila_sleep_01` … `nila_sleep_06` |
+| `celebration/` | 5 | `nila_celebration_01` … `nila_celebration_05` |
+| `peek/top/` (upside-down) | 6 | `nila_hang_upside_01` … `nila_hang_upside_06` |
 
 `sheets/` keeps the original generated contact sheets (regeneration source).
 
@@ -54,6 +58,20 @@ back as-is.
   play `react → goodbye → retreat_01 → retreat_02`. All frames gaze at the
   viewer except `point` (glances toward the bubble). Calm and caring
   throughout — no bouncy easing.
+- **thumbs-up**: play `01 → 06` once for approval/confirmation moments.
+- **point** (interaction): `01 → 06`, arm extends to gesture at something
+  beside her; hold `04 → 05` on the extended beat.
+- **cheer**: `01 → 06`, quiet happy clap; loop `03 ↔ 04` for the clap itself.
+- **stretch**: `01 → 06`, morning-style overhead stretch; hold `03 → 04`.
+- **drink**: `01 → 06`, lifts glass and sips; loop `03 ↔ 04` for the sip hold.
+- **sleep**: `01 → 06`, eyes droop to sleep; hold `06` (or loop `05 ↔ 06`
+  for soft breathing).
+- **celebration**: `01 → 05`, arms shoot up in joy; intentionally 5 frames —
+  the generated sheet's sixth cell was glitched and is excluded (see Batch
+  4/5 notes).
+- **hang upside-down**: `01 → 05` hanging playfully upside down from the top
+  bar; `06` flips her upright, still holding the bar. Play `01 → 06` once,
+  or loop `02 ↔ 05` for the dangling sway.
 
 ## Processing
 
@@ -109,3 +127,31 @@ Verified on dark backgrounds — no white halo.
 - Batch 5: `sleep/`, `celebration/`, upside-down hanging variant
 - Batch 4: `interaction/` (thumbs-up, point, celebrate, stretch, drink, sleep)
 - Batch 5: `sleep/`, `celebration/`, upside-down hanging variant
+
+## Batch 4/5 notes (interaction set, sleep, celebration, upside-down hang)
+
+- 47 new frames: 30 interaction (`thumbsup`, `point`, `cheer`, `stretch`,
+  `drink` × 6), 6 `sleep/`, 5 `celebration/`, 6 upside-down hang in
+  `peek/top/`. Same split/key/feather/union-crop pipeline
+  (`process_batch45.py`).
+- **Celebration is intentionally 5 frames**: the generated sheet's sixth cell
+  was visually glitched, so it was dropped rather than shipped. The source
+  sheet was re-saved as the 5-frame `sheets/media-generation-celebration-seq-5f.png`
+  before splitting.
+- **Anatomy QC and repairs** (every frame hand/leg/eyebrow-count audited):
+  - `interaction/nila_point_05`: a stray hand from the neighboring sheet cell
+    bled across the cell boundary at the frame's left edge — removed with a
+    skin-tone mask (hair and face untouched).
+  - `peek/top/nila_hang_upside_02`: generated with a third arm and a stray
+    foot near the bar — both removed via targeted image edit; the frame now
+    shows her curled hanging pose with exactly 2 arms and 2 tucked feet.
+  - `peek/top/nila_hang_upside_05`: stray foot near the bar removed via
+    targeted image edit.
+  - `peek/top/nila_hang_upside_06`: generated with 4 hands (two detached
+    floating hands on the bar plus her own arms at her sides) — repaired via
+    targeted image edit so her own two arms reach up and grip the bar
+    (exactly 2 arms, 2 hands).
+  - The three repaired upside-down frames were re-keyed and re-registered to
+    the sequence with bar-anchored alignment, then all six frames were
+    union-cropped together, so the animation plays without jumps.
+  - Eyebrows verified single in all frames; no double-brow defects found.
