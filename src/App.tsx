@@ -12,15 +12,14 @@ import { CharacterEngine, NilaCharacter } from "./character";
 import type { CharacterSnapshot } from "./character";
 import type { ExpressionName } from "./character/expressions";
 import {
-  bubbleSideFor,
   characterTransformCSS,
   effectiveEntrance,
   effectiveExit,
   ensureVisible,
   nearestPreset,
   nextNaturalPosition,
+  placeBubble,
   presetEdges,
-  reminderWindowRect,
   slideStartFor,
   snapToEdge,
   visibleFracForIdle,
@@ -91,7 +90,20 @@ export default function App() {
   const [showGroundShadow, setShowGroundShadow] = useState(true);
   const [bubbleSide, setBubbleSide] = useState<BubbleSide>("above");
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  /** Collision-aware bubble layout (position + tail anchor within the window). */
+  const [bubbleLayout, setBubbleLayout] = useState<ReminderLayout | null>(null);
+  /** Staggered reveal: Nila appears first, the bubble fades in after. */
+  const [bubbleVisible, setBubbleVisible] = useState(false);
+  const bubbleTimer = useRef<number | null>(null);
   const enterAnimTimer = useRef<number | null>(null);
+  /** Cancels the in-flight window glide so a new one never fights it. */
+  const glideAbort = useRef<AbortController | null>(null);
+  const startGlide = () => {
+    glideAbort.current?.abort();
+    const c = new AbortController();
+    glideAbort.current = c;
+    return c.signal;
+  };
   // The preset Nila is currently using (may differ from the setting when
   // natural appearances pick another enabled position).
   const activePresetRef = useRef<PositionPreset>("bottom-right");
@@ -117,8 +129,16 @@ export default function App() {
   settingsRef.current = settings;
   const downPos = useRef<{ x: number; y: number } | null>(null);
 
-  const COMPANION_W = 220;
-  const COMPANION_H = 300;
+  /** Companion window size adapts to the character size setting so the
+   *  sprite is never clipped (large = 224px needs a wider window). */
+  const companionSize = (): { w: number; h: number } => {
+    switch (settingsRef.current.character_size) {
+      case "large": return { w: 260, h: 320 };
+      case "medium": return { w: 200, h: 250 };
+      default: return { w: 160, h: 210 };
+    }
+  };
+  // Legacy constants removed: runtime code uses companionSize().
   // Premium two-column settings window (works at 900x600 and up; the
   // sidebar collapses to an icon rail in narrower windows).
   const PANEL_W = 960;
@@ -148,10 +168,11 @@ export default function App() {
         await win.setMinSize(new LogicalSize(720, 480));
         setDecorated(true);
       } else {
-        // Companion: frameless sprite, locked to the small size.
+        // Companion: frameless sprite, locked to the character-sized box.
+        const cs = companionSize();
         await win.setDecorations(false);
-        await win.setMinSize(new LogicalSize(COMPANION_W, COMPANION_H));
-        await win.setMaxSize(new LogicalSize(COMPANION_W, COMPANION_H));
+        await win.setMinSize(new LogicalSize(cs.w, cs.h));
+        await win.setMaxSize(new LogicalSize(cs.w, cs.h));
         setDecorated(false);
       }
       await win.setAlwaysOnTop(!panel);
@@ -296,8 +317,9 @@ export default function App() {
     const mi = await pickMonitorIndex(info);
     const mon = info.rects[mi];
     const scale = info.scales[mi] ?? 1;
-    const winW = Math.round(COMPANION_W * scale);
-    const winH = Math.round(COMPANION_H * scale);
+    const cs0 = companionSize();
+    const winW = Math.round(cs0.w * scale);
+    const winH = Math.round(cs0.h * scale);
     // A user-dragged position wins — unless the monitor setup changed.
     const saved = s.presence_pos;
     if (
@@ -365,6 +387,12 @@ export default function App() {
     manualOpenRef.current = false;
     pendingReminderRef.current = null;
     reminderLayoutRef.current = null;
+    if (bubbleTimer.current !== null) {
+      window.clearTimeout(bubbleTimer.current);
+      bubbleTimer.current = null;
+    }
+    setBubbleVisible(false);
+    setBubbleLayout(null);
     setActiveReminder(null);
     setView("companion");
     void setPanelChrome(false);
@@ -424,10 +452,11 @@ export default function App() {
       const info = await monitorInfo();
       const mon = info.rects[target.monitor];
       const scale = info.scales[target.monitor] ?? 1;
-      const winW = Math.round(COMPANION_W * scale);
-      const winH = Math.round(COMPANION_H * scale);
+      const cs1 = companionSize();
+      const winW = Math.round(cs1.w * scale);
+      const winH = Math.round(cs1.h * scale);
       const eo = Math.round(s.edge_offset * scale);
-      await win.setSize(new LogicalSize(COMPANION_W, COMPANION_H));
+      await win.setSize(new LogicalSize(cs1.w, cs1.h));
       const entrance = effectiveEntrance(s.entrance, s.animation);
       const cls = entranceClassFor(entrance);
       const ms = s.entrance_ms;
@@ -447,7 +476,7 @@ export default function App() {
         await win.show();
         await glidePosition(start, { x: target.x, y: target.y }, ms, (x, y) => {
           void win.setPosition(new PhysicalPosition(x, y)).catch(() => {});
-        });
+        }, startGlide());
       } else {
         await win.setPosition(new PhysicalPosition(target.x, target.y));
         await win.show();
@@ -487,7 +516,8 @@ export default function App() {
     applyCharTransform(target.preset);
     try {
       const win = getCurrentWindow();
-      await win.setSize(new LogicalSize(COMPANION_W, COMPANION_H));
+      const cs = companionSize();
+      await win.setSize(new LogicalSize(cs.w, cs.h));
       await win.setPosition(new PhysicalPosition(target.x, target.y));
     } catch {
       /* ignore */
@@ -535,7 +565,8 @@ export default function App() {
         // she doesn't jump when the bubble goes away.
         const charScrX = Math.round(from.x + rl.charX * scale);
         const charScrY = Math.round(from.y + rl.charY * scale);
-        await win.setSize(new LogicalSize(COMPANION_W, COMPANION_H));
+        const cs2 = companionSize();
+        await win.setSize(new LogicalSize(cs2.w, cs2.h));
         await win.setPosition(new PhysicalPosition(charScrX, charScrY));
         start = { x: charScrX, y: charScrY };
       }
@@ -565,11 +596,12 @@ export default function App() {
       }
       await glidePosition(start, to, ms, (x, y) => {
         void win.setPosition(new PhysicalPosition(x, y)).catch(() => {});
-      });
+      }, startGlide());
       // Retreat keeps her resting at the idle spot when idle presence
       // is visible; otherwise she slips out of sight.
       if (exit === "retreat" && s.idle_presence !== "hidden") {
-        await win.setSize(new LogicalSize(COMPANION_W, COMPANION_H));
+        const cs3 = companionSize();
+        await win.setSize(new LogicalSize(cs3.w, cs3.h));
         return;
       }
       await win.hide();
@@ -609,8 +641,9 @@ export default function App() {
       const mon = info.rects[target.monitor];
       const scale = info.scales[target.monitor] ?? 1;
       applyCharTransform(target.preset);
-      const side = bubbleSideFor(target.preset);
-      const layout = reminderWindowRect({
+      const cs4 = companionSize();
+      // Nila's screen-space rect (logical px): her preset anchor.
+      const charRect = windowRectForPreset({
         preset: target.preset,
         monitor: {
           x: mon.x / scale,
@@ -618,11 +651,25 @@ export default function App() {
           width: mon.width / scale,
           height: mon.height / scale,
         },
-        charW: COMPANION_W,
-        charH: COMPANION_H,
+        winW: cs4.w,
+        winH: cs4.h,
+        edgeOffset: s.edge_offset,
+        visibleFrac: 1,
+      });
+      // Collision-aware bubble placement relative to her actual bounds.
+      const layout = placeBubble({
+        charX: charRect.x,
+        charY: charRect.y,
+        charW: cs4.w,
+        charH: cs4.h,
+        monitor: {
+          x: mon.x / scale,
+          y: mon.y / scale,
+          width: mon.width / scale,
+          height: mon.height / scale,
+        },
         bubbleW: BUBBLE_W,
         bubbleH: BUBBLE_H,
-        edgeOffset: s.edge_offset,
         gap: REM_GAP,
       });
       // Padding around the layout, re-clamped to the monitor.
@@ -642,11 +689,30 @@ export default function App() {
           },
         ],
       );
-      setBubbleSide(side);
+      // Shift the inner layout by the clamp delta so character/bubble
+      // stay glued to their screen positions.
+      const dx = fixed.x - (layout.x - REM_PAD / 2);
+      const dy = fixed.y - (layout.y - REM_PAD / 2);
+      const inner = {
+        ...layout,
+        charX: layout.charX + REM_PAD / 2 + dx,
+        charY: layout.charY + REM_PAD / 2 + dy,
+        bubbleX: layout.bubbleX + REM_PAD / 2 + dx,
+        bubbleY: layout.bubbleY + REM_PAD / 2 + dy,
+      };
+      setBubbleSide(layout.side);
+      setBubbleLayout(inner);
+      // Staggered sequence (spec 15): the window is positioned and shown
+      // with Nila first; the bubble fades in 120ms later. Setting
+      // activeReminder renders her at the new spot; the bubble appears
+      // on the delayed flag.
+      if (bubbleTimer.current !== null) window.clearTimeout(bubbleTimer.current);
+      setBubbleVisible(false);
       setActiveReminder(r);
       // Remember the character box so a "retreat" exit can shrink the
-      // window back around her without her jumping on screen.
-      reminderLayoutRef.current = { ...layout, x: fixed.x, y: fixed.y };
+      // window back around her without her jumping on screen. Store the
+      // padded inner layout (matching the actual window position).
+      reminderLayoutRef.current = { ...inner, x: fixed.x, y: fixed.y };
       // Clear the companion's min/max locks (220x300) BEFORE resizing:
       // otherwise setSize is clamped and the bubble gets cropped.
       // Max-before-min order (same lesson as the settings panel fix).
@@ -694,9 +760,18 @@ export default function App() {
         }
         placeAt(sx, sy);
         await win.show();
-        await glidePosition({ x: sx, y: sy }, { x: fixed.x, y: fixed.y }, ms, (x, y) =>
-          placeAt(x, y),
+        await glidePosition(
+          { x: sx, y: sy },
+          { x: fixed.x, y: fixed.y },
+          ms,
+          (x, y) => placeAt(x, y),
+          startGlide(),
         );
+        // Nila has arrived; now the bubble fades in (staggered).
+        bubbleTimer.current = window.setTimeout(() => {
+          bubbleTimer.current = null;
+          setBubbleVisible(true);
+        }, 120);
       } else {
         placeAt(fixed.x, fixed.y);
         await win.show();
@@ -708,6 +783,11 @@ export default function App() {
             setEnterAnim(null);
           }, ms + 80);
         }
+        // Staggered bubble reveal for non-glide entrances too.
+        bubbleTimer.current = window.setTimeout(() => {
+          bubbleTimer.current = null;
+          setBubbleVisible(true);
+        }, 120);
       }
       await win.setFocus().catch(() => {});
     } catch {
@@ -724,7 +804,9 @@ export default function App() {
   const startDrag = (e: React.MouseEvent) => {
     downPos.current = { x: e.clientX, y: e.clientY };
     if (!isTauri() || e.button !== 0) return;
-    if (view !== "companion" || activeReminder) return;
+    if (view !== "companion") return;
+    // Dragging during a reminder moves the whole window (character +
+    // bubble) as a unit, so the layout stays valid.
     if (!settingsRef.current.draggable) return;
     void getCurrentWindow().startDragging().catch(() => {});
   };
@@ -824,10 +906,11 @@ export default function App() {
 
   // First-launch greeting.
   useEffect(() => {
+    let inner: number | null = null;
     const t = window.setTimeout(() => {
       engineRef.current!.wave();
       setGreeted(true);
-      window.setTimeout(() => engineRef.current!.returnToIdle(), 2500);
+      inner = window.setTimeout(() => engineRef.current!.returnToIdle(), 2500);
     }, 600);
     // The window starts hidden in the tray; seat it at her presence spot
     // before it first appears so entrances always start right.
@@ -846,7 +929,10 @@ export default function App() {
         }
       }
     })();
-    return () => window.clearTimeout(t);
+    return () => {
+      window.clearTimeout(t);
+      if (inner !== null) window.clearTimeout(inner);
+    };
   }, []);
 
   // Load settings + reminders; seed built-ins on first launch.
@@ -1033,6 +1119,7 @@ export default function App() {
     void getCurrentWindow().minimize().catch(() => {});
   };
 
+  const waveTimer = useRef<number | null>(null);
   const handleCompanionClick = (e?: React.MouseEvent) => {
     // "Character only" mode: clicking Nila reveals the pending reminder.
     const pending = pendingReminderRef.current;
@@ -1052,7 +1139,28 @@ export default function App() {
     if (e && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
     const engine = engineRef.current!;
     engine.wave();
-    window.setTimeout(() => engine.returnToIdle(), 1800);
+    if (waveTimer.current !== null) window.clearTimeout(waveTimer.current);
+    waveTimer.current = window.setTimeout(() => {
+      waveTimer.current = null;
+      engine.returnToIdle();
+    }, 1800);
+  };
+
+  /**
+   * Exit sequence (spec 16): the bubble fades first, then Nila reacts,
+   * then she leaves with her exit behavior. Never unmounts instantly.
+   */
+  const hideBubbleThen = (fn: () => void, delayMs = 220) => {
+    if (bubbleTimer.current !== null) {
+      window.clearTimeout(bubbleTimer.current);
+      bubbleTimer.current = null;
+    }
+    setBubbleVisible(false);
+    window.setTimeout(() => {
+      setActiveReminder(null);
+      setBubbleLayout(null);
+      fn();
+    }, delayMs);
   };
 
   const dismissActive = async (id: string, action: "dismissed" | "completed") => {
@@ -1061,15 +1169,16 @@ export default function App() {
     } catch {
       /* demo mode */
     }
-    engineRef.current!.dismissReminder();
-    setActiveReminder(null);
-    if (action === "completed") {
-      // She beams with pride, then leaves with her exit behavior.
-      flashExpression("proud", 1600);
-      exitAfterBeat(1300);
-      return;
-    }
-    maybeHideAfterReminder();
+    hideBubbleThen(() => {
+      engineRef.current!.dismissReminder();
+      if (action === "completed") {
+        // She beams with pride, then leaves with her exit behavior.
+        flashExpression("proud", 1600);
+        exitAfterBeat(1300);
+        return;
+      }
+      maybeHideAfterReminder();
+    });
   };
 
   const snoozeActive = async (id: string, minutes: 10 | 30 | 60) => {
@@ -1078,11 +1187,12 @@ export default function App() {
     } catch {
       /* demo mode */
     }
-    engineRef.current!.snoozeReminder();
-    setActiveReminder(null);
-    // She gets drowsy, then leaves with her exit behavior.
-    flashExpression("sleepy", 1400);
-    exitAfterBeat(1200);
+    hideBubbleThen(() => {
+      engineRef.current!.snoozeReminder();
+      // She gets drowsy, then leaves with her exit behavior.
+      flashExpression("sleepy", 1400);
+      exitAfterBeat(1200);
+    });
   };
 
   const pauseAll = async (minutes: 30 | 60 | null) => {
@@ -1092,6 +1202,12 @@ export default function App() {
       /* demo mode */
     }
     engineRef.current!.pause();
+    if (bubbleTimer.current !== null) {
+      window.clearTimeout(bubbleTimer.current);
+      bubbleTimer.current = null;
+    }
+    setBubbleVisible(false);
+    setBubbleLayout(null);
     setActiveReminder(null);
     setPaused(true);
     // Keep the settings state in sync: pause_all writes paused_until to the
@@ -1266,6 +1382,12 @@ export default function App() {
       });
       offHidden = await listenEvent("TRAY_HIDDEN", () => {
         manualOpenRef.current = false;
+        if (bubbleTimer.current !== null) {
+          window.clearTimeout(bubbleTimer.current);
+          bubbleTimer.current = null;
+        }
+        setBubbleVisible(false);
+        setBubbleLayout(null);
         setActiveReminder(null);
         setView("companion");
       });
@@ -1372,7 +1494,47 @@ export default function App() {
           className={`nila-stage${stageFading ? " stage-hidden" : ""}${enterAnim ? ` ${enterAnim}` : ""}`}
           style={enterAnim ? { animationDuration: `${settings.entrance_ms}ms` } : undefined}
         >
-          {activeReminder ? (
+          {activeReminder && bubbleLayout ? (
+            <div className="reminder-stage">
+              <div
+                className="reminder-char"
+                style={{
+                  left: bubbleLayout.charX,
+                  top: bubbleLayout.charY,
+                  transform: charTransform,
+                }}
+              >
+                <div className="char-drag" onMouseDown={startDrag}>
+                  <NilaCharacter
+                    state={snap.state}
+                    animation={snap.animation}
+                    size={snap.size}
+                    dark={dark}
+                    expression={snap.expression}
+                    groundShadow={showGroundShadow}
+                  />
+                </div>
+              </div>
+              <div
+                className={`reminder-bubble side-${bubbleLayout.side}${bubbleVisible ? " bubble-enter" : ""}`}
+                style={{
+                  left: bubbleLayout.bubbleX,
+                  top: bubbleLayout.bubbleY,
+                  width: bubbleLayout.bubbleW,
+                  ["--tail-frac" as string]: bubbleLayout.tailFrac,
+                  opacity: bubbleVisible ? 1 : 0,
+                }}
+              >
+                <ReminderOverlay
+                  inLayout
+                  reminder={activeReminder}
+                  onDone={dismissActive}
+                  onSnooze={snoozeActive}
+                  onPause={() => void pauseAll(30)}
+                />
+              </div>
+            </div>
+          ) : activeReminder ? (
             <div className={`reminder-stage side-${bubbleSide}`}>
               {(bubbleSide === "left" || bubbleSide === "above") && (
                 <div className="reminder-bubble">
