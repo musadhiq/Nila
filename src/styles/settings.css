@@ -1214,3 +1214,77 @@ button.srow.as-button:hover {
 [data-theme="dark"] .quiet-banner {
   background: rgba(111, 143, 247, 0.18);
 }
+
+/* ------------------------------------------------------------------ */
+/* Character page — V1 Top Center Dock                                 */
+/* ------------------------------------------------------------------ */
+
+/* Small static diagram showing where the dock lives: top center of a
+ * mini desktop, below a notch. Purely illustrative. */
+.dock-diagram {
+  margin: 4px 0 12px;
+}
+.dock-diagram-screen {
+  position: relative;
+  height: 148px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2b3550 0%, #1d2438 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.dock-diagram-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 14px;
+  border-radius: 0 0 10px 10px;
+  background: #10141f;
+}
+.dock-diagram-card {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  border-radius: 6px 6px 14px 14px;
+  background: #fff;
+  border: 1px solid rgba(20, 28, 48, 0.1);
+  box-shadow: 0 10px 24px rgba(8, 12, 26, 0.35);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dock-diagram-eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a93ad;
+}
+.dock-diagram-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: #1c2333;
+}
+.dock-diagram-msg {
+  font-size: 11.5px;
+  color: #4a5468;
+}
+.dock-diagram-nila {
+  position: absolute;
+  right: 6px;
+  bottom: -6px;
+  width: 52px;
+  pointer-events: none;
+}
+
+/* Dev-only preview buttons */
+.preview-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 12px;
+}
