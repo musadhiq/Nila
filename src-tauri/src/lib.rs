@@ -127,7 +127,7 @@ fn autostart_on(app: &tauri::AppHandle) -> bool {
 fn toggle_autostart(app: &tauri::AppHandle) {
     use tauri_plugin_autostart::ManagerExt;
     let enable = !autostart_on(app);
-    let m = app.autostart();
+    let m = app.autolaunch();
     let _ = if enable { m.enable() } else { m.disable() };
     if let Some(st) = app.try_state::<db::DbState>() {
         if let Ok(conn) = st.0.lock() {
@@ -320,7 +320,7 @@ pub fn run() {
             // launch — the settings toggle persists it; this enforces it.
             {
                 use tauri_plugin_autostart::ManagerExt;
-                let m = app.handle().autostart();
+                let m = app.handle().autolaunch();
                 let _ = if autostart_on { m.enable() } else { m.disable() };
             }
             Ok(())
