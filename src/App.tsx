@@ -1004,7 +1004,12 @@ export default function App() {
             initialPage={setupMode ? "welcome" : (panelPage ?? undefined)}
             autoNewReminder={panelAutoNew}
             setupMode={setupMode}
-            onSetupComplete={() => setSetupMode(false)}
+            // Onboarding finished: persist off setup mode and hand the
+            // window back to the tray — the main Nila experience.
+            onSetupComplete={() => {
+              setSetupMode(false);
+              hideToTray();
+            }}
             onSave={(s) => void saveSettings(s)}
             onPause={(m) => void pauseAll(m)}
             onResume={() => void resumeAll()}

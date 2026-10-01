@@ -14,11 +14,9 @@ import { SettingsLayout, type PageId } from "./settings/SettingsLayout";
 import { WelcomePage } from "./settings/pages/WelcomePage";
 import { GeneralPage } from "./settings/pages/GeneralPage";
 import { RemindersPage } from "./settings/pages/RemindersPage";
-import { CharacterPage } from "./settings/pages/CharacterPage";
+import { NilaPage } from "./settings/pages/NilaPage";
 import { AppearancePage } from "./settings/pages/AppearancePage";
-import { SchedulePage } from "./settings/pages/SchedulePage";
-import { NotificationsPage } from "./settings/pages/NotificationsPage";
-import { LanguagePage } from "./settings/pages/LanguagePage";
+import { AccessibilityPage } from "./settings/pages/AccessibilityPage";
 import { AboutPage } from "./settings/pages/AboutPage";
 import type { ReminderInput } from "./settings/ReminderEditor";
 
@@ -84,11 +82,26 @@ export function SettingsPanel({
   onUpdateReminder,
 }: Props) {
   const [page, setPage] = useState<PageId>(initialPage ?? "general");
+  /** Bumped to open the reminder editor from the welcome page. */
+  const [editorSignal, setEditorSignal] = useState(0);
   const lang: Language = settings.language;
   const t = getStrings(lang);
 
   const update = (patch: Partial<AppSettings>) =>
     onSave({ ...settings, ...patch });
+
+  /** First-run completion: persist the flag, then hand off to the app. */
+  const finishSetup = () => {
+    update({ setup_complete: true });
+    onSetupComplete?.();
+  };
+
+  /** Welcome page "Create your first reminder": jump to Reminders with the
+   *  editor already open (setup mode stays on until Continue). */
+  const createFirstReminder = () => {
+    setPage("reminders");
+    setEditorSignal((n) => n + 1);
+  };
 
   // Quiet-hours banner: visible when reminders are currently suppressed.
   const quietUntil = quietHoursActive(settings.quiet_start, settings.quiet_end);
@@ -142,6 +155,8 @@ export function SettingsPanel({
         onClose={onClose}
         onMinimize={onMinimize}
         nativeTitlebar={nativeTitlebar}
+        setupMode={setupMode}
+        onSetupContinue={finishSetup}
       >
         {quietUntil && (
           <div className="quiet-banner" role="status">
@@ -154,11 +169,8 @@ export function SettingsPanel({
             settings={settings}
             update={update}
             setupMode={setupMode}
-            onFinishSetup={() => {
-              update({ setup_complete: true });
-              onSetupComplete?.();
-              setPage("general");
-            }}
+            onFinishSetup={finishSetup}
+            onCreateFirstReminder={createFirstReminder}
           />
         )}
         {page === "general" && (
@@ -181,14 +193,15 @@ export function SettingsPanel({
             lang={lang}
             reminders={reminders}
             autoNew={autoNewReminder}
+            openEditorSignal={editorSignal}
             onToggle={onToggleReminder}
             onDelete={onDeleteReminder}
             onCreate={onCreateReminder}
             onUpdate={onUpdateReminder}
           />
         )}
-        {page === "character" && (
-          <CharacterPage
+        {page === "nila" && (
+          <NilaPage
             t={t}
             settings={settings}
             update={update}
@@ -198,17 +211,16 @@ export function SettingsPanel({
         {page === "appearance" && (
           <AppearancePage t={t} settings={settings} update={update} />
         )}
-        {page === "schedule" && (
-          <SchedulePage t={t} settings={settings} update={update} />
-        )}
-        {page === "notifications" && (
-          <NotificationsPage t={t} settings={settings} update={update} />
-        )}
-        {page === "language" && (
-          <LanguagePage t={t} settings={settings} update={update} />
+        {page === "accessibility" && (
+          <AccessibilityPage t={t} settings={settings} update={update} />
         )}
         {page === "about" && (
-          <AboutPage t={t} settings={settings} update={update} />
+          <AboutPage
+            t={t}
+            settings={settings}
+            update={update}
+            onOpenWelcome={() => setPage("welcome")}
+          />
         )}
       </SettingsLayout>
     </div>
