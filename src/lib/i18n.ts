@@ -29,6 +29,10 @@ const en = {
     in10min: "In 10 min",
     nilaAlt: "Nila peeking over the notification",
   },
+  wake: {
+    listening: "Listening…",
+    nilaAlt: "Nila listening",
+  },
   nav: {
     welcome: "Welcome",
     general: "General",
@@ -89,6 +93,8 @@ const en = {
     behaviorSection: "Nila behavior",
     startAtLogin: "Start Nila at login",
     startAtLoginDesc: "Nila will appear automatically when you sign in.",
+    wakeWord: "Wake word",
+    wakeWordDesc: "Listen for the wake word and wake Nila with your voice.",
     pauseSection: "Pause reminders",
     pauseDesc: "Take a break from reminders for a while.",
     pause30: "30 minutes",
@@ -398,6 +404,10 @@ const manglish: Dict = {
     in10min: "10 minute kazhinj",
     nilaAlt: "Notification-nokkiya Nila",
   },
+  wake: {
+    listening: "Kelkkunnu…",
+    nilaAlt: "Kelkkunna Nila",
+  },
   nav: {
     welcome: "Welcome",
     general: "General",
@@ -458,6 +468,8 @@ const manglish: Dict = {
     behaviorSection: "Nila behavior",
     startAtLogin: "Login-il Nila start cheyyuka",
     startAtLoginDesc: "Sign in cheyyumbol Nila thanne varum.",
+    wakeWord: "Wake word",
+    wakeWordDesc: "Wake word kelkkaan Nila microphone open aakki vechirikkanam.",
     pauseSection: "Reminders nirthuka",
     pauseDesc: "Kurachu nerathekk reminders venda.",
     pause30: "30 minute",
