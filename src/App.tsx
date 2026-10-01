@@ -31,12 +31,11 @@ import { playReminderChime } from "./lib/sound";
 import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
 import { NotificationDock } from "./dock/NotificationDock";
-import curiousUrl from "../character/expressions/curious.png";
-import ideaUrl from "../character/expressions/idea.png";
-import playfulUrl from "../character/expressions/playful.png";
-import pointUrl from "../character/expressions/point.png";
-import restChinUrl from "../character/expressions/rest-chin.png";
-import sleepyUrl from "../character/expressions/sleepy.png";
+import {
+  expressionSlotForGreeting,
+  expressionSlotForKind,
+} from "./dock/expressionSlots";
+import { expressionUrl } from "./dock/expressions";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockOnScreen } from "./dock/dockMachine";
@@ -56,29 +55,6 @@ function isPausedSettings(s: AppSettings): boolean {
  * panel or the top-center notification dock. Listens for REMINDER_DUE
  * from the Rust scheduler; settings live in the tray menu.
  */
-/**
- * Square expression for the dock's white character box, per reminder
- * kind. The introduction shows curious; everything else gets its own
- * face (several show her front hands). Unknown kinds point.
- */
-function dockExpressionFor(n: { id: string; kind: string }): string {
-  if (n.id.startsWith("greeting-")) return curiousUrl;
-  switch (n.kind) {
-    case "water":
-      return ideaUrl;
-    case "food":
-      return playfulUrl;
-    case "break":
-      return restChinUrl;
-    case "move":
-      return pointUrl;
-    case "sleep":
-      return sleepyUrl;
-    default:
-      return pointUrl;
-  }
-}
-
 export default function App() {
   const engineRef = useRef<CharacterEngine | null>(null);
   if (!engineRef.current) engineRef.current = new CharacterEngine();
@@ -893,11 +869,19 @@ export default function App() {
           reminder={dock.current}
           reducedMotion={settings.animation !== "full" || prefersReducedMotion}
           nila={
-            /* Square expression per reminder kind — single calm images
-             * (several show her front hands), no portrait frames. */
+            /* Semantic expressions: the slot is resolved by meaning
+             * (kind / greeting / dismissal reaction), never picked by
+             * hand in the component. A dismissal reaction (sad, or
+             * annoyed after a streak) overrides the kind expression
+             * while it is acknowledged. Single static frames — calm. */
             dock.current ? (
               <img
-                src={dockExpressionFor(dock.current)}
+                src={expressionUrl(
+                  dock.reaction ??
+                    (dock.current.id.startsWith("greeting-")
+                      ? expressionSlotForGreeting()
+                      : expressionSlotForKind(dock.current.kind)),
+                )}
                 width={192}
                 height={192}
                 alt={getStrings(settings.language).dock.nilaAlt}

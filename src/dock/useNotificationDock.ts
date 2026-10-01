@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   dockReducer,
   initialDockState,
@@ -6,6 +6,10 @@ import {
   type DockNotification,
   type DockPhase,
 } from "./dockMachine";
+import {
+  expressionSlotForDismissal,
+  type ExpressionSlot,
+} from "./expressionSlots";
 
 /**
  * useNotificationDock — owns the dock state machine and its timers.
@@ -20,7 +24,9 @@ import {
  * - expanding (400ms): card settles; Nila leans on its left edge.
  * - visible: the bubble holds for 15s, then auto-hides. Nila keeps
  *   leaning on the card — no pose changes, no extra chrome.
- * - acknowledging: a short beat, then the card collapses away.
+ * - acknowledging: a short beat, then the card collapses away. A
+ *   dismissal holds ~1s on Nila's reaction (sad, or annoyed after a
+ *   streak of dismissals) before collapsing; done/snooze collapse fast.
  * - collapsing (260ms): dock contracts away; then the next queued
  *   notification enters (or the dock hides and Nila returns to idle).
  *
@@ -33,6 +39,8 @@ const TIMING = {
     expanding: 400,
     autoHide: 15000,
     ack: 450,
+    /** Dismissal holds on Nila's sad/annoyed reaction before collapsing. */
+    react: 1000,
     collapsing: 260,
   },
   reduced: {
@@ -40,6 +48,7 @@ const TIMING = {
     expanding: 120,
     autoHide: 15000,
     ack: 200,
+    react: 500,
     collapsing: 120,
   },
 } as const;
@@ -50,6 +59,12 @@ export interface NotificationDockApi {
   queueLength: number;
   /** The action being acknowledged (set during acknowledging/collapsing). */
   ackAction: DockAckAction | null;
+  /**
+   * Nila's negative-action reaction, set while a dismissal is being
+   * acknowledged (sad, or annoyed after a streak). Null otherwise —
+   * the card then shows the per-kind expression.
+   */
+  reaction: ExpressionSlot | null;
   notify: (n: DockNotification) => void;
   dismiss: (action: DockAckAction) => void;
   interact: () => void;
@@ -67,6 +82,9 @@ export function useNotificationDock(opts: {
   const playRef = useRef(playSequence);
   playRef.current = playSequence;
   const phaseRef = useRef<DockPhase>("hidden");
+  /** Back-to-back dismissals this session; done/snooze reset it. */
+  const dismissStreak = useRef(0);
+  const [reaction, setReaction] = useState<ExpressionSlot | null>(null);
 
   const clearTimers = useCallback(() => {
     for (const id of timers.current) window.clearTimeout(id);
@@ -102,6 +120,7 @@ export function useNotificationDock(opts: {
       case "entering":
         // The card slides/fades in via CSS. Nila is a static lean-in
         // frame — no sequence playback, so there is nothing to stutter.
+        setReaction(null);
         later(t.entering, () => dispatch({ type: "enter-done" }));
         break;
       case "expanding":
@@ -113,14 +132,26 @@ export function useNotificationDock(opts: {
         later(t.autoHide, () => dispatch({ type: "dismiss", action: "dismissed" }));
         break;
       case "acknowledging":
-        // No gesture swap: Nila keeps leaning on the card while it
-        // collapses away. Minimal and powerful.
-        later(t.ack, () => dispatch({ type: "ack-done" }));
+        if (state.ackAction === "dismissed") {
+          // Negative user action: Nila reacts briefly — sad, or a mild
+          // annoyed huff after a streak of dismissals. Cute, never
+          // guilt-tripping. The reaction holds ~1s, then collapses.
+          dismissStreak.current += 1;
+          setReaction(
+            expressionSlotForDismissal(dismissStreak.current),
+          );
+          later(t.react, () => dispatch({ type: "ack-done" }));
+        } else {
+          // Done/snooze reset the streak and collapse without a beat.
+          dismissStreak.current = 0;
+          later(t.ack, () => dispatch({ type: "ack-done" }));
+        }
         break;
       case "collapsing":
         later(t.collapsing, () => dispatch({ type: "collapse-done" }));
         break;
       case "hidden":
+        setReaction(null);
         playRef.current("idle");
         break;
     }
@@ -132,6 +163,7 @@ export function useNotificationDock(opts: {
     current: state.current,
     queueLength: state.queue.length,
     ackAction: state.ackAction,
+    reaction,
     notify,
     dismiss,
     interact,
