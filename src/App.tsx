@@ -31,6 +31,7 @@ import { playReminderChime } from "./lib/sound";
 import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
 import { NotificationDock } from "./dock/NotificationDock";
+import { DockNilaFigure } from "./dock/DockNila";
 import { expressionSlotForContext } from "./dock/expressionSlots";
 import { expressionUrl } from "./dock/expressions";
 import { useNotificationDock } from "./dock/useNotificationDock";
@@ -895,9 +896,11 @@ export default function App() {
              * never picked by hand in the component. An acknowledgement
              * reaction (happy on success; sad, or annoyed after a
              * streak, on rejection) overrides the kind expression while
-             * it plays. Single static frames — calm. */
+             * it plays. DockNilaFigure adds gentle life — idle breathe,
+             * blink beats, expression crossfades, one-shot reactions —
+             * without touching the card layout. */
             dock.current ? (
-              <img
+              <DockNilaFigure
                 src={expressionUrl(
                   dock.reaction ??
                     expressionSlotForContext(
@@ -906,10 +909,9 @@ export default function App() {
                         : { type: "kind", kind: dock.current.kind },
                     ),
                 )}
-                width={192}
-                height={192}
                 alt={getStrings(settings.language).dock.nilaAlt}
-                draggable={false}
+                reaction={dock.reaction}
+                reducedMotion={settings.animation !== "full" || prefersReducedMotion}
               />
             ) : null
           }

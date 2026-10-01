@@ -14,10 +14,12 @@ import {
 /**
  * useNotificationDock — owns the dock state machine and its timers.
  *
- * The dock's Nila is a single static square expression in a small
- * white box (per reminder kind, several showing her front hands) —
- * calm, with no looping motion. The hook plays no character sequences; on hide it returns the engine to idle so the
- * tray state stays clean.
+ * The dock's Nila is a square expression portrait in a small white box
+ * (per reminder kind, several showing her front hands). DockNilaFigure
+ * gives her gentle life — idle breathe, blink beats, crossfades, and
+ * one-shot reactions — all transform/opacity only, no looping excess.
+ * The hook plays no character sequences; on hide it returns the engine
+ * to idle so the tray state stays clean.
  *
  * Phase choreography (full motion):
  * - entering (300ms): the chat card slides in from behind the top bar.
@@ -120,8 +122,9 @@ export function useNotificationDock(opts: {
     };
     switch (state.phase) {
       case "entering":
-        // The card slides/fades in via CSS. Nila is a static lean-in
-        // frame — no sequence playback, so there is nothing to stutter.
+        // The card slides/fades in via CSS; Nila's own entrance pop and
+        // idle life are handled by DockNilaFigure + CSS — no sequence
+        // playback, so there is nothing to stutter.
         setReaction(null);
         later(t.entering, () => dispatch({ type: "enter-done" }));
         break;

@@ -409,7 +409,10 @@ html, body {
  * top-center of the screen, hanging just below the system top bar.
  * Nila sits in her own small white box to the left of the bubble,
  * showing a square expression per reminder kind (several show her
- * front hands). Both are single static frames: calm, no looping motion. The bubble has a left-pointing tail, a title row
+ * front hands). Her portrait carries gentle life — a slow idle breathe,
+ * irregular blink beats, smooth crossfades between expressions, and
+ * one-shot contextual reactions — all transform/opacity only, so the
+ * layout never moves. The bubble has a left-pointing tail, a title row
  * with a close button, and two quick-reply pills (Okay, Nila /
  * In 10 min). The card auto-hides after 15s; clicking it dismisses it.
  * Minimal and powerful: no tick, no badge, no extra chrome.
@@ -546,8 +549,9 @@ html, body {
  * from the bubble edge mid-animation. */
 .dock-wrap.is-entering { animation: dock-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .dock-wrap.is-collapsing { animation: dock-out 260ms ease-in both; }
-/* Text settles in just after the card lands; Nila's lean-in frames
- * carry her own motion, so she gets no CSS animation. */
+/* Text settles in just after the card lands; Nila's own entrance pop,
+ * idle breathe and blink beats live on her figure (see "Dock Nila life"
+ * below), staggered just behind the card. */
 .dock-wrap.is-entering .dock-title-row,
 .dock-wrap.is-entering .dock-message,
 .dock-wrap.is-entering .dock-pills { opacity: 0; }
@@ -576,6 +580,110 @@ html, body {
 }
 @keyframes dock-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dock-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* ---- Dock Nila life: gentle idle motion, blink beats, expression
+ * crossfades, and one-shot contextual reactions. Transform + opacity
+ * only — the card layout is untouched. Everything here is disabled
+ * under reduced motion (see rules below). ----
+ *
+ * Layering: .dock-nila (white box) carries the entrance pop;
+ * .dock-nila-fig (img wrapper) carries the infinite idle breathe and
+ * the JS-driven blink dip; the current expression img carries the
+ * one-shot reaction (cheer/droop/huff) and the crossfade. */
+
+/* Subtle idle: a slow breath, barely-there lift. */
+@keyframes dock-nila-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1.5px) scale(1.022); }
+}
+.dock-nila-fig {
+  position: relative;
+  animation: dock-nila-breathe 4.2s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+
+/* Blink beat: a quick, soft vertical dip suggesting a blink. There are
+ * no eyelid frames in the asset set, so this is an approximation — the
+ * whole figure settles ~6% for 180ms on an irregular 3–7s interval.
+ * transform-origin sits near the eye line. */
+@keyframes dock-nila-blink {
+  0% { transform: scaleY(1); }
+  40% { transform: scaleY(0.94); }
+  100% { transform: scaleY(1); }
+}
+.dock-nila-fig.is-blink {
+  animation: dock-nila-blink 180ms ease-out;
+  transform-origin: 50% 30%;
+}
+
+/* Expression crossfade: old and new expressions overlap briefly. */
+.dock-nila-xfade { position: relative; }
+.dock-nila-xfade img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 11px;
+  pointer-events: none;
+}
+.dock-nila-xfade img.is-prev {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 220ms ease-out;
+}
+@keyframes dock-nila-fadein { from { opacity: 0; } to { opacity: 1; } }
+.dock-nila-xfade img.is-new { animation: dock-nila-fadein 220ms ease-out; }
+
+/* One-shot contextual reactions (transform only, run once). */
+@keyframes dock-nila-cheer {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-7px); }
+  70% { transform: translateY(1px); }
+  100% { transform: translateY(0); }
+}
+.dock-nila-cheer { animation: dock-nila-cheer 620ms ease-out; transform-origin: 50% 90%; }
+@keyframes dock-nila-droop {
+  0% { transform: translateY(0) scale(1); }
+  100% { transform: translateY(4px) scale(0.985); }
+}
+.dock-nila-droop { animation: dock-nila-droop 480ms ease-out both; transform-origin: 50% 90%; }
+@keyframes dock-nila-huff {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-2.5deg); }
+  75% { transform: rotate(2.5deg); }
+}
+.dock-nila-huff { animation: dock-nila-huff 420ms ease-in-out; transform-origin: 50% 90%; }
+
+/* Entrance: Nila arrives a breath after the card starts sliding in. */
+@keyframes dock-nila-in {
+  from { opacity: 0; transform: translateY(-14px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.dock-wrap.is-entering .dock-nila {
+  animation: dock-nila-in 380ms 70ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---- Reduced motion: no idle, no blink, no one-shots, instant swaps. ---- */
+@media (prefers-reduced-motion: reduce) {
+  .dock-nila-fig { animation: none; }
+  .dock-nila-fig.is-blink { animation: none; }
+  .dock-nila-xfade img.is-new { animation: none; }
+  .dock-nila-xfade img.is-prev { display: none; }
+  .dock-nila-cheer, .dock-nila-droop, .dock-nila-huff { animation: none; }
+  .dock-wrap.is-entering .dock-nila { animation: dock-fade-in 140ms ease-out both; }
+}
+.dock-root.reduce-motion .dock-nila-fig { animation: none; }
+.dock-root.reduce-motion .dock-nila-fig.is-blink { animation: none; }
+.dock-root.reduce-motion .dock-nila-xfade img.is-new { animation: none; }
+.dock-root.reduce-motion .dock-nila-xfade img.is-prev { display: none; }
+.dock-root.reduce-motion .dock-nila-cheer,
+.dock-root.reduce-motion .dock-nila-droop,
+.dock-root.reduce-motion .dock-nila-huff { animation: none; }
+.dock-root.reduce-motion .dock-wrap.is-entering .dock-nila { animation: dock-fade-in 140ms ease-out both; }
+
 /* Pill buttons for the chat-bubble feel. */
 .overlay-card .btn { border-radius: 999px; }
 
