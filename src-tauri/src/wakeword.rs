@@ -92,6 +92,16 @@ pub fn set_enabled(app: &AppHandle, enabled: bool) {
     }
 }
 
+/// Whether the wake-word listener is currently enabled (the settings
+/// toggle). The voice worker reads this to park the listener while a
+/// voice session owns the microphone, then restore the user's setting
+/// afterwards. Detection behavior itself is unchanged.
+pub fn is_enabled(app: &AppHandle) -> bool {
+    app.try_state::<WakeWordState>()
+        .map(|st| st.enabled.load(Ordering::SeqCst))
+        .unwrap_or(false)
+}
+
 /// Ask the worker thread to stop. Called on application exit.
 ///
 /// NOTE: `Listener::next_detection()` blocks inside the crate until audio

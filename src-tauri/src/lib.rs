@@ -13,6 +13,7 @@ pub mod db;
 pub mod platform;
 pub mod scheduler;
 pub mod system_monitor;
+pub mod voice;
 pub mod wakeword;
 
 use tauri::Manager;
@@ -336,6 +337,13 @@ pub fn run() {
             // settings toggle flips the worker live (mic released while
             // off); the initial value comes from the DB read above.
             wakeword::spawn(app.handle(), wake_word_on);
+            // Voice-command worker: subscribes to the wake-word
+            // detector's `nila://wake-detected` event, parks the wake
+            // listener while a command is captured, and transcribes it
+            // locally with sherpa-onnx (INT8 Conformer-CTC). Audio is
+            // never recorded or saved; inference runs only during a
+            // post-wake session, never while idle.
+            voice::spawn(app.handle());
 
             // Menu-bar tray: the character window stays hidden until a
             // reminder is due (or the user opens it from the tray).
@@ -369,10 +377,12 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nila");
-    // Stop the wake-word worker before the process exits. The worker
-    // honors the flag between detections; see wakeword::request_stop.
+    // Stop the voice and wake-word workers before the process exits.
+    // Each honors its flag between blocking calls; see
+    // voice::request_stop and wakeword::request_stop.
     app.run(|app, event| {
         if matches!(event, tauri::RunEvent::Exit) {
+            voice::request_stop(app);
             wakeword::request_stop(app);
         }
     });
