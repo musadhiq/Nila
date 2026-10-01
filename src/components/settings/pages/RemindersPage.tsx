@@ -29,6 +29,7 @@ export function RemindersPage({
   lang,
   reminders,
   autoNew,
+  openEditorSignal,
   onToggle,
   onDelete,
   onCreate,
@@ -39,6 +40,8 @@ export function RemindersPage({
   reminders: Reminder[];
   /** Open the editor immediately (tray "New Reminder"). */
   autoNew?: boolean;
+  /** Bump to open the editor from elsewhere (welcome page). */
+  openEditorSignal?: number;
   onToggle: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
   onCreate: (input: ReminderInput) => void;
@@ -48,6 +51,11 @@ export function RemindersPage({
   const [editing, setEditing] = useState<Reminder | "new" | null>(
     autoNew ? "new" : null,
   );
+
+  // Welcome page "Create your first reminder" lands here: open the editor.
+  useEffect(() => {
+    if (openEditorSignal && openEditorSignal > 0) setEditing("new");
+  }, [openEditorSignal]);
 
   // Ask the backend what it loaded, validated, and scheduled: the
   // scheduler owns all timing; this page only formats its answer.

@@ -1,35 +1,54 @@
 /**
- * Welcome page — the friendly landing page, and the first-run setup flow.
+ * Welcome page — the friendly first-run onboarding, and a replays-later
+ * tour. Short by design: character, intro, three steps, language, two
+ * actions. No settings firehose.
  *
- * In setup mode (first launch) it shows a "Get started" button that marks
- * setup complete; afterwards it is a normal sidebar page.
+ * In setup mode (first launch) it shows "Create your first reminder" and
+ * "Continue". Afterwards it is a calm tour page with no finish button.
  */
-import { SettingsSection } from "../ui";
+import { expressionUrl } from "../../../dock/expressions";
+import type { Language } from "../../../lib/i18n";
+import { Segmented } from "../ui";
 import type { PageProps } from "./page";
-import logoUrl from "../../../../character/nila-logo.png";
 
 interface WelcomeProps extends PageProps {
-  /** First-run flow: show the finish button. */
+  /** First-run flow: show the onboarding actions. */
   setupMode?: boolean;
   /** Called when the user finishes the first-run setup. */
   onFinishSetup?: () => void;
+  /** Jump to the reminders page with the editor open. */
+  onCreateFirstReminder?: () => void;
 }
 
-export function WelcomePage({ t, setupMode, onFinishSetup }: WelcomeProps) {
+export function WelcomePage({
+  t,
+  settings,
+  update,
+  setupMode,
+  onFinishSetup,
+  onCreateFirstReminder,
+}: WelcomeProps) {
   const w = t.welcome;
+  const l = t.languagePage;
   const steps = [
     { n: "1", title: w.step1Title, text: w.step1Text },
     { n: "2", title: w.step2Title, text: w.step2Text },
     { n: "3", title: w.step3Title, text: w.step3Text },
   ];
   return (
-    <div className="settings-content-inner">
+    <div className="settings-content-inner welcome-onboard">
       <div className="welcome-hero">
-        <img src={logoUrl} alt="Nila" draggable={false} />
-        <p className="about-tagline">{w.tagline}</p>
+        <img
+          src={expressionUrl("greeting")}
+          alt="Nila"
+          className="welcome-face"
+          draggable={false}
+        />
+        <h2 className="welcome-headline">{w.headline}</h2>
+        <p className="welcome-intro">{w.intro}</p>
       </div>
 
-      <SettingsSection title={t.nav.welcome}>
+      <div className="welcome-steps">
         {steps.map((s) => (
           <div className="welcome-step" key={s.n}>
             <span className="welcome-num" aria-hidden="true">
@@ -41,16 +60,38 @@ export function WelcomePage({ t, setupMode, onFinishSetup }: WelcomeProps) {
             </span>
           </div>
         ))}
-      </SettingsSection>
+      </div>
+
+      <div className="welcome-lang">
+        <span className="welcome-lang-label" id="welcome-lang-label">
+          {w.languageLabel}
+        </span>
+        <Segmented<Language>
+          label={w.languageLabel}
+          value={settings.language}
+          onChange={(v) => update({ language: v })}
+          options={[
+            { value: "en", label: l.english },
+            { value: "manglish", label: l.manglish },
+          ]}
+        />
+      </div>
 
       {setupMode && (
         <div className="welcome-cta">
           <button
             type="button"
+            className="btn"
+            onClick={() => onCreateFirstReminder?.()}
+          >
+            {w.createFirst}
+          </button>
+          <button
+            type="button"
             className="btn primary"
             onClick={() => onFinishSetup?.()}
           >
-            {w.getStarted}
+            {w.continue}
           </button>
         </div>
       )}

@@ -8,7 +8,7 @@ import idleUrl from "../../../../character/states/idle.png";
 
 const NILA_VERSION = "0.1.0";
 
-export function AboutPage({ t }: PageProps) {
+export function AboutPage({ t, onOpenWelcome }: PageProps & { onOpenWelcome?: () => void }) {
   const a = t.about;
   return (
     <div className="settings-content-inner">
@@ -39,6 +39,23 @@ export function AboutPage({ t }: PageProps) {
           control={<span className="mono">{a.githubValue}</span>}
         />
         <SettingsRow title={a.madeFor} />
+      </SettingsSection>
+
+      <SettingsSection title={a.helpSection}>
+        <SettingsRow
+          title={a.welcomeTour}
+          description={a.welcomeTourDesc}
+          onActivate={() => onOpenWelcome?.()}
+          control={
+            <button
+              type="button"
+              className="btn"
+              onClick={() => onOpenWelcome?.()}
+            >
+              {a.welcomeTour}
+            </button>
+          }
+        />
       </SettingsSection>
     </div>
   );
