@@ -431,16 +431,48 @@ button.srow.as-button:hover {
 /* Select                                                              */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Select — solid surface, consistent 34px height, custom chevron       */
+/* ------------------------------------------------------------------ */
+
 .select {
   font: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
+  line-height: 1.4;
   color: var(--st-text);
-  background: var(--st-surface);
+  background-color: var(--st-surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
   border: 1px solid var(--st-border-strong);
   border-radius: 8px;
-  padding: 7px 10px;
+  padding: 8px 30px 8px 12px;
+  min-height: 34px;
+  box-sizing: border-box;
   cursor: pointer;
   max-width: 220px;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.settings[data-theme="dark"] .select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a7a7ad' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+.select:hover:not(:disabled) {
+  border-color: var(--st-text-2);
+}
+
+.select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.select option {
+  background-color: var(--st-surface);
+  color: var(--st-text);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1032,8 +1064,7 @@ button.srow.as-button:hover {
   position: relative;
   aspect-ratio: 16 / 8.2;
   border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(127, 140, 170, 0.10), rgba(127, 140, 170, 0.04));
+  background: var(--st-seg-bg);
   border: 1px dashed var(--st-border);
   overflow: hidden;
   margin-bottom: 10px;
@@ -1228,7 +1259,7 @@ button.srow.as-button:hover {
   position: relative;
   height: 148px;
   border-radius: 12px;
-  background: linear-gradient(180deg, #2b3550 0%, #1d2438 100%);
+  background: #232838;
   border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
@@ -1289,18 +1320,41 @@ button.srow.as-button:hover {
   margin: 2px 0 12px;
 }
 
-/* Welcome page */
+/* Welcome page — first-run onboarding and replays-later tour */
+.welcome-onboard {
+  max-width: 520px;
+  margin: 0 auto;
+}
 .welcome-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 26px 16px 10px;
+  padding: 18px 16px 6px;
 }
-.welcome-hero img {
-  max-width: 220px;
-  height: auto;
-  margin-bottom: 10px;
+.welcome-face {
+  width: 168px;
+  height: 168px;
+  object-fit: contain;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.18));
+}
+.welcome-headline {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--st-text);
+}
+.welcome-intro {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--st-text-2);
+  max-width: 400px;
+}
+.welcome-steps {
+  margin: 16px 0 4px;
 }
 .welcome-step {
   display: flex;
@@ -1335,13 +1389,43 @@ button.srow.as-button:hover {
   opacity: 0.75;
   line-height: 1.45;
 }
+.welcome-lang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 14px 4px 4px;
+  border-top: 1px solid var(--st-hairline);
+}
+.welcome-lang-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--st-text);
+}
 .welcome-cta {
   display: flex;
   justify-content: center;
-  padding: 18px 0 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 20px 0 10px;
 }
 .welcome-cta .btn {
-  min-width: 180px;
-  padding: 10px 22px;
+  padding: 10px 20px;
   font-size: 14px;
+}
+
+/* First-run setup footer (Continue on non-welcome pages) */
+.setup-footer {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid var(--st-border);
+  background: var(--st-sidebar-bg);
+}
+.setup-footer .btn {
+  min-width: 140px;
 }
