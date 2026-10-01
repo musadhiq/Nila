@@ -337,7 +337,10 @@ export function NilaCharacter({
       className={useFrame ? "nila-frame-stage" : "nila-cutout"}
       style={
         useFrame
-          ? { width: px, height: px, position: "relative", display: "block", overflow: "hidden" }
+          // Overflow stays visible so the alpha-aware drop-shadow on the img
+          // can fade into the window's padding instead of being hard-clipped
+          // at the stage edge (the companion window is larger than the stage).
+          ? { width: px, height: px, position: "relative", display: "block", overflow: "visible" }
           : { width: px, position: "relative", display: "block" }
       }
     >
