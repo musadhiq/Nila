@@ -39,6 +39,8 @@ interface Props {
   onPause: (minutes: 30 | 60 | null) => void;
   onResume: () => void;
   onTest: () => void;
+  /** Dev-only dock preview. Optional until App wires it; no-op fallback. */
+  onPreviewDock?: (kind: "short" | "long" | "queue") => void;
   onClose: () => void;
   onMinimize: () => void;
   onDataChanged: () => void;
@@ -58,6 +60,7 @@ export function SettingsPanel({
   onPause,
   onResume,
   onTest,
+  onPreviewDock,
   onClose,
   onMinimize,
   onDataChanged,
@@ -162,7 +165,7 @@ export function SettingsPanel({
             t={t}
             settings={settings}
             update={update}
-            dark={theme === "dark"}
+            onPreview={onPreviewDock ?? (() => {})}
           />
         )}
         {page === "appearance" && (

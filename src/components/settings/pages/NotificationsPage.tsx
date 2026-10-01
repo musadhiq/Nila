@@ -1,16 +1,13 @@
 /**
  * Notifications page — desktop notifications, sound, and how a due
- * reminder presents itself.
+ * reminder presents itself. V1 offers the top-center notification dock
+ * or a plain system notification.
  */
 import { SettingsRow, SettingsSection, Switch, Select } from "../ui";
 import type { PageProps } from "./page";
 import type { AppSettings } from "../../../lib/types";
 
-const BEHAVIORS: AppSettings["reminder_behavior"][] = [
-  "bubble",
-  "character",
-  "system",
-];
+const BEHAVIORS: AppSettings["reminder_behavior"][] = ["dock", "system"];
 
 export function NotificationsPage({ t, settings, update }: PageProps) {
   const n = t.notifications;
@@ -18,8 +15,10 @@ export function NotificationsPage({ t, settings, update }: PageProps) {
     AppSettings["reminder_behavior"],
     { title: string; desc: string }
   > = {
-    bubble: { title: n.behaviorBubble, desc: n.behaviorBubbleDesc },
-    character: { title: n.behaviorCharacter, desc: n.behaviorCharacterDesc },
+    dock: { title: n.behaviorDock, desc: n.behaviorDockDesc },
+    // Legacy values migrate to dock in mergeSettings; never offered.
+    bubble: { title: n.behaviorDock, desc: n.behaviorDockDesc },
+    character: { title: n.behaviorDock, desc: n.behaviorDockDesc },
     system: { title: n.behaviorSystem, desc: n.behaviorSystemDesc },
   };
   return (
