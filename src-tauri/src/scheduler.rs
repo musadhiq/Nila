@@ -194,6 +194,152 @@ pub fn recover_after_wake(
 }
 
 // ---------------------------------------------------------------------------
+// Startup: load → validate → recover → compute first deadline → resume
+// ---------------------------------------------------------------------------
+
+/// A saved reminder that failed startup validation. The scheduler skips
+/// invalid reminders (it never crashes on them); the issue is reported
+/// so the user can fix or delete the reminder instead of silently
+/// losing it.
+#[derive(Debug, Clone, Serialize)]
+pub struct StartupIssue {
+    pub reminder_id: String,
+    pub reason: String,
+}
+
+/// Validate every saved reminder: known kind, non-empty fields, and a
+/// schedule the scheduler can actually compute from. Pure over the
+/// reminder list: unit-testable without a Tauri app handle.
+pub fn validate_reminders(reminders: &[db::Reminder]) -> Vec<StartupIssue> {
+    let mut issues = Vec::new();
+    for r in reminders {
+        let mut bad = |reason: String| {
+            issues.push(StartupIssue {
+                reminder_id: r.id.clone(),
+                reason,
+            });
+        };
+        if r.id.trim().is_empty() {
+            bad("empty id".to_string());
+            continue;
+        }
+        if r.title.trim().is_empty() {
+            bad("empty title".to_string());
+        }
+        if r.message.trim().is_empty() {
+            bad("empty message".to_string());
+        }
+        if !db::VALID_KINDS.contains(&r.kind.as_str()) {
+            bad(format!("unknown kind '{}'", r.kind));
+        }
+        match serde_json::from_str::<Schedule>(&r.schedule) {
+            Err(_) => bad("schedule is not a valid schedule".to_string()),
+            Ok(sched) => {
+                let time_ok =
+                    |t: &str| parse_hhmm(t).map(|p| valid_hhmm(&p)).unwrap_or(false);
+                match &sched {
+                    Schedule::Once { .. } => {}
+                    Schedule::Daily { time } => {
+                        if !time_ok(time) {
+                            bad(format!("daily time '{time}' is not HH:MM"));
+                        }
+                    }
+                    Schedule::Weekly { days, time } => {
+                        if !time_ok(time) {
+                            bad(format!("weekly time '{time}' is not HH:MM"));
+                        }
+                        if days.is_empty() {
+                            bad("weekly schedule has no days selected".to_string());
+                        } else if days.iter().any(|d| *d > 6) {
+                            bad("weekly schedule has an invalid day".to_string());
+                        }
+                    }
+                    Schedule::Interval { minutes } => {
+                        if *minutes == 0 {
+                            bad("interval must be at least 1 minute".to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    issues
+}
+
+/// Load every saved reminder and validate it. Called once at startup;
+/// on DB error returns no issues (the driver recomputes anyway and
+/// skips corrupt schedules defensively).
+pub fn validate_store(app: &AppHandle) -> Vec<StartupIssue> {
+    app.try_state::<db::DbState>()
+        .and_then(|st| st.0.lock().ok())
+        .and_then(|conn| db::list_reminders(&conn).ok())
+        .map(|reminders| validate_reminders(&reminders))
+        .unwrap_or_default()
+}
+
+/// Grace after startup before a recovered reminder fires, so the
+/// frontend is mounted and listening for REMINDER_DUE.
+const RECOVERY_GRACE_SECS: i64 = 15;
+
+/// Startup recovery over a DB connection (pure logic, unit-testable):
+/// - drop snoozes whose wake time passed while the app was closed;
+/// - re-arm missed one-time reminders by giving them a near-future
+///   snooze wake time, so the normal driver path fires them exactly
+///   once (eligibility-checked, history-recorded, surviving another
+///   restart via the persisted snooze row).
+fn recover_missed_in(
+    conn: &rusqlite::Connection,
+    now: DateTime<Utc>,
+) -> rusqlite::Result<Vec<String>> {
+    db::delete_expired_snoozes(conn, &now)?;
+    let snoozed = db::list_snoozed(conn)?;
+    let mut recovered = Vec::new();
+    // Maximum age of a missed one-time reminder we will still fire.
+    // Older than this, the moment has passed — firing it would be noise,
+    // so it is left alone (and the startup log says so).
+    let window_start = now - Duration::hours(24);
+    for r in db::list_reminders(conn)? {
+        if !r.enabled {
+            continue;
+        }
+        let at = match serde_json::from_str::<Schedule>(&r.schedule) {
+            Ok(Schedule::Once { at }) => at,
+            _ => continue, // recurring schedules resume at their next occurrence
+        };
+        if at > now || at <= window_start {
+            continue;
+        }
+        // Already re-armed on a previous boot moments ago? The driver
+        // will fire it; don't touch it.
+        if snoozed.iter().any(|(id, _)| id == &r.id) {
+            continue;
+        }
+        // Already handled around its due time? Then it is not missed.
+        if db::has_action_since(conn, &r.id, &at.to_rfc3339())? {
+            continue;
+        }
+        let wake_at = (now + Duration::seconds(RECOVERY_GRACE_SECS)).to_rfc3339();
+        conn.execute(
+            "INSERT INTO snoozed_reminders (reminder_id, wake_at) VALUES (?1, ?2)
+             ON CONFLICT(reminder_id) DO UPDATE SET wake_at = excluded.wake_at",
+            rusqlite::params![r.id, wake_at],
+        )?;
+        recovered.push(r.id.clone());
+    }
+    Ok(recovered)
+}
+
+/// Run startup recovery against the app database. Never fails startup:
+/// on DB error returns an empty list (the driver recomputes anyway).
+pub fn recover_missed(app: &AppHandle) -> Vec<String> {
+    let now = Utc::now();
+    app.try_state::<db::DbState>()
+        .and_then(|st| st.0.lock().ok())
+        .and_then(|conn| recover_missed_in(&conn, now).ok())
+        .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
 // Driver
 // ---------------------------------------------------------------------------
 
@@ -585,5 +731,142 @@ mod tests {
             serde_json::from_str(r#"{"type":"interval","minutes":45}"#).unwrap();
         assert!(matches!(interval, Schedule::Interval { minutes: 45 }));
         assert!(serde_json::from_str::<Schedule>(r#"{"type":"bogus"}"#).is_err());
+    }
+
+    fn valid_reminder(id: &str) -> db::Reminder {
+        db::Reminder {
+            id: id.into(),
+            title: "Water".into(),
+            message: "Drink".into(),
+            kind: "water".into(),
+            schedule: r#"{"type":"daily","time":"09:00"}"#.into(),
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn validate_reminders_flags_bad_data() {
+        assert!(validate_reminders(std::slice::from_ref(&valid_reminder("r1"))).is_empty());
+
+        let mut bad_kind = valid_reminder("r2");
+        bad_kind.kind = "teleport".into();
+        let issues = validate_reminders(std::slice::from_ref(&bad_kind));
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].reason.contains("unknown kind"));
+
+        let mut bad_time = valid_reminder("r3");
+        bad_time.schedule = r#"{"type":"daily","time":"25:99"}"#.into();
+        assert!(validate_reminders(std::slice::from_ref(&bad_time))
+            .iter()
+            .any(|i| i.reason.contains("HH:MM")));
+
+        let mut no_days = valid_reminder("r4");
+        no_days.schedule = r#"{"type":"weekly","days":[],"time":"09:00"}"#.into();
+        assert!(validate_reminders(std::slice::from_ref(&no_days))
+            .iter()
+            .any(|i| i.reason.contains("no days")));
+
+        let mut bad_day = valid_reminder("r4b");
+        bad_day.schedule = r#"{"type":"weekly","days":[9],"time":"09:00"}"#.into();
+        assert!(validate_reminders(std::slice::from_ref(&bad_day))
+            .iter()
+            .any(|i| i.reason.contains("invalid day")));
+
+        let mut zero_interval = valid_reminder("r5");
+        zero_interval.schedule = r#"{"type":"interval","minutes":0}"#.into();
+        assert!(validate_reminders(std::slice::from_ref(&zero_interval))
+            .iter()
+            .any(|i| i.reason.contains("at least 1 minute")));
+
+        let mut bad_json = valid_reminder("r6");
+        bad_json.schedule = "not json".into();
+        assert!(!validate_reminders(std::slice::from_ref(&bad_json)).is_empty());
+
+        let mut empty_title = valid_reminder("r7");
+        empty_title.title = "  ".into();
+        assert!(validate_reminders(std::slice::from_ref(&empty_title))
+            .iter()
+            .any(|i| i.reason.contains("empty title")));
+    }
+
+    fn test_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        db::migrate(&conn).unwrap();
+        conn
+    }
+
+    fn once_reminder(id: &str, at: DateTime<Utc>, enabled: bool) -> db::Reminder {
+        db::Reminder {
+            id: id.into(),
+            title: "t".into(),
+            message: "m".into(),
+            kind: "custom".into(),
+            schedule: serde_json::json!({"type": "once", "at": at.to_rfc3339()}).to_string(),
+            enabled,
+        }
+    }
+
+    #[test]
+    fn recover_missed_rearms_only_truly_missed_once_reminders() {
+        let conn = test_db();
+        let now = Utc::now();
+        let missed = once_reminder("missed", now - Duration::hours(1), true);
+        let shown = once_reminder("shown", now - Duration::hours(2), true);
+        let stale = once_reminder("stale", now - Duration::hours(25), true);
+        let disabled = once_reminder("disabled", now - Duration::hours(1), false);
+        let future = once_reminder("future", now + Duration::hours(1), true);
+        let mut daily = once_reminder("daily", now - Duration::hours(1), true);
+        daily.schedule = r#"{"type":"daily","time":"09:00"}"#.into();
+        for r in [&missed, &shown, &stale, &disabled, &future, &daily] {
+            db::upsert_reminder(&conn, r).unwrap();
+        }
+        // "shown" was handled after its due time: not missed.
+        db::record_history(&conn, "shown", "shown").unwrap();
+
+        let recovered = recover_missed_in(&conn, now).unwrap();
+        assert_eq!(recovered, vec!["missed".to_string()]);
+
+        // The re-arm is a near-future snooze row, so the normal driver
+        // path fires it exactly once.
+        let snoozed = db::list_snoozed(&conn).unwrap();
+        assert_eq!(snoozed.len(), 1);
+        assert_eq!(snoozed[0].0, "missed");
+        let wake_in = snoozed[0].1.signed_duration_since(now).num_seconds();
+        assert!((10..=20).contains(&wake_in), "wake in {wake_in}s");
+    }
+
+    #[test]
+    fn recover_missed_clears_expired_snoozes() {
+        let conn = test_db();
+        let now = Utc::now();
+        let r = once_reminder("r", now + Duration::hours(1), true);
+        db::upsert_reminder(&conn, &r).unwrap();
+        conn.execute(
+            "INSERT INTO snoozed_reminders (reminder_id, wake_at) VALUES (?1, ?2)",
+            rusqlite::params!["r", (now - Duration::minutes(5)).to_rfc3339()],
+        )
+        .unwrap();
+        let recovered = recover_missed_in(&conn, now).unwrap();
+        assert!(recovered.is_empty());
+        assert!(db::list_snoozed(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn recover_missed_does_not_double_rearm() {
+        // A reminder re-armed on a previous boot still has its future
+        // snooze row: a second recovery pass must leave it alone.
+        let conn = test_db();
+        let now = Utc::now();
+        let r = once_reminder("r", now - Duration::hours(1), true);
+        db::upsert_reminder(&conn, &r).unwrap();
+        conn.execute(
+            "INSERT INTO snoozed_reminders (reminder_id, wake_at) VALUES (?1, ?2)",
+            rusqlite::params!["r", (now + Duration::seconds(10)).to_rfc3339()],
+        )
+        .unwrap();
+        let recovered = recover_missed_in(&conn, now).unwrap();
+        assert!(recovered.is_empty());
+        assert_eq!(db::list_snoozed(&conn).unwrap().len(), 1);
     }
 }
