@@ -28,6 +28,7 @@ const en = {
       "I'm here! When there's a reminder, I'll pop up here at the top. Otherwise I'm standing by in your tray.",
     okay: "Okay, Nila",
     in10min: "In 10 min",
+    nilaAlt: "Nila peeking over the notification",
   },
   nav: {
     general: "General",
@@ -351,6 +352,7 @@ const manglish: Dict = {
       "Njan ivide undu! Orma vendappol mukalil ingane varum. Tray-yil njan standby aanu.",
     okay: "Sheri, Nila",
     in10min: "10 minute kazhinj",
+    nilaAlt: "Notification-nokkiya Nila",
   },
   nav: {
     general: "General",

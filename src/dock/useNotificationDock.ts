@@ -8,20 +8,23 @@ import {
 } from "./dockMachine";
 
 /**
- * useNotificationDock — owns the dock state machine, its timers, and
- * Nila's gesture choreography (via the character engine's playSequence).
+ * useNotificationDock — owns the dock state machine and its timers.
+ *
+ * The dock's Nila is a single static lean-in frame (see App) — calm,
+ * exactly like the reference, with no looping motion. The hook plays
+ * no character sequences; on hide it returns the engine to idle so the
+ * tray state stays clean.
  *
  * Phase choreography (full motion):
- * - entering (300ms): the chat card slides in from behind the top bar
- *   while Nila leans in over its top-left corner (`peek-top-left`).
- * - expanding (400ms): card settles; the lean-in holds its last frame.
+ * - entering (300ms): the chat card slides in from behind the top bar.
+ * - expanding (400ms): card settles; Nila leans on its left edge.
  * - visible: the bubble holds for 15s, then auto-hides. Nila keeps
  *   leaning on the card — no pose changes, no extra chrome.
  * - acknowledging: a short beat, then the card collapses away.
  * - collapsing (260ms): dock contracts away; then the next queued
  *   notification enters (or the dock hides and Nila returns to idle).
  *
- * Reduced motion shortens every beat and the engine itself calms down.
+ * Reduced motion shortens every beat.
  */
 
 const TIMING = {
@@ -97,7 +100,8 @@ export function useNotificationDock(opts: {
     };
     switch (state.phase) {
       case "entering":
-        playRef.current("peek-top-left");
+        // The card slides/fades in via CSS. Nila is a static lean-in
+        // frame — no sequence playback, so there is nothing to stutter.
         later(t.entering, () => dispatch({ type: "enter-done" }));
         break;
       case "expanding":

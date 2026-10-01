@@ -8,7 +8,7 @@ import {
   primaryMonitor,
   type Monitor,
 } from "@tauri-apps/api/window";
-import { CharacterEngine, CharacterLab, NilaCharacter, peekSequenceForPreset, useFramePlayback } from "./character";
+import { CharacterEngine, CharacterLab, peekSequenceForPreset, useFramePlayback } from "./character";
 import type { CharacterSnapshot } from "./character";
 import type { ExpressionName } from "./character/expressions";
 import {
@@ -64,9 +64,6 @@ export default function App() {
   const [decorated, setDecorated] = useState(false);
   // Dev-only Character Lab (spec 24).
   const [labOpen, setLabOpen] = useState(false);
-  // Resolved motion-frame URL for the engine's current frame (with the
-  // fallback hierarchy applied); null falls back to the legacy image.
-  const frameSrc = snap.frame ? frameUrl(snap.frame.key) : null;
   // Dev-only character debug overlay (?nila-debug or localStorage).
   const [nilaDebug] = useState(
     () =>
@@ -854,8 +851,6 @@ export default function App() {
     }
   };
 
-  const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
-
   return (
     <div
       className="companion"
@@ -870,15 +865,18 @@ export default function App() {
           reminder={dock.current}
           reducedMotion={settings.animation !== "full" || prefersReducedMotion}
           nila={
-            <NilaCharacter
-              state={snap.state}
-              animation={snap.animation}
-              size="small"
-              dark={dark}
-              frame={snap.frame}
-              frameSrc={frameSrc}
-              shadow="soft"
-            />
+            /* A single static lean-in frame — exactly like the reference:
+             * calm, no looping motion. The asset is eager-bundled so the
+             * URL resolves synchronously; null renders nothing. */
+            frameUrl("nila_corner_tl_08") ? (
+              <img
+                src={frameUrl("nila_corner_tl_08")!}
+                width={192}
+                height={398}
+                alt={getStrings(settings.language).dock.nilaAlt}
+                draggable={false}
+              />
+            ) : null
           }
           okayLabel={getStrings(settings.language).dock.okay}
           snoozeLabel={getStrings(settings.language).dock.in10min}
