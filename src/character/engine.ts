@@ -8,7 +8,8 @@
 // Momentary expression faces (character/expressions/) overlay the current
 // state via showExpression/clearExpression; see expressions.ts.
 
-import type { ExpressionName } from "./expressions";
+import type { ExpressionName } from "./expressions.ts";
+import { MOTION_SEQUENCES } from "./motionManifest.ts";
 
 export type CharacterState =
   | "idle"
@@ -42,6 +43,21 @@ export type CharacterAnimation =
 export type CharacterSize = "small" | "medium" | "large";
 export type MotionPreference = "full" | "reduced" | "off";
 
+/**
+ * One animation frame from the generated motion-asset library
+ * (character/motion/). The renderer resolves `key` to a bundled URL via
+ * motionAssets.frameUrl(); per-frame timing (`ms`) drives the playback
+ * hook. `sequence` groups frames so the renderer crossfades only on
+ * sequence/state changes, never between consecutive movement frames.
+ */
+export interface MotionFrame {
+  sequence: string;
+  key: string;
+  index: number;
+  total: number;
+  ms: number;
+}
+
 export interface CharacterSnapshot {
   state: CharacterState;
   animation: CharacterAnimation | null;
@@ -50,9 +66,15 @@ export interface CharacterSnapshot {
   motion: MotionPreference;
   /** Momentary expression face overlaying the state image, if any. */
   expression: ExpressionName | null;
+  /** Currently displayed motion frame, if a frame sequence is active. */
+  frame: MotionFrame | null;
+  /** Active sequence name ("flash" for one-shot overrides), else null. */
+  sequence: string | null;
+  idleBehavior: "normal" | "minimal";
 }
 
 type Listener = (snapshot: CharacterSnapshot) => void;
+type SequenceEndListener = (name: string) => void;
 
 // Which animations are legal to interrupt (all except none — every
 // animation can be interrupted so the character never gets stuck).
@@ -83,6 +105,22 @@ export class CharacterEngine {
   private expression: ExpressionName | null = null;
   private listeners = new Set<Listener>();
   private resumeState: CharacterState = "idle";
+  // --- Frame-sequence playback (generated motion assets) ---
+  private seqName: string | null = null;
+  private seqIndex = 0;
+  private seqDir: 1 | -1 = 1;
+  private chain: string[] = [];
+  /** One-shot frame override (blink); the underlying sequence resumes after. */
+  private flashKey: string | null = null;
+  private seqEndListeners = new Set<SequenceEndListener>();
+  private seqEndFired = false;
+
+  constructor() {
+    // She is already idling when the engine is born.
+    if (this.motion === "full" && this.idleBehavior === "normal") {
+      this.seqName = "idle";
+    }
+  }
 
   onChange(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -97,7 +135,26 @@ export class CharacterEngine {
       visible: this.state !== "hidden",
       motion: this.motion,
       expression: this.expression,
+      frame: this.currentFrame(),
+      sequence: this.flashKey ? "flash" : this.seqName,
+      idleBehavior: this.idleBehavior,
     };
+  }
+
+  private currentFrame(): MotionFrame | null {
+    // Frame sequences are a full-motion feature. Under reduced motion
+    // Nila holds a static pose (the legacy state image); "off" shows
+    // nothing framed either (spec 23).
+    if (this.motion !== "full") return null;
+    if (this.flashKey) {
+      return { sequence: "flash", key: this.flashKey, index: 0, total: 1, ms: 160 };
+    }
+    if (!this.seqName) return null;
+    const def = MOTION_SEQUENCES[this.seqName];
+    if (!def) return null;
+    const idx = Math.min(this.seqIndex, def.frames.length - 1);
+    const f = def.frames[idx];
+    return { sequence: this.seqName, key: f.key, index: idx, total: def.frames.length, ms: f.ms };
   }
 
   private emit(): void {
@@ -108,6 +165,10 @@ export class CharacterEngine {
   /** Transition to a state; throws on illegal transitions so stuck states surface in tests. */
   setState(next: CharacterState): void {
     if (next === this.state) return;
+    // A state change retires any running frame sequence first; the
+    // specific flows below start their own. Silent — the emit below
+    // covers the cleared frame too.
+    this.clearSequence();
     // Sleep is the universal rest state: pause() may enter it from anywhere.
     if (next !== "sleeping") {
       const allowed = ALLOWED_TRANSITIONS[this.state];
@@ -118,6 +179,18 @@ export class CharacterEngine {
     this.state = next;
     this.animation = this.defaultAnimationFor(next);
     this.emit();
+    this.autoplayIdle();
+  }
+
+  /** Idle state breathes via the idle frame loop (full motion only). */
+  private autoplayIdle(): void {
+    if (
+      this.state === "idle" &&
+      this.motion === "full" &&
+      this.idleBehavior === "normal"
+    ) {
+      this.playSequence("idle");
+    }
   }
 
   private defaultAnimationFor(state: CharacterState): CharacterAnimation | null {
@@ -187,55 +260,234 @@ export class CharacterEngine {
 
   setMotion(motion: MotionPreference): void {
     this.motion = motion;
+    this.stopSequence();
     this.animation = this.defaultAnimationFor(this.state);
     this.emit();
+    this.autoplayIdle();
   }
 
   /** Minimal idle behavior: Nila stays still while waiting. */
   setIdleBehavior(behavior: "normal" | "minimal"): void {
     this.idleBehavior = behavior;
+    this.stopSequence();
     this.animation = this.defaultAnimationFor(this.state);
     this.emit();
+    this.autoplayIdle();
+  }
+
+  // --- Frame-sequence player (generated motion assets) ---
+  //
+  // The engine owns *which* sequence plays; a React hook
+  // (useFramePlayback) owns the per-frame timers and calls
+  // advanceFrame(). Frame sequences are a full-motion feature: under
+  // reduced/off motion the calls below are no-ops and Nila holds the
+  // legacy static pose (spec 23).
+
+  /**
+   * Start a named sequence from motionManifest. Unknown names are
+   * ignored (never break the character); non-full motion disables
+   * frames entirely.
+   */
+  playSequence(name: string): void {
+    const def = MOTION_SEQUENCES[name];
+    if (!def) {
+      console.warn(`[nila] unknown motion sequence: ${name}`);
+      return;
+    }
+    if (this.motion !== "full") return;
+    this.flashKey = null;
+    this.chain = [];
+    this.seqName = name;
+    this.seqIndex = 0;
+    this.seqDir = 1;
+    this.seqEndFired = false;
+    this.emit();
+  }
+
+  /** Play several sequences back-to-back; onSequenceEnd fires per sequence. */
+  playChain(names: string[]): void {
+    const known = names.filter((n) => MOTION_SEQUENCES[n]);
+    if (known.length === 0 || this.motion !== "full") {
+      this.stopSequence();
+      return;
+    }
+    const [first, ...rest] = known;
+    this.flashKey = null;
+    this.chain = rest;
+    this.seqName = first;
+    this.seqIndex = 0;
+    this.seqDir = 1;
+    this.seqEndFired = false;
+    this.emit();
+  }
+
+  /** Stop frame playback, revealing the legacy state image again. */
+  stopSequence(): void {
+    if (!this.seqName && !this.flashKey && this.chain.length === 0) return;
+    this.clearSequence();
+    this.emit();
+  }
+
+  /** Reset sequence fields without emitting (for callers that emit next). */
+  private clearSequence(): void {
+    this.seqName = null;
+    this.seqIndex = 0;
+    this.seqDir = 1;
+    this.chain = [];
+    this.flashKey = null;
+    this.seqEndFired = false;
+  }
+
+  /**
+   * Advance one frame. Called by the playback hook on each frame's
+   * timer; when a non-looping sequence finishes, the next chained
+   * sequence starts (or the frames clear) and onSequenceEnd fires.
+   */
+  advanceFrame(): void {
+    if (this.flashKey) return; // a flash freezes the underlying sequence
+    if (!this.seqName || this.motion !== "full") return;
+    const def = MOTION_SEQUENCES[this.seqName];
+    if (!def) {
+      this.seqName = null;
+      this.emit();
+      return;
+    }
+    const total = def.frames.length;
+    if (def.loop === "loop") {
+      this.seqIndex = (this.seqIndex + 1) % total;
+      this.emit();
+      return;
+    }
+    if (def.loop === "pingpong") {
+      if (this.seqDir === 1) {
+        if (this.seqIndex >= total - 1) this.seqDir = -1;
+        else this.seqIndex++;
+      }
+      if (this.seqDir === -1) {
+        if (this.seqIndex <= 0) {
+          this.endCurrentSequence();
+          return;
+        }
+        this.seqIndex--;
+      }
+      this.emit();
+      return;
+    }
+    // loop === "none": play once, then chain / hold / clear.
+    if (this.seqIndex >= total - 1) {
+      this.endCurrentSequence();
+      return;
+    }
+    this.seqIndex++;
+    this.emit();
+  }
+
+  private endCurrentSequence(): void {
+    const finished = this.seqName;
+    if (!finished) return;
+    const def = MOTION_SEQUENCES[finished];
+    const next = this.chain.shift();
+    if (next) {
+      this.seqEndFired = false;
+      this.seqName = next;
+      this.seqIndex = 0;
+      this.seqDir = 1;
+      this.emit();
+      for (const l of this.seqEndListeners) l(finished);
+      return;
+    }
+    if (def?.holdLast) {
+      // Hold the landing frame (peek idle, reminder settle): the
+      // snapshot keeps showing it until something else plays. The end
+      // event fires exactly once even if advanceFrame is called again;
+      // nothing is emitted when the frame is unchanged.
+      this.seqIndex = def.frames.length - 1;
+      if (!this.seqEndFired) {
+        this.seqEndFired = true;
+        this.emit();
+        for (const l of this.seqEndListeners) l(finished);
+      }
+      return;
+    }
+    this.seqEndFired = false;
+    this.seqName = null;
+    this.seqIndex = 0;
+    this.seqDir = 1;
+    this.emit();
+    for (const l of this.seqEndListeners) l(finished);
+  }
+
+  /** One-shot frame override (blink). The sequence resumes on clearFlash. */
+  flashFrame(key: string): void {
+    if (this.motion !== "full") return;
+    if (this.flashKey === key) return;
+    this.flashKey = key;
+    this.emit();
+  }
+
+  /** Clear the one-shot override, revealing the sequence underneath. */
+  clearFlash(): void {
+    if (!this.flashKey) return;
+    this.flashKey = null;
+    this.emit();
+  }
+
+  /**
+   * Fired once per finished non-looping sequence (also for holdLast
+   * sequences when they land). Callers chain the reminder arc on this.
+   */
+  onSequenceEnd(listener: SequenceEndListener): () => void {
+    this.seqEndListeners.add(listener);
+    return () => {
+      this.seqEndListeners.delete(listener);
+    };
   }
 
   // --- Reminder-experience sequences (spec section 36) ---
 
   /**
-   * idle -> attention -> reminding. Single meaningful transition; the
-   * "attention" animation plays on the reminding state. (Previously this
-   * stepped through thinking/sleeping in the same tick — React batched
-   * them so the intermediate was never visible.)
+   * idle -> reminding. Single meaningful transition. The reminder-enter
+   * frame sequence (notice -> look -> enter -> settle) plays on the
+   * reminding state; the caller chains point -> wait on sequence end and
+   * shows the bubble ~130ms after the settle lands.
    */
   beginReminder(_kind: "water" | "food" | "break" | "move" | "sleep" | "custom"): void {
     this.setState("reminding");
     if (this.motion !== "off") this.playAnimation("attention");
+    this.playSequence("reminder-enter");
   }
 
   /**
-   * Dismiss: happy wave. Leaves her smiling; the caller sequences the
-   * exit (expression beat + exit behavior). Single transition so the
-   * wave actually plays instead of being batched away.
+   * Dismiss: the bubble is already gone (caller hides it first). She
+   * reacts, then retreats. A completed task earns a thumbs-up; a plain
+   * dismiss gets the happy react + goodbye beat.
    */
-  dismissReminder(): void {
+  dismissReminder(completed = false): void {
     this.setState("happy");
     if (this.motion !== "off") this.playAnimation("wave");
+    this.playChain(
+      completed
+        ? ["thumbsup", "reminder-retreat"]
+        : ["reminder-react", "reminder-retreat"],
+    );
   }
 
   /**
-   * Snooze: she gets drowsy but stays visible; the caller (exitAfterBeat
-   * + dismissCompanion) hides the window after the beat. Previously this
-   * jumped to "hidden" in the same tick, so the sleepy beat never played.
+   * Snooze: an understanding look, then she retreats; the caller
+   * (exitAfterBeat + dismissCompanion) hides the window after the beat.
    */
   snoozeReminder(): void {
     this.setState("sleeping");
     if (this.motion !== "off") this.playAnimation("snooze");
+    this.playChain(["snooze-ack", "reminder-retreat"]);
   }
 
-  /** Pause from any state: sleep -> paused */
+  /** Pause from any state: sleep -> paused, with the sleep frame loop. */
   pause(): void {
     this.resumeState = this.state === "hidden" ? "idle" : this.state;
     this.setState("sleeping");
     this.setState("paused");
+    this.playSequence("sleep");
   }
 
   resume(): void {
@@ -246,12 +498,20 @@ export class CharacterEngine {
     this.state = target;
     this.animation = this.defaultAnimationFor(target);
     this.emit();
+    this.autoplayIdle();
   }
 
-  /** Greeting / onboarding. */
+  /** Greeting / onboarding: the wave frame sequence, out and back once. */
   wave(): void {
     this.setState("waving");
     this.playAnimation("wave");
+    this.playSequence("wave");
+  }
+
+  /** Milestone beat: the 5-frame celebration, then back to idle. */
+  celebrate(): void {
+    this.setState("celebrating");
+    this.playSequence("celebration");
   }
 
   /** Test helper: is this state part of an active reminder flow? */
