@@ -118,11 +118,17 @@ export function mergeSettings(raw: Record<string, string>): AppSettings {
     s.language = raw.language;
   }
   if (
-    raw.reminder_behavior === "bubble" ||
-    raw.reminder_behavior === "character" ||
+    raw.reminder_behavior === "dock" ||
     raw.reminder_behavior === "system"
   ) {
     s.reminder_behavior = raw.reminder_behavior;
+  } else if (
+    // V1 migration: the old bubble/character-only modes are now the
+    // top-center notification dock.
+    raw.reminder_behavior === "bubble" ||
+    raw.reminder_behavior === "character"
+  ) {
+    s.reminder_behavior = "dock";
   }
   if (raw.desktop_notifications !== undefined) {
     s.desktop_notifications = raw.desktop_notifications === "true";

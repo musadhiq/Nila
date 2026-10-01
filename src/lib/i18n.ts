@@ -23,6 +23,10 @@ const en = {
   companion: {
     hideNila: "Hide Nila",
   },
+  dock: {
+    greeting:
+      "I'm here! When there's a reminder, I'll pop up here at the top. Otherwise I'm standing by in your tray.",
+  },
   nav: {
     general: "General",
     reminders: "Reminders",
@@ -171,6 +175,14 @@ const en = {
       "Nila lives in the tray; reminders arrive as system notifications.",
     presenceTitle: "Nila behavior",
     presenceSubtitle: "Choose how Nila joins you on your desktop.",
+    dockSection: "Notification dock",
+    dockDesc:
+      "When a reminder is due, Nila appears in a small dock at the top center of your screen. The rest of the time she stays in the tray.",
+    previewSection: "Preview notifications",
+    previewDesc: "Try the notification dock. Development only.",
+    previewShort: "Show notification",
+    previewLong: "Show long notification",
+    previewQueue: "Queue three notifications",
     previewButton: "Preview behavior",
     positionSection: "Position",
     positionDesc: "Where Nila appears on your screen.",
@@ -283,11 +295,9 @@ const en = {
     soundSoft: "Soft",
     soundGentle: "Gentle",
     behaviorSection: "Reminder behavior",
-    behaviorBubble: "Character + bubble",
-    behaviorBubbleDesc: "Nila appears with the reminder message.",
-    behaviorCharacter: "Character only",
-    behaviorCharacterDesc:
-      "Nila appears quietly — click her to see the reminder.",
+    behaviorDock: "Notification dock",
+    behaviorDockDesc:
+      "Nila appears in a small dock at the top center of your screen.",
     behaviorSystem: "System notification",
     behaviorSystemDesc:
       "Only a system notification; Nila stays in the tray.",
@@ -342,6 +352,10 @@ const manglish: Dict = {
   },
   companion: {
     hideNila: "Nila ye maraykkuka",
+  },
+  dock: {
+    greeting:
+      "Njan ivide undu! Orma vendappol mukalil ingane varum. Tray-yil njan standby aanu.",
   },
   nav: {
     general: "General",
@@ -490,6 +504,14 @@ const manglish: Dict = {
       "Nila trayil aanu; ormmappeduthalukal system notification ayi varum.",
     presenceTitle: "Nila behavior",
     presenceSubtitle: "Nila desktopil engane varanamennu theerumanikku.",
+    dockSection: "Notification dock",
+    dockDesc:
+      "Orma vannal, Nila screen-inte mukalil cheriya oru dock-il varum. Bakki samayam tray-yil thanne irikkum.",
+    previewSection: "Preview notifications",
+    previewDesc: "Notification dock onnu try cheyyu. Developmentinu mathram.",
+    previewShort: "Notification kanikkuka",
+    previewLong: "Long notification kanikkuka",
+    previewQueue: "Moonnu notification queue cheyyuka",
     previewButton: "Onnu try cheyyam",
     positionSection: "Position",
     positionDesc: "Screen-il evideya Nila varendathu.",
@@ -602,10 +624,9 @@ const manglish: Dict = {
     soundSoft: "Soft",
     soundGentle: "Gentle",
     behaviorSection: "Reminder eppozhaanu kaanunnathu",
-    behaviorBubble: "Character + bubble",
-    behaviorBubbleDesc: "Reminder message-odu koode Nila varum.",
-    behaviorCharacter: "Character mathram",
-    behaviorCharacterDesc: "Nila quietly varum — reminder kaanana avale click cheyyu.",
+    behaviorDock: "Notification dock",
+    behaviorDockDesc:
+      "Screen-inte mukalil cheriya oru dock-il Nila varum.",
     behaviorSystem: "System notification",
     behaviorSystemDesc: "System notification mathram — Nila tray-il thanne irikkum.",
   },
