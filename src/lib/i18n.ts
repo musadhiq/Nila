@@ -118,6 +118,12 @@ const en = {
     emptyCustomDesc:
       "Create one when you want Nila to remember something for you.",
     editHint: "Select a reminder to change its schedule.",
+    nextTitle: "Next reminder",
+    nextNone: "No upcoming reminders.",
+    nextInMinutes: "in {minutes} min",
+    nextInHours: "in {hours} hr",
+    nextInDays: "in {days} days",
+    dataIssue: "Some saved reminders need attention — they will not fire until fixed.",
     enabled: "Enabled",
     editor: {
       newTitle: "New reminder",
@@ -459,6 +465,12 @@ const manglish: Dict = {
     emptyCustom: "Custom reminders onnum illa.",
     emptyCustomDesc: "Nila ethengilum ormmikkanamennu thonnumbol ivide create cheyyam.",
     editHint: "Schedule maattana menkil oru reminder select cheyyu.",
+    nextTitle: "Adutha reminder",
+    nextNone: "Adutha reminder onnum illa.",
+    nextInMinutes: "{minutes} minute kazhinj",
+    nextInHours: "{hours} manikkoor kazhinj",
+    nextInDays: "{days} divasam kazhinj",
+    dataIssue: "Chila saved reminders shariyalla — onnu nokkiyittu shariyakku.",
     enabled: "Enabled",
     editor: {
       newTitle: "Puthiya reminder",
@@ -732,4 +744,27 @@ export function describeScheduleIn(s: Schedule, lang: Language): string {
     case "interval":
       return fill(t.interval, { minutes: s.minutes });
   }
+}
+
+/**
+ * Localized "next in …" label for a future ISO timestamp (the scheduler's
+ * next deadline). Returns null when the timestamp is missing, invalid,
+ * or not in the future. Pure — the scheduler owns the computation, the
+ * UI only formats what the backend reported.
+ */
+export function formatNextIn(
+  atIso: string | null | undefined,
+  lang: Language,
+  nowMs: number = Date.now(),
+): string | null {
+  if (!atIso) return null;
+  const at = Date.parse(atIso);
+  if (Number.isNaN(at)) return null;
+  const mins = Math.round((at - nowMs) / 60000);
+  if (mins < 1) return null;
+  const t = getStrings(lang).reminders;
+  if (mins < 60) return fill(t.nextInMinutes, { minutes: mins });
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return fill(t.nextInHours, { hours });
+  return fill(t.nextInDays, { days: Math.round(hours / 24) });
 }

@@ -209,6 +209,33 @@ pub fn run() {
             // Scheduler generation counter (wakes the driver on changes).
             app.manage(scheduler::SchedulerGen::new());
 
+            // Startup sequence: load → validate → recover → compute the
+            // first deadline → resume. The driver recomputes on every
+            // wake, but doing it once here makes a failed resume visible
+            // in the logs instead of silent.
+            let issues = scheduler::validate_store(app.handle());
+            for issue in &issues {
+                eprintln!(
+                    "nila: startup: reminder '{}' invalid: {}",
+                    issue.reminder_id, issue.reason
+                );
+            }
+            let recovered = scheduler::recover_missed(app.handle());
+            for id in &recovered {
+                eprintln!("nila: startup: recovered missed one-time reminder '{id}'");
+            }
+            match scheduler::compute_next_deadline(app.handle()) {
+                Some((id, at)) => eprintln!("nila: startup: next reminder '{id}' at {at}"),
+                None => eprintln!("nila: startup: no reminders scheduled"),
+            }
+            if !issues.is_empty() || !recovered.is_empty() {
+                eprintln!(
+                    "nila: startup: {} invalid reminder(s), {} missed reminder(s) recovered",
+                    issues.len(),
+                    recovered.len()
+                );
+            }
+
             // Hand the scheduler its dependencies and let it run.
             scheduler::spawn(app.handle().clone());
             platform::watch_sleep_wake(app.handle().clone());
@@ -238,6 +265,7 @@ pub fn run() {
             commands::resume_all,
             commands::test_reminder,
             commands::next_reminder,
+            commands::startup_report,
             commands::record_reminder_action,
             commands::export_data,
             commands::import_data,

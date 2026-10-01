@@ -2,19 +2,27 @@
  * Reminders page — built-in reminders with toggles, custom reminders with
  * an empty state, and the polished reminder editor dialog.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   describeScheduleIn,
+  formatNextIn,
   type Dict,
   type Language,
 } from "../../../lib/i18n";
 import type { Reminder, ReminderKind } from "../../../lib/types";
+import { invokeCommand } from "../../../lib/tauri";
 import { SettingsRow, SettingsSection, Switch } from "../ui";
 import { IconChevronRight, IconPlus, IconReminders } from "../icons";
 import { ReminderEditor, type ReminderInput } from "../ReminderEditor";
 import idleUrl from "../../../../character/states/idle.png";
 
 const BUILT_IN_KINDS: ReminderKind[] = ["water", "food", "break", "move", "stretch", "exercise", "work", "sleep"];
+
+/** Shape of the backend's startup_report command. */
+interface StartupReport {
+  issues: { reminder_id: string; reason: string }[];
+  next: { id: string; at: string } | null;
+}
 
 export function RemindersPage({
   t,
@@ -36,6 +44,40 @@ export function RemindersPage({
   const r = t.reminders;
   const [editing, setEditing] = useState<Reminder | "new" | null>(null);
 
+  // Ask the backend what it loaded, validated, and scheduled: the
+  // scheduler owns all timing; this page only formats its answer.
+  const [report, setReport] = useState<StartupReport | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rep = await invokeCommand<StartupReport>("startup_report");
+        if (!cancelled) setReport(rep);
+      } catch {
+        // Demo mode (plain vite): no backend to ask.
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [reminders]);
+
+  let nextLine: string | null = null;
+  if (report) {
+    if (!report.next) {
+      nextLine = r.nextNone;
+    } else {
+      const next = report.next;
+      const when = formatNextIn(next.at, lang);
+      const found = reminders.find((x) => x.id === next.id);
+      const label = found ? `${r.nextTitle}: ${found.title}` : r.nextTitle;
+      nextLine = when ? `${label} · ${when}` : label;
+    }
+  }
+
   const byKind = (kind: ReminderKind) => reminders.find((x) => x.kind === kind);
   const custom = reminders.filter((x) => x.kind === "custom");
 
@@ -55,6 +97,10 @@ export function RemindersPage({
 
   return (
     <div className="settings-content-inner">
+      {nextLine && <p className="status-line">{nextLine}</p>}
+      {report && report.issues.length > 0 && (
+        <p className="status-line err">{r.dataIssue}</p>
+      )}
       <SettingsSection title={r.builtInSection}>
         {BUILT_IN_KINDS.map((kind) => {
           const rem = byKind(kind);
