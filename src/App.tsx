@@ -32,6 +32,15 @@ import {
   type ReminderDto,
 } from "./lib/reminders";
 import { invokeCommand, isTauri, listenEvent } from "./lib/tauri";
+import {
+  VOICE_EVENTS,
+  voiceErrorLabel,
+  type VoiceErrorCode,
+  type VoiceErrorPayload,
+  type VoiceFinalPayload,
+  type VoicePartialPayload,
+  type VoicePhase,
+} from "./lib/voice";
 import { playReminderChime } from "./lib/sound";
 import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
@@ -74,6 +83,24 @@ export default function App() {
    * window while a reminder is on screen).
    */
   const [wakeListening, setWakeListening] = useState(false);
+  /**
+   * Voice-session state, driven by the Rust voice worker's events
+   * (voice:started → voice:transcript_partial* → voice:transcript_final
+   * → voice:processing → voice:ended). While active, the wake pill grows
+   * a transcript bubble; the pill stays on screen until voice:ended.
+   * Partials are UI-only and never reach the future Jev layer — only the
+   * finalized voice_command payload does.
+   */
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
+  const [voiceText, setVoiceText] = useState("");
+  const [voiceErrorCode, setVoiceErrorCode] = useState<VoiceErrorCode | null>(null);
+  /**
+   * Mirrors voicePhase for event handlers registered once. The voice
+   * worker parks the wake listener mid-hold, whose 6s listen window may
+   * still emit a stale nila://wake-idle — that must not hide an active
+   * voice session.
+   */
+  const voiceActiveRef = useRef(false);
   /** First-run setup flow: the panel opens on the welcome page with a
    *  finish button. Cleared once the user completes setup. */
   const [setupMode, setSetupMode] = useState(false);
@@ -153,13 +180,14 @@ export default function App() {
   // is on screen (it never stopped being live).
   useEffect(() => {
     if (view !== "companion" || !isTauri()) return;
-    if (wakeListening) {
+    const voiceActive = voicePhase !== "idle";
+    if (wakeListening || voiceActive) {
       if (dockRef.current.phase === "hidden") void presentWakeWindow();
     } else if (dockRef.current.phase === "hidden") {
       void hideDockWindow();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wakeListening, view]);
+  }, [wakeListening, voicePhase, view]);
   // Window lifecycle: Nila lives in the menu-bar tray. The floating window
   // only appears when a reminder is due, or when opened from the tray.
   // `manualOpen` tracks a user-opened window so reminder dismissal doesn't
@@ -421,10 +449,11 @@ export default function App() {
       await win.setMaxSize(null);
       await win.setDecorations(false);
       await win.setAlwaysOnTop(true);
-      // Pill (~200x54) + breathing room for the entrance animation and
-      // the soft shadow. Fixed: no measurement needed.
-      const winW = 320;
-      const winH = 120;
+      // Pill (~200x54) + transcript bubble + breathing room for the
+      // entrance animation and the soft shadow. Fixed: no measurement
+      // needed. Sized for the bubble's ~3 wrapped lines of transcript.
+      const winW = 360;
+      const winH = 200;
       await win.setSize(new LogicalSize(winW, winH));
       const info = await monitorInfo();
       if (info.rects.length === 0) return;
@@ -579,38 +608,92 @@ export default function App() {
   }, []);
 
   /**
-   * Wake-word events from the Rust listener (micro-wakeword). On
+   * Wake-word + voice-session events from the Rust workers. On
    * `nila://wake-detected` Nila wakes visually: the listening pill
    * renders and the window-ownership effect below seats the window
    * top-center without stealing focus. On `nila://wake-idle` (or the
-   * listen window ending) she returns to the tray. "Hidden" mode keeps
-   * her off-screen for wake words too, like reminders.
+   * listen window ending) she returns to the tray — unless a voice
+   * session is active, which owns the surface until `voice:ended`.
+   * "Hidden" mode keeps her off-screen for wake words too, like
+   * reminders.
    */
   useEffect(() => {
-    let unlistenDetected: (() => void) | null = null;
-    let unlistenIdle: (() => void) | null = null;
+    const unlistens: (() => void)[] = [];
     // Same StrictMode double-effect guard as the REMINDER_DUE listener.
     let cancelled = false;
+    const setVoice = (
+      phase: VoicePhase,
+      text = "",
+      code: VoiceErrorCode | null = null,
+    ) => {
+      voiceActiveRef.current = phase !== "idle";
+      setVoicePhase(phase);
+      setVoiceText(text);
+      setVoiceErrorCode(code);
+    };
     (async () => {
-      const offDetected = await listenEvent("nila://wake-detected", () => {
-        if (settingsRef.current.character_visibility === "hidden") return;
-        setWakeListening(true);
-      });
-      const offIdle = await listenEvent("nila://wake-idle", () => {
-        setWakeListening(false);
-      });
+      const hidden = () => settingsRef.current.character_visibility === "hidden";
+      unlistens.push(
+        await listenEvent("nila://wake-detected", () => {
+          if (hidden()) return;
+          setWakeListening(true);
+        }),
+      );
+      unlistens.push(
+        await listenEvent("nila://wake-idle", () => {
+          if (voiceActiveRef.current) return;
+          setWakeListening(false);
+        }),
+      );
+      unlistens.push(
+        await listenEvent(VOICE_EVENTS.started, () => {
+          if (hidden()) return;
+          setVoice("listening");
+        }),
+      );
+      unlistens.push(
+        await listenEvent<VoicePartialPayload>(VOICE_EVENTS.partial, (p) => {
+          // Live partials are display-only; Jev only ever sees the final.
+          setVoice("recording", p.text);
+        }),
+      );
+      unlistens.push(
+        await listenEvent<VoiceFinalPayload>(VOICE_EVENTS.final, (p) => {
+          // Freeze the final text; this voice_command payload is the
+          // future Jev layer's input contract.
+          setVoice("processing", p.text);
+        }),
+      );
+      unlistens.push(
+        await listenEvent(VOICE_EVENTS.processing, () => {
+          // Backend handoff beat; the frozen transcript stays visible.
+          if (voiceActiveRef.current) setVoicePhase("processing");
+        }),
+      );
+      unlistens.push(
+        await listenEvent(VOICE_EVENTS.response, () => {
+          // Reserved for the future Jev layer; not emitted in V1.
+        }),
+      );
+      unlistens.push(
+        await listenEvent<VoiceErrorPayload>(VOICE_EVENTS.error, (p) => {
+          setVoice("error", "", p.code);
+        }),
+      );
+      unlistens.push(
+        await listenEvent(VOICE_EVENTS.ended, () => {
+          setVoice("idle");
+          setWakeListening(false);
+        }),
+      );
       if (cancelled) {
-        offDetected();
-        offIdle();
+        for (const off of unlistens) off();
         return;
       }
-      unlistenDetected = offDetected;
-      unlistenIdle = offIdle;
     })();
     return () => {
       cancelled = true;
-      unlistenDetected?.();
-      unlistenIdle?.();
+      for (const off of unlistens) off();
     };
   }, []);
 
@@ -1086,14 +1169,29 @@ export default function App() {
         />
       )}
       {/* Wake-word listening pill: only while the dock is hidden — the
-       * dock owns the window whenever a reminder is on screen. */}
+       * dock owns the window whenever a reminder is on screen. During a
+       * voice session the pill grows a transcript bubble (live partials,
+       * then the frozen final, or a gentle error line). */}
       {view === "companion" &&
-        wakeListening &&
+        (wakeListening || voicePhase !== "idle") &&
         dock.phase === "hidden" && (
           <WakePill
-            label={getStrings(settings.language).wake.listening}
+            label={
+              voicePhase === "processing"
+                ? getStrings(settings.language).voice.processing
+                : getStrings(settings.language).wake.listening
+            }
             alt={getStrings(settings.language).wake.nilaAlt}
             reducedMotion={settings.animation !== "full" || prefersReducedMotion}
+            transcript={voiceText}
+            error={
+              voiceErrorCode
+                ? voiceErrorLabel(
+                    voiceErrorCode,
+                    getStrings(settings.language).voice,
+                  )
+                : null
+            }
           />
         )}
       {import.meta.env.DEV && nilaDebug && view === "companion" && (
