@@ -36,7 +36,8 @@
       "icons/128x128@2x.png"
     ],
     "resources": {
-      "../models/": "models/"
+      "../models/": "models/",
+      "./models/stt/": "models/stt/"
     },
     "shortDescription": "A gentle Malayalam desktop reminder companion",
     "targets": [
