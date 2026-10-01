@@ -9,7 +9,12 @@
 // This module is PNG-free on purpose: imageForExpression-style maps live
 // in NilaCharacter.tsx (bundled by Vite), so node --test can import this.
 
-/** The 12 concept-sheet expressions, each with character/expressions/<name>.png. */
+/**
+ * The 12 concept-sheet expressions. File names mostly match the union
+ * member; the exceptions are "thumbs-up" -> thumbs_up.png,
+ * "rest-chin" -> rest_chin.png, and "idea" -> excited.png (the sheet has
+ * no dedicated idea cell; excited is the eureka read).
+ */
 export type ExpressionName =
   | "surprised"
   | "sleepy"

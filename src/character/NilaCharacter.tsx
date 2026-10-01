@@ -24,11 +24,12 @@ import curiousImg from "../../character/expressions/curious.png";
 import playfulImg from "../../character/expressions/playful.png";
 import confusedImg from "../../character/expressions/confused.png";
 import facepalmImg from "../../character/expressions/facepalm.png";
-import ideaImg from "../../character/expressions/idea.png";
+// "idea" has no sheet cell of its own — the excited pose is the eureka read.
+import ideaImg from "../../character/expressions/excited.png";
 import pointImg from "../../character/expressions/point.png";
-import thumbsUpImg from "../../character/expressions/thumbs-up.png";
+import thumbsUpImg from "../../character/expressions/thumbs_up.png";
 import explainImg from "../../character/expressions/explain.png";
-import restChinImg from "../../character/expressions/rest-chin.png";
+import restChinImg from "../../character/expressions/rest_chin.png";
 
 /**
  * NilaCharacter — Nila's companion character, rendered from the

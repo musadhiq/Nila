@@ -12,7 +12,7 @@ import focusedUrl from "../../character/expressions/focused.png";
 import hungryUrl from "../../character/expressions/hungry.png";
 import playfulUrl from "../../character/expressions/playful.png";
 import pointUrl from "../../character/expressions/point.png";
-import restChinUrl from "../../character/expressions/rest-chin.png";
+import restChinUrl from "../../character/expressions/rest_chin.png";
 import sadUrl from "../../character/expressions/sad.png";
 import sleepyUrl from "../../character/expressions/sleepy.png";
 import stretchingUrl from "../../character/expressions/stretching.png";
