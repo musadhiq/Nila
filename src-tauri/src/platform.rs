@@ -17,17 +17,13 @@ pub trait DisplayInfo: Send + Sync {
     fn monitor_bounds(&self) -> Vec<(i32, i32, u32, u32)>;
 }
 
-/// Subscribe to OS sleep/wake and re-emit as app events so the
-/// scheduler can recalculate instead of replaying missed reminders.
+/// Integration point for a future OS sleep/wake hook (e.g. listening for
+/// PrepareForSleep on org.freedesktop.login1 via D-Bus).
 ///
-/// Linux: listen for PrepareForSleep on org.freedesktop.login1 via D-Bus.
-/// Tray: AppIndicator / StatusNotifier; degrade gracefully when absent.
-pub fn watch_sleep_wake(app: AppHandle) {
-    // Phase 11: logind D-Bus hook + tray integration.
-    let _ = app;
-}
-
-/// Emit from platform hooks; the scheduler listens for these.
+/// Nothing calls these today and nothing listens for the events: recovery
+/// after wake currently works implicitly — `tokio::time::sleep` uses a
+/// monotonic clock, so a suspended sleep completes on wake and the
+/// scheduler recomputes deadlines from the current time.
 pub fn emit_sleep(app: &AppHandle) {
     let _ = app.emit("SYSTEM_SLEEP", ());
 }

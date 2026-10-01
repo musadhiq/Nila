@@ -122,6 +122,9 @@ pub fn upsert_reminder(conn: &Connection, r: &Reminder) -> rusqlite::Result<()> 
 
 pub fn delete_reminder(conn: &Connection, id: &str) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM reminders WHERE id = ?1", params![id])?;
+    // A snooze row must not outlive its reminder: a later reminder reusing
+    // this id would otherwise inherit the old wake time.
+    clear_snooze(conn, id)?;
     Ok(())
 }
 
@@ -297,6 +300,26 @@ mod tests {
         record_history(&conn, "r1", "dismissed").unwrap();
         assert_eq!(shown_today(&conn).unwrap(), 1);
         assert!(last_shown_at(&conn).unwrap().is_some());
+    }
+
+    #[test]
+    fn delete_reminder_clears_its_snooze_row() {
+        let conn = memory_db();
+        let r = Reminder {
+            id: "r1".into(), title: "t".into(), message: "m".into(),
+            kind: "water".into(), schedule: "{}".into(), enabled: true,
+        };
+        upsert_reminder(&conn, &r).unwrap();
+        conn.execute(
+            "INSERT INTO snoozed_reminders (reminder_id, wake_at) VALUES (?1, ?2)",
+            rusqlite::params!["r1", "2999-01-01T00:00:00Z"],
+        )
+        .unwrap();
+        assert_eq!(list_snoozed(&conn).unwrap().len(), 1);
+        delete_reminder(&conn, "r1").unwrap();
+        // The snooze must not outlive its reminder: a later reminder
+        // reusing this id would otherwise inherit the old wake time.
+        assert!(list_snoozed(&conn).unwrap().is_empty());
     }
 
     #[test]

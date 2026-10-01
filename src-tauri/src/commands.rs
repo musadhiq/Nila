@@ -80,14 +80,17 @@ pub fn update_settings(
         .and_then(|v| v.as_str())
         .unwrap_or(prev_lang.as_str())
         .to_string();
+    // The tray checkbox mirrors this preference too.
+    let autostart_changed = obj.contains_key("start_at_login");
     // Release the DB lock BEFORE the tray refresh: refresh_tray_menu ->
     // current_language locks the DB again, and std::Mutex is not
     // re-entrant (holding `conn` here would deadlock the app on every
     // language change).
     drop(conn);
     scheduler::notify_data_changed(&app);
-    // Rebuild the tray menu when the language changed.
-    if new_lang != prev_lang {
+    // Rebuild the tray menu when the language changed or the
+    // launch-at-login checkbox was toggled from settings.
+    if new_lang != prev_lang || autostart_changed {
         crate::refresh_tray_menu(&app);
     }
     Ok(())
@@ -211,7 +214,11 @@ pub fn pause_all(
         }
     };
     db::set_setting(&conn, "paused_until", &until.to_rfc3339()).map_err(|e| e.to_string())?;
+    // Release the DB lock BEFORE the tray refresh (see update_settings).
+    drop(conn);
     scheduler::notify_data_changed(&app);
+    // The tray item flips between "Pause Reminders" / "Resume Reminders".
+    crate::refresh_tray_menu(&app);
     Ok(())
 }
 
@@ -219,7 +226,9 @@ pub fn pause_all(
 pub fn resume_all(app: AppHandle, db: State<'_, db::DbState>) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::set_setting(&conn, "paused_until", "").map_err(|e| e.to_string())?;
+    drop(conn);
     scheduler::notify_data_changed(&app);
+    crate::refresh_tray_menu(&app);
     Ok(())
 }
 
