@@ -28,13 +28,11 @@ fn validate_input(input: &ReminderInput) -> Result<(), String> {
         Some("once") | Some("daily") | Some("weekly") | Some("interval") => {}
         _ => return Err("Invalid schedule type.".into()),
     }
-    const KINDS: &[&str] = &["water", "food", "break", "move", "sleep", "custom"];
-    if !KINDS.contains(&input.kind.as_str()) {
+    if !db::VALID_KINDS.contains(&input.kind.as_str()) {
         return Err("Invalid reminder type.".into());
     }
     Ok(())
 }
-
 #[tauri::command]
 pub fn get_settings(db: State<'_, db::DbState>) -> Result<serde_json::Value, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -143,6 +141,9 @@ pub fn update_reminder(
     };
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::upsert_reminder(&conn, &reminder).map_err(|e| e.to_string())?;
+    // A stale snooze would override the edited schedule until it
+    // expires; the edit itself is the user's latest intent.
+    db::clear_snooze(&conn, &reminder.id).map_err(|e| e.to_string())?;
     scheduler::notify_data_changed(&app);
     Ok(reminder)
 }
@@ -232,6 +233,25 @@ pub fn next_reminder(app: AppHandle) -> Result<Option<serde_json::Value>, String
             "id": id,
             "at": at.to_rfc3339(),
         })
+    }))
+}
+
+/// Startup report for the settings UI: validation issues found in the
+/// saved reminders, plus the next computed deadline. Shows the user
+/// that Nila loaded, validated, and resumed scheduling normally —
+/// instead of a silently missed or broken reminder.
+#[tauri::command]
+pub fn startup_report(app: AppHandle) -> Result<serde_json::Value, String> {
+    let issues = scheduler::validate_store(&app);
+    let next = scheduler::compute_next_deadline(&app).map(|(id, at)| {
+        serde_json::json!({
+            "id": id,
+            "at": at.to_rfc3339(),
+        })
+    });
+    Ok(serde_json::json!({
+        "issues": issues,
+        "next": next,
     }))
 }
 

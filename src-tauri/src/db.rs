@@ -84,6 +84,12 @@ pub struct Reminder {
     pub enabled: bool,
 }
 
+/// Canonical reminder kinds. The backend accepts exactly these; the
+/// frontend's `ReminderKind` union must stay in sync.
+pub const VALID_KINDS: &[&str] = &[
+    "water", "food", "break", "move", "sleep", "stretch", "exercise", "work", "custom",
+];
+
 pub fn list_reminders(conn: &Connection) -> rusqlite::Result<Vec<Reminder>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, message, kind, schedule, enabled FROM reminders ORDER BY created_at",
@@ -200,6 +206,22 @@ pub fn last_shown_at(conn: &Connection) -> rusqlite::Result<Option<String>> {
     Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
 }
 
+/// True when any history action for `reminder_id` was recorded at or
+/// after `since` (RFC 3339 UTC; lexicographic comparison is exact).
+/// Used at startup to tell "already handled" from "missed".
+pub fn has_action_since(
+    conn: &Connection,
+    reminder_id: &str,
+    since: &str,
+) -> rusqlite::Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM reminder_history WHERE reminder_id = ?1 AND occurred_at >= ?2",
+        params![reminder_id, since],
+        |r| r.get(0),
+    )?;
+    Ok(count > 0)
+}
+
 pub fn get_setting(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
     let mut rows = stmt.query(params![key])?;
@@ -275,5 +297,21 @@ mod tests {
         record_history(&conn, "r1", "dismissed").unwrap();
         assert_eq!(shown_today(&conn).unwrap(), 1);
         assert!(last_shown_at(&conn).unwrap().is_some());
+    }
+
+    #[test]
+    fn has_action_since_detects_handled_reminders() {
+        let conn = memory_db();
+        let r = Reminder {
+            id: "r1".into(), title: "t".into(), message: "m".into(),
+            kind: "water".into(), schedule: "{}".into(), enabled: true,
+        };
+        upsert_reminder(&conn, &r).unwrap();
+        // No history yet: nothing handled since any past time.
+        assert!(!has_action_since(&conn, "r1", "2020-01-01T00:00:00Z").unwrap());
+        record_history(&conn, "r1", "shown").unwrap();
+        // The action just happened: it counts for past cutoffs, not future ones.
+        assert!(has_action_since(&conn, "r1", "2020-01-01T00:00:00Z").unwrap());
+        assert!(!has_action_since(&conn, "r1", "2999-01-01T00:00:00Z").unwrap());
     }
 }
