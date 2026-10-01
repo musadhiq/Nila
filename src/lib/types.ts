@@ -33,7 +33,7 @@ export interface AppSettings {
   /** Settings UI language. "manglish" = Malayalam in Latin script. */
   language: "en" | "manglish";
   /** How a due reminder presents itself. */
-  reminder_behavior: "bubble" | "character" | "system" | "dock";
+  reminder_behavior: "dock" | "system";
   /** Also send an OS notification with each reminder (backstop). */
   desktop_notifications: boolean;
   /** Idle animation ambience for the character. */

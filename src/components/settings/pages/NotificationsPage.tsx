@@ -16,9 +16,6 @@ export function NotificationsPage({ t, settings, update }: PageProps) {
     { title: string; desc: string }
   > = {
     dock: { title: n.behaviorDock, desc: n.behaviorDockDesc },
-    // Legacy values migrate to dock in mergeSettings; never offered.
-    bubble: { title: n.behaviorDock, desc: n.behaviorDockDesc },
-    character: { title: n.behaviorDock, desc: n.behaviorDockDesc },
     system: { title: n.behaviorSystem, desc: n.behaviorSystemDesc },
   };
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   availableMonitors,
   currentMonitor,
@@ -16,25 +16,8 @@ import {
   frameUrl,
   preloadForFirstAppearance,
 } from "./character/motionAssets";
-import {
-  characterTransformCSS,
-  effectiveEntrance,
-  effectiveExit,
-  ensureVisible,
-  nearestPreset,
-  nextNaturalPosition,
-  placeBubble,
-  presetEdges,
-  slideStartFor,
-  snapToEdge,
-  visibleFracForIdle,
-  windowRectForPreset,
-  type BubbleSide,
-  type ReminderLayout,
-} from "./character/presence";
-import { ONBOARDING } from "./lib/strings";
 import { getStrings } from "./lib/i18n";
-import type { AppSettings, PositionPreset, Reminder, ReminderKind, Schedule } from "./lib/types";
+import type { AppSettings, Reminder, ReminderKind, Schedule } from "./lib/types";
 import { DEFAULT_SETTINGS } from "./lib/types";
 import {
   BUILT_IN_TEMPLATES,
@@ -46,21 +29,16 @@ import {
 } from "./lib/reminders";
 import { invokeCommand, isTauri, listenEvent } from "./lib/tauri";
 import { playReminderChime } from "./lib/sound";
-import {
-  glidePosition,
-  isOnAnyMonitor,
-  loadSavedPosition,
-  type MonitorRect,
-  type Xy,
-} from "./lib/windowPlacement";
-import { ReminderOverlay, type DueReminder } from "./components/ReminderOverlay";
+import type { MonitorRect } from "./lib/windowPlacement";
+import type { DueReminder } from "./components/ReminderOverlay";
+import { NotificationDock } from "./dock/NotificationDock";
+import { useNotificationDock } from "./dock/useNotificationDock";
+import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
+import { isDockOnScreen } from "./dock/dockMachine";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { IconGeneral } from "./components/settings/icons";
 import type { ReminderInput } from "./components/settings/ReminderEditor";
 
 type View = "companion" | "settings";
-
-const REMINDER_KINDS = ["water", "food", "break", "move", "sleep", "custom"] as const;
 
 function isPausedSettings(s: AppSettings): boolean {
   if (!s.paused_until) return false;
@@ -69,9 +47,9 @@ function isPausedSettings(s: AppSettings): boolean {
 }
 
 /**
- * Nila companion window: floating transparent window with the character.
- * Listens for REMINDER_DUE from the Rust scheduler and shows the
- * reminder overlay; gear button opens settings / reminder management.
+ * Nila companion window: transparent window hosting either the settings
+ * panel or the top-center notification dock. Listens for REMINDER_DUE
+ * from the Rust scheduler; settings live in the tray menu.
  */
 export default function App() {
   const engineRef = useRef<CharacterEngine | null>(null);
@@ -80,43 +58,12 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [view, setView] = useState<View>("companion");
-  const [activeReminder, setActiveReminder] = useState<DueReminder | null>(null);
   const [paused, setPaused] = useState(false);
-  const [greeted, setGreeted] = useState(false);
   /** True while the settings panel uses native OS window decorations
    *  (titlebar + resize handles). The custom titlebar hides then. */
   const [decorated, setDecorated] = useState(false);
-  // Presence state.
-  const [enterAnim, setEnterAnim] = useState<string | null>(null);
-  const [stageFading, setStageFading] = useState(false);
-  const [charTransform, setCharTransform] = useState("none");
-  /** Ground shadow under Nila — only when she's anchored to the bottom edge
-   *  (never for side peeks or top hanging). Updated with the transform. */
-  const [showGroundShadow, setShowGroundShadow] = useState(true);
-  const [bubbleSide, setBubbleSide] = useState<BubbleSide>("above");
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  /** Collision-aware bubble layout (position + tail anchor within the window). */
-  const [bubbleLayout, setBubbleLayout] = useState<ReminderLayout | null>(null);
-  /** Staggered reveal: Nila appears first, the bubble fades in after. */
-  const [bubbleVisible, setBubbleVisible] = useState(false);
   // Dev-only Character Lab (spec 24).
   const [labOpen, setLabOpen] = useState(false);
-  const bubbleTimer = useRef<number | null>(null);
-  const enterAnimTimer = useRef<number | null>(null);
-  /** Cancels the in-flight window glide so a new one never fights it. */
-  const glideAbort = useRef<AbortController | null>(null);
-  const startGlide = () => {
-    glideAbort.current?.abort();
-    const c = new AbortController();
-    glideAbort.current = c;
-    return c.signal;
-  };
-  // The preset Nila is currently using (may differ from the setting when
-  // natural appearances pick another enabled position).
-  const activePresetRef = useRef<PositionPreset>("bottom-right");
-  // Last reminder window layout, so a "retreat" exit can shrink back
-  // around the character without her jumping.
-  const reminderLayoutRef = useRef<ReminderLayout | null>(null);
   // Resolved motion-frame URL for the engine's current frame (with the
   // fallback hierarchy applied); null falls back to the legacy image.
   const frameSrc = snap.frame ? frameUrl(snap.frame.key) : null;
@@ -130,77 +77,51 @@ export default function App() {
   // Frame-sequence playback: per-frame timers + idle blink injection.
   useFramePlayback(engineRef.current, snap);
   /**
-   * Full frame motion reads the live settings ref — the reminder/presence
-   * callbacks below outlive renders, so a render-scoped snapshot value
-   * would go stale here.
+   * V1 notification surface: the top-center dock. The hook owns the
+   * dock state machine (hidden -> entering -> expanding -> visible ->
+   * acknowledging -> collapsing), the notification queue, and Nila's
+   * gesture choreography through the character engine.
    */
-  const fullFrames = () => settingsRef.current.animation === "full";
-  // Chain multi-beat frame sequences: reminder-enter -> (bubble) ->
-  // point -> wait loop, and wave -> idle.
-  const seqEndTimer = useRef<number | null>(null);
-  /** The enter sequence used for the current reminder (peek or reminder-enter). */
-  const reminderEnterRef = useRef<string>("reminder-enter");
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  const dock = useNotificationDock({
+    playSequence: (name) => engineRef.current!.playSequence(name),
+    reducedMotion: settings.animation !== "full" || prefersReducedMotion,
+  });
+  // Fresh dock api inside long-lived event handlers (the REMINDER_DUE
+  // listener is registered once).
+  const dockRef = useRef(dock);
+  dockRef.current = dock;
+  // The dock machine drives the window: when the first notification
+  // starts entering, seat the window top-center and show it; when the
+  // last one finishes collapsing, hide back to the tray. The settings
+  // panel owns the window while it is open, so the dock never fights it.
+  const dockPhaseRef = useRef(dock.phase);
   useEffect(() => {
-    const engine = engineRef.current!;
-    const off = engine.onSequenceEnd((name) => {
-      if (name === "wave") {
-        if (waveTimer.current !== null) {
-          window.clearTimeout(waveTimer.current);
-          waveTimer.current = null;
-        }
-        engine.returnToIdle();
-        return;
-      }
-      if (name === "celebration") {
-        engine.returnToIdle();
-        return;
-      }
-      if (name === reminderEnterRef.current) {
-        // She has settled: wait a beat, then the bubble appears and she
-        // points at it, then waits. (Sequence-driven; the legacy
-        // bubbleTimer path covers reduced/off motion.)
-        if (seqEndTimer.current !== null) window.clearTimeout(seqEndTimer.current);
-        seqEndTimer.current = window.setTimeout(() => {
-          seqEndTimer.current = null;
-          setBubbleVisible(true);
-          engine.playChain(["reminder-point", "reminder-wait"]);
-        }, 130);
-      }
-    });
-    return () => {
-      off();
-      if (seqEndTimer.current !== null) window.clearTimeout(seqEndTimer.current);
-    };
-  }, []);
-
+    const prev = dockPhaseRef.current;
+    dockPhaseRef.current = dock.phase;
+    if (prev === dock.phase || view !== "companion" || !isTauri()) return;
+    if (prev === "hidden" && isDockOnScreen(dock.phase)) {
+      void presentDockWindow();
+    } else if (dock.phase === "hidden" && isDockOnScreen(prev)) {
+      void hideDockWindow();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dock.phase, view]);
   // Window lifecycle: Nila lives in the menu-bar tray. The floating window
   // only appears when a reminder is due, or when opened from the tray.
   // `manualOpen` tracks a user-opened window so reminder dismissal doesn't
   // hide a window the user asked to see.
-  const manualOpenRef = useRef(false);
   const pausedRef = useRef(false);
   pausedRef.current = paused;
-  // Pending delayed hide (lets an expression beat play before Nila slips
-  // back into the tray); cancelled when a new reminder fires.
-  const pendingHideRef = useRef<number | null>(null);
-  // A due reminder waiting for the user to click Nila ("character" mode).
-  const pendingReminderRef = useRef<DueReminder | null>(null);
   // Fresh settings inside event handlers (the REMINDER_DUE listener is
   // registered once but needs the current sound/motion choices).
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const downPos = useRef<{ x: number; y: number } | null>(null);
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
-  /** Companion window size adapts to the character size setting so the
-   *  sprite is never clipped (large = 224px needs a wider window). */
-  const companionSize = (): { w: number; h: number } => {
-    switch (settingsRef.current.character_size) {
-      case "large": return { w: 260, h: 320 };
-      case "medium": return { w: 200, h: 250 };
-      default: return { w: 160, h: 210 };
-    }
-  };
-  // Legacy constants removed: runtime code uses companionSize().
   // Premium two-column settings window (works at 900x600 and up; the
   // sidebar collapses to an icon rail in narrower windows).
   const PANEL_W = 960;
@@ -230,11 +151,11 @@ export default function App() {
         await win.setMinSize(new LogicalSize(720, 480));
         setDecorated(true);
       } else {
-        // Companion: frameless sprite, locked to the character-sized box.
-        const cs = companionSize();
+        // Companion/dock: frameless, always-on-top, no size locks — the
+        // dock fits the window to its card when it presents.
         await win.setDecorations(false);
-        await win.setMinSize(new LogicalSize(cs.w, cs.h));
-        await win.setMaxSize(new LogicalSize(cs.w, cs.h));
+        await win.setMinSize(null);
+        await win.setMaxSize(null);
         setDecorated(false);
       }
       await win.setAlwaysOnTop(!panel);
@@ -258,15 +179,6 @@ export default function App() {
       const win = getCurrentWindow();
       await win.show();
       await win.setFocus();
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const hideAppWindow = async () => {
-    if (!isTauri()) return;
-    try {
-      await getCurrentWindow().hide();
     } catch {
       /* ignore */
     }
@@ -333,716 +245,122 @@ export default function App() {
     return { rects, scales, primary };
   };
 
-  /** Which monitor Nila appears on (spec 42). */
-  const pickMonitorIndex = async (info: {
-    rects: MonitorRect[];
-    primary: number;
-  }): Promise<number> => {
-    const s = settingsRef.current;
-    const n = info.rects.length;
-    if (n === 0) return 0;
-    switch (s.monitor_mode) {
-      case "main":
-        return info.primary;
-      case "current": {
-        const cur = await currentMonitor().catch(() => null);
-        if (cur) {
-          const i = info.rects.findIndex(
-            (r) => r.x === cur.position.x && r.y === cur.position.y,
-          );
-          if (i >= 0) return i;
-        }
-        return info.primary;
-      }
-      case "remember": {
-        const saved = s.presence_pos;
-        if (saved && saved.monitor >= 0 && saved.monitor < n) return saved.monitor;
-        return info.primary;
-      }
-      case "specific":
-        return s.monitor_index >= 0 && s.monitor_index < n
-          ? s.monitor_index
-          : info.primary;
-    }
-  };
-
-  /** Where the companion window rests when idle (physical px). */
-  const resolveIdleTarget = async (): Promise<{
-    x: number;
-    y: number;
-    preset: PositionPreset;
-    monitor: number;
-  } | null> => {
-    const s = settingsRef.current;
-    const info = await monitorInfo();
-    if (info.rects.length === 0) return null;
-    const mi = await pickMonitorIndex(info);
-    const mon = info.rects[mi];
-    const scale = info.scales[mi] ?? 1;
-    const cs0 = companionSize();
-    const winW = Math.round(cs0.w * scale);
-    const winH = Math.round(cs0.h * scale);
-    // A user-dragged position wins — unless the monitor setup changed.
-    const saved = s.presence_pos;
-    if (
-      saved &&
-      saved.monitor === mi &&
-      isOnAnyMonitor({ x: saved.x, y: saved.y }, info.rects)
-    ) {
-      const fixed = ensureVisible(saved.x, saved.y, winW, winH, info.rects);
-      return {
-        ...fixed,
-        preset: nearestPreset(
-          fixed.x,
-          fixed.y,
-          winW,
-          winH,
-          mon,
-          Math.round(s.edge_offset * scale),
-        ),
-        monitor: mi,
-      };
-    }
-    let preset = s.position_preset;
-    if (s.natural_appearances && s.enabled_positions.length > 0) {
-      preset = nextNaturalPosition(activePresetRef.current, s.enabled_positions);
-    }
-    activePresetRef.current = preset;
-    const frac = visibleFracForIdle(s.idle_presence, s.peek_amount);
-    const pos = windowRectForPreset({
-      preset,
-      monitor: mon,
-      winW,
-      winH,
-      edgeOffset: Math.round(s.edge_offset * scale),
-      visibleFrac: frac,
-    });
-    return { ...pos, preset, monitor: mi };
-  };
-
-  /** Orientation + tilt for the character image (never the bubble). */
-  const applyCharTransform = (preset: PositionPreset) => {
-    const s = settingsRef.current;
-    setCharTransform(characterTransformCSS(preset, s.top_hang, s.tilt));
-    // Ground shadow only when Nila stands on the bottom edge.
-    setShowGroundShadow(preset === "bottom-left" || preset === "bottom" || preset === "bottom-right");
-  };
-
-  /** CSS entrance class for the stage; null when the window glides instead. */
-  const entranceClassFor = (kind: string): string | null => {
-    switch (kind) {
-      case "fade":
-        return "nila-enter-fade";
-      case "pop":
-        return "nila-enter-pop";
-      case "bounce":
-        return "nila-enter-bounce";
-      case "gentle":
-        return "nila-enter-gentle";
-      default:
-        return null; // slide + peek glide the window itself
-    }
-  };
-
   /** Send Nila back to the tray (used when closing panels). */
   const hideToTray = () => {
-    manualOpenRef.current = false;
-    pendingReminderRef.current = null;
-    reminderLayoutRef.current = null;
-    if (bubbleTimer.current !== null) {
-      window.clearTimeout(bubbleTimer.current);
-      bubbleTimer.current = null;
-    }
-    setBubbleVisible(false);
-    setBubbleLayout(null);
-    setActiveReminder(null);
     setView("companion");
-    void setPanelChrome(false);
-    void seatCompanion();
-    // "Always visible" keeps Nila on screen: closing settings just
-    // returns to the companion instead of hiding to the tray.
-    if (settingsRef.current.character_visibility === "always") {
-      void presentCompanion("idle");
-    } else {
-      void hideAppWindow();
-    }
-  };
-
-  /** After a reminder is handled, Nila leaves with her exit behavior. */
-  const maybeHideAfterReminder = () => {
-    if (manualOpenRef.current) return;
-    void dismissCompanion();
-  };
-
-  /** Hide Nila via context menu: persist visibility=hidden and go to tray. */
-  const hideNila = () => {
-    setCtxMenu(null);
-    const s = { ...settingsRef.current, character_visibility: "hidden" as const };
-    void saveSettings(s);
-    hideToTray();
+    const phase = dockRef.current.phase;
+    void (async () => {
+      await setPanelChrome(false);
+      if (phase === "hidden") {
+        // Tray-first: when idle the dock is hidden, so closing the panel
+        // hides the window.
+        await hideDockWindow();
+      } else if (isDockOnScreen(phase)) {
+        // A notification was on screen when the panel opened: give the
+        // window back to the dock (it never stopped being live).
+        await presentDockWindow();
+      }
+    })();
   };
 
   /**
-   * Let an expression beat play (proud/sleepy), then send Nila away with
-   * her configured exit behavior — unless the user opened the window.
+   * Dock window geometry. The transparent window is fitted tightly
+   * around the measured dock card (plus breathing room for Nila's
+   * shadow and the entry animation) so the invisible window area never
+   * blocks more of the desktop than necessary. The card reports its
+   * layout size via onMeasure; before the first report we use a sane
+   * estimate and correct on arrival.
    */
-  const exitAfterBeat = (ms: number) => {
-    if (manualOpenRef.current) return;
-    if (pendingHideRef.current !== null) window.clearTimeout(pendingHideRef.current);
-    pendingHideRef.current = window.setTimeout(() => {
-      pendingHideRef.current = null;
-      if (!manualOpenRef.current) void dismissCompanion();
-    }, ms);
+  const DOCK_SAFE_MARGIN = 12;
+  /** Window padding around the card: shadow spread + animation overshoot. */
+  const DOCK_PAD_X = 56;
+  const DOCK_PAD_Y = 64;
+  /** Pre-measure estimate (typical card) so the first present is sane. */
+  const dockCardSize = useRef({ w: 400, h: 230 });
+
+  /** Size + top-center the dock window around the measured card. */
+  const fitDockWindow = async () => {
+    const win = getCurrentWindow();
+    // Clear any locks left by the settings panel (min 720x480) or the
+    // old sprite path — the dock owns its size while it is on screen.
+    await win.setMinSize(null);
+    await win.setMaxSize(null);
+    await win.setDecorations(false);
+    await win.setAlwaysOnTop(true);
+    const { w, h } = dockCardSize.current;
+    const winW = Math.ceil(w + DOCK_PAD_X);
+    const winH = Math.ceil(h + DOCK_PAD_Y);
+    await win.setSize(new LogicalSize(winW, winH));
+    const info = await monitorInfo();
+    if (info.rects.length === 0) return;
+    let mi = info.primary;
+    const cur = await currentMonitor().catch(() => null);
+    if (cur) {
+      const i = info.rects.findIndex(
+        (r) => r.x === cur.position.x && r.y === cur.position.y,
+      );
+      if (i >= 0) mi = i;
+    }
+    const mon = info.rects[mi];
+    const scale = info.scales[mi] ?? 1;
+    const o = dockWindowOrigin(
+      NotificationPosition.TOP_CENTER,
+      mon,
+      Math.round(winW * scale),
+      Math.round(winH * scale),
+      Math.round(DOCK_SAFE_MARGIN * scale),
+    );
+    await win.setPosition(new PhysicalPosition(o.x, o.y));
+  };
+
+  /** The card measured itself: keep the window fitted while on screen. */
+  const handleDockMeasure = useCallback(
+    (w: number, h: number) => {
+      const prev = dockCardSize.current;
+      if (Math.abs(prev.w - w) < 2 && Math.abs(prev.h - h) < 2) return;
+      dockCardSize.current = { w: Math.ceil(w), h: Math.ceil(h) };
+      if (isTauri() && isDockOnScreen(dockRef.current.phase)) {
+        void fitDockWindow().catch(() => {});
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const presentDockWindow = async () => {
+    if (!isTauri()) return;
+    try {
+      await fitDockWindow();
+      await getCurrentWindow().show();
+      // Deliberately no setFocus(): a notification island must not steal
+      // keyboard focus from the user's work.
+    } catch {
+      try {
+        await getCurrentWindow().show();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  /** Hide the dock window (tray-first: she lives in the tray when idle). */
+  const hideDockWindow = async () => {
+    if (!isTauri()) return;
+    try {
+      await getCurrentWindow().hide();
+    } catch {
+      /* ignore */
+    }
   };
 
   /**
    * Reveal the companion using the configured presence (spec 47/54):
    * position, entrance behavior, orientation, tilt.
    */
-  const presentCompanion = async (mode: "idle" | "reminder" = "idle", keepFrames = false) => {
-    if (!isTauri()) return;
-    const win = getCurrentWindow();
-    const s = settingsRef.current;
-    try {
-      await setPanelChrome(false);
-      const target = await resolveIdleTarget();
-      if (!target) {
-        await win.show();
-        return;
-      }
-      applyCharTransform(target.preset);
-      const info = await monitorInfo();
-      const mon = info.rects[target.monitor];
-      const scale = info.scales[target.monitor] ?? 1;
-      const cs1 = companionSize();
-      const winW = Math.round(cs1.w * scale);
-      const winH = Math.round(cs1.h * scale);
-      const eo = Math.round(s.edge_offset * scale);
-      await win.setSize(new LogicalSize(cs1.w, cs1.h));
-      const entrance = effectiveEntrance(s.entrance, s.animation);
-      const cls = entranceClassFor(entrance);
-      const ms = s.entrance_ms;
-      if (entrance === "slide" || entrance === "peek") {
-        const start =
-          entrance === "slide"
-            ? slideStartFor({ preset: target.preset, monitor: mon, winW, winH, edgeOffset: eo })
-            : windowRectForPreset({
-                preset: target.preset,
-                monitor: mon,
-                winW,
-                winH,
-                edgeOffset: eo,
-                visibleFrac: 0.06,
-              });
-        await win.setPosition(new PhysicalPosition(start.x, start.y));
-        await win.show();
-        await glidePosition(start, { x: target.x, y: target.y }, ms, (x, y) => {
-          void win.setPosition(new PhysicalPosition(x, y)).catch(() => {});
-        }, startGlide());
-      } else {
-        await win.setPosition(new PhysicalPosition(target.x, target.y));
-        await win.show();
-        if (cls && entrance !== "instant") {
-          if (enterAnimTimer.current !== null) window.clearTimeout(enterAnimTimer.current);
-          setEnterAnim(cls);
-          enterAnimTimer.current = window.setTimeout(() => {
-            enterAnimTimer.current = null;
-            setEnterAnim(null);
-          }, ms + 80);
-        }
-      }
-      await win.setFocus().catch(() => {});
-      // Frame motion: a peek entrance plays her peek frames (held on the
-      // last frame while she waits); other entrances settle into the
-      // idle loop. Skipped when the caller owns the frames already
-      // (a reminder sequence is playing).
-      if (!keepFrames && fullFrames()) {
-        const engine = engineRef.current!;
-        const peek =
-          entrance === "peek"
-            ? peekSequenceForPreset(target.preset, s.top_hang)
-            : null;
-        engine.playSequence(peek ? peek.enter : "idle");
-      }
-      // Idle presence "hidden": Nila slips away right after arriving —
-      // unless she is meant to stay visible anyway.
-      if (
-        mode === "idle" &&
-        s.idle_presence === "hidden" &&
-        s.character_visibility !== "always"
-      ) {
-        exitAfterBeat(Math.max(500, ms + 300));
-      }
-    } catch {
-      try {
-        await win.show();
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-
-  /** Seat Nila at her presence spot. Glides when she is visible so a
-   *  settings change never teleports her (spec 29). */
-  const seatCompanion = async () => {
-    if (!isTauri()) return;
-    const target = await resolveIdleTarget();
-    if (!target) return;
-    applyCharTransform(target.preset);
-    try {
-      const win = getCurrentWindow();
-      const cs = companionSize();
-      await win.setSize(new LogicalSize(cs.w, cs.h));
-      const to = { x: target.x, y: target.y };
-      const from = await win.outerPosition().catch(() => null);
-      if (from && Math.hypot(to.x - from.x, to.y - from.y) > 2) {
-        await glidePosition({ x: from.x, y: from.y }, to, 320, (x, y) => {
-          void win.setPosition(new PhysicalPosition(x, y)).catch(() => {});
-        }, startGlide());
-      } else {
-        await win.setPosition(new PhysicalPosition(to.x, to.y));
-      }
-    } catch {
-      /* ignore */
-    }
-  };
-
-  /** Send Nila away using the configured exit behavior (spec 39). */
-  const dismissCompanion = async () => {
-    if (!isTauri()) return;
-    const win = getCurrentWindow();
-    const s = settingsRef.current;
-    if (manualOpenRef.current) return;
-    if (s.character_visibility === "always") {
-      // Always-visible: retreat to the idle spot instead of hiding.
-      await presentCompanion("idle");
-      return;
-    }
-    const exit = effectiveExit(s.exit_behavior, s.animation);
-    const ms = s.exit_ms;
-    try {
-      if (exit === "fade" || exit === "instant") {
-        if (exit === "fade" && ms > 0) {
-          setStageFading(true);
-          await new Promise((r) => window.setTimeout(r, Math.min(ms, 400)));
-          setStageFading(false);
-        }
-        await win.hide();
-        return;
-      }
-      const target = await resolveIdleTarget();
-      const from = await win.outerPosition().catch(() => null);
-      const size = await win.outerSize().catch(() => null);
-      if (!target || !from || !size) {
-        await win.hide();
-        return;
-      }
-      // Frame motion: slipping back out through the edge plays her peek
-      // frames in reverse while the window glides.
-      if (fullFrames() && (exit === "peek-out" || exit === "slide")) {
-        const peek = peekSequenceForPreset(target.preset, s.top_hang);
-        if (peek) engineRef.current!.playSequence(peek.exit);
-      }
-      const info = await monitorInfo();
-      const mon = info.rects[target.monitor];
-      const scale = info.scales[target.monitor] ?? 1;
-      const eo = Math.round(s.edge_offset * scale);
-      let start: Xy = { x: from.x, y: from.y };
-      const rl = reminderLayoutRef.current;
-      if (rl && exit === "retreat") {
-        // Shrink the reminder window back around the character first, so
-        // she doesn't jump when the bubble goes away.
-        const charScrX = Math.round(from.x + rl.charX * scale);
-        const charScrY = Math.round(from.y + rl.charY * scale);
-        const cs2 = companionSize();
-        await win.setSize(new LogicalSize(cs2.w, cs2.h));
-        await win.setPosition(new PhysicalPosition(charScrX, charScrY));
-        start = { x: charScrX, y: charScrY };
-      }
-      reminderLayoutRef.current = null;
-      let to: Xy;
-      if (exit === "slide") {
-        // Back to the place she came from: offscreen in the edge direction.
-        to = slideStartFor({
-          preset: target.preset,
-          monitor: mon,
-          winW: size.width,
-          winH: size.height,
-          edgeOffset: eo,
-        });
-      } else if (exit === "peek-out") {
-        to = windowRectForPreset({
-          preset: target.preset,
-          monitor: mon,
-          winW: size.width,
-          winH: size.height,
-          edgeOffset: eo,
-          visibleFrac: 0.06,
-        });
-      } else {
-        // Retreat to the idle spot.
-        to = { x: target.x, y: target.y };
-      }
-      await glidePosition(start, to, ms, (x, y) => {
-        void win.setPosition(new PhysicalPosition(x, y)).catch(() => {});
-      }, startGlide());
-      // Retreat keeps her resting at the idle spot when idle presence
-      // is visible; otherwise she slips out of sight.
-      if (exit === "retreat" && s.idle_presence !== "hidden") {
-        const cs3 = companionSize();
-        await win.setSize(new LogicalSize(cs3.w, cs3.h));
-        return;
-      }
-      await win.hide();
-    } catch {
-      try {
-        await win.hide();
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-
-  // Reminder bubble box (logical px). The card is capped so the bubble
-  // can never outgrow the screen (spec 46).
-  const BUBBLE_W = 300;
-  const BUBBLE_H = 280;
-  const REM_GAP = 12;
-  const REM_PAD = 16;
-
-  /**
-   * Show a reminder: Nila appears at her spot and the bubble opens toward
-   * the desktop, clamped onscreen (spec 46/47).
-   */
-  const presentReminder = async (r: DueReminder) => {
-    if (!isTauri()) return;
-    const win = getCurrentWindow();
-    const s = settingsRef.current;
-    try {
-      await setPanelChrome(false);
-      const target = await resolveIdleTarget();
-      const info = await monitorInfo();
-      if (!target || info.rects.length === 0) {
-        setActiveReminder(r);
-        await win.show();
-        return;
-      }
-      const mon = info.rects[target.monitor];
-      const scale = info.scales[target.monitor] ?? 1;
-      applyCharTransform(target.preset);
-      const cs4 = companionSize();
-      // Nila's screen-space rect (logical px): her preset anchor.
-      const charRect = windowRectForPreset({
-        preset: target.preset,
-        monitor: {
-          x: mon.x / scale,
-          y: mon.y / scale,
-          width: mon.width / scale,
-          height: mon.height / scale,
-        },
-        winW: cs4.w,
-        winH: cs4.h,
-        edgeOffset: s.edge_offset,
-        visibleFrac: 1,
-      });
-      // Collision-aware bubble placement relative to her actual bounds.
-      const layout = placeBubble({
-        charX: charRect.x,
-        charY: charRect.y,
-        charW: cs4.w,
-        charH: cs4.h,
-        monitor: {
-          x: mon.x / scale,
-          y: mon.y / scale,
-          width: mon.width / scale,
-          height: mon.height / scale,
-        },
-        bubbleW: BUBBLE_W,
-        bubbleH: BUBBLE_H,
-        gap: REM_GAP,
-      });
-      // Padding around the layout, re-clamped to the monitor.
-      const w = layout.w + REM_PAD;
-      const h = layout.h + REM_PAD;
-      const fixed = ensureVisible(
-        layout.x - REM_PAD / 2,
-        layout.y - REM_PAD / 2,
-        w,
-        h,
-        [
-          {
-            x: mon.x / scale,
-            y: mon.y / scale,
-            width: mon.width / scale,
-            height: mon.height / scale,
-          },
-        ],
-      );
-      // Shift the inner layout by the clamp delta so character/bubble
-      // stay glued to their screen positions.
-      const dx = fixed.x - (layout.x - REM_PAD / 2);
-      const dy = fixed.y - (layout.y - REM_PAD / 2);
-      const inner = {
-        ...layout,
-        charX: layout.charX + REM_PAD / 2 + dx,
-        charY: layout.charY + REM_PAD / 2 + dy,
-        bubbleX: layout.bubbleX + REM_PAD / 2 + dx,
-        bubbleY: layout.bubbleY + REM_PAD / 2 + dy,
-      };
-      setBubbleSide(layout.side);
-      setBubbleLayout(inner);
-      // Staggered sequence (spec 15): the window is positioned and shown
-      // with Nila first; the bubble fades in 120ms later. Setting
-      // activeReminder renders her at the new spot; the bubble appears
-      // on the delayed flag.
-      if (bubbleTimer.current !== null) window.clearTimeout(bubbleTimer.current);
-      setBubbleVisible(false);
-      setActiveReminder(r);
-      // Remember the character box so a "retreat" exit can shrink the
-      // window back around her without her jumping on screen. Store the
-      // padded inner layout (matching the actual window position).
-      reminderLayoutRef.current = { ...inner, x: fixed.x, y: fixed.y };
-      // Clear the companion's min/max locks (220x300) BEFORE resizing:
-      // otherwise setSize is clamped and the bubble gets cropped.
-      // Max-before-min order (same lesson as the settings panel fix).
-      try {
-        await win.setMaxSize(null);
-        await win.setMinSize(new LogicalSize(Math.round(w), Math.round(h)));
-      } catch {
-        /* ignore */
-      }
-      await win.setSize(new LogicalSize(Math.round(w), Math.round(h)));
-      const lm = {
-        x: mon.x / scale,
-        y: mon.y / scale,
-        width: mon.width / scale,
-        height: mon.height / scale,
-      };
-      const placeAt = (lx: number, ly: number) => {
-        win
-          .setPosition(
-            new PhysicalPosition(Math.round(lx * scale), Math.round(ly * scale)),
-          )
-          .catch(() => {});
-      };
-      const entrance = effectiveEntrance(s.entrance, s.animation);
-      const cls = entranceClassFor(entrance);
-      const ms = s.entrance_ms;
-      // Frame motion: a peek entrance plays her peek frames while the
-      // window glides in; the reminder arc continues when they land
-      // (bubble -> point -> wait via the sequence-end handler).
-      if (fullFrames() && entrance === "peek") {
-        const peek = peekSequenceForPreset(target.preset, s.top_hang);
-        if (peek) {
-          reminderEnterRef.current = peek.enter;
-          engineRef.current!.playSequence(peek.enter);
-        } else {
-          reminderEnterRef.current = "reminder-enter";
-        }
-      } else {
-        reminderEnterRef.current = "reminder-enter";
-      }
-      if (entrance === "slide" || entrance === "peek") {
-        // The whole reminder window glides in from her edge (spec 47).
-        const edges = presetEdges(target.preset);
-        const pad = 24;
-        let sx = fixed.x;
-        let sy = fixed.y;
-        if (entrance === "slide") {
-          if (edges.includes("right")) sx = lm.x + lm.width + pad;
-          else if (edges.includes("left")) sx = lm.x - w - pad;
-          else if (edges.includes("top")) sy = lm.y - h - pad;
-          else sy = lm.y + lm.height + pad; // bottom + center
-        } else {
-          // Peek: start barely visible at the edge, then emerge.
-          const vis = 0.15;
-          if (edges.includes("right")) sx = lm.x + lm.width - w * vis;
-          else if (edges.includes("left")) sx = lm.x - w * (1 - vis);
-          else if (edges.includes("top")) sy = lm.y - h * (1 - vis);
-          else sy = lm.y + lm.height - h * vis;
-        }
-        placeAt(sx, sy);
-        await win.show();
-        await glidePosition(
-          { x: sx, y: sy },
-          { x: fixed.x, y: fixed.y },
-          ms,
-          (x, y) => placeAt(x, y),
-          startGlide(),
-        );
-        // Nila has arrived; now the bubble fades in (staggered). With
-        // full frame motion the sequence-end handler reveals it after
-        // her enter frames land instead.
-        if (!fullFrames()) {
-          bubbleTimer.current = window.setTimeout(() => {
-            bubbleTimer.current = null;
-            setBubbleVisible(true);
-          }, 120);
-        }
-      } else {
-        placeAt(fixed.x, fixed.y);
-        await win.show();
-        if (cls && entrance !== "instant") {
-          if (enterAnimTimer.current !== null) window.clearTimeout(enterAnimTimer.current);
-          setEnterAnim(cls);
-          enterAnimTimer.current = window.setTimeout(() => {
-            enterAnimTimer.current = null;
-            setEnterAnim(null);
-          }, ms + 80);
-        }
-        // Staggered bubble reveal for non-glide entrances too
-        // (sequence-driven under full frame motion).
-        if (!fullFrames()) {
-          bubbleTimer.current = window.setTimeout(() => {
-            bubbleTimer.current = null;
-            setBubbleVisible(true);
-          }, 120);
-        }
-      }
-      await win.setFocus().catch(() => {});
-    } catch {
-      setActiveReminder(r);
-      try {
-        await win.show();
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-
-  /** Drag the floating window by the character (Tauri only). */
-  const startDrag = (e: React.MouseEvent) => {
-    downPos.current = { x: e.clientX, y: e.clientY };
-    if (!isTauri() || e.button !== 0) return;
-    if (view !== "companion") return;
-    // Dragging during a reminder moves the whole window (character +
-    // bubble) as a unit, so the layout stays valid.
-    if (!settingsRef.current.draggable) return;
-    void getCurrentWindow().startDragging().catch(() => {});
-  };
-
   // Engine -> React state.
   useEffect(() => {
     const off = engineRef.current!.onChange(setSnap);
     return off;
-  }, []);
-
-  // Remember Nila's spot (spec 43/44/45): after the user drags her,
-  // gently snap to nearby edges, then persist the position through the
-  // settings architecture so she returns to the same spot on restart.
-  useEffect(() => {
-    if (!isTauri()) return;
-    let unlisten: (() => void) | null = null;
-    let timer: number | null = null;
-    (async () => {
-      try {
-        unlisten = await getCurrentWindow().listen("tauri://move", () => {
-          if (timer !== null) window.clearTimeout(timer);
-          timer = window.setTimeout(() => {
-            timer = null;
-            void (async () => {
-              try {
-                const win = getCurrentWindow();
-                const pos = await win.outerPosition();
-                const size = await win.outerSize().catch(() => null);
-                const info = await monitorInfo();
-                if (info.rects.length === 0 || !size) return;
-                const w = size.width;
-                const h = size.height;
-                // Which monitor is she on? Use the window center.
-                const cx = pos.x + w / 2;
-                const cy = pos.y + h / 2;
-                let mi = info.rects.findIndex(
-                  (r) => cx >= r.x && cx <= r.x + r.width && cy >= r.y && cy <= r.y,
-                );
-                if (mi < 0) mi = info.primary;
-                const s = settingsRef.current;
-                const scale = info.scales[mi] ?? 1;
-                let x = pos.x;
-                let y = pos.y;
-                if (s.snap_enabled) {
-                  const snapped = snapToEdge(
-                    x,
-                    y,
-                    w,
-                    h,
-                    info.rects[mi],
-                    Math.round(s.snap_threshold * scale),
-                  );
-                  if (snapped.snapped.length > 0) {
-                    await win.setPosition(new PhysicalPosition(snapped.x, snapped.y));
-                    x = snapped.x;
-                    y = snapped.y;
-                  }
-                }
-                const preset = nearestPreset(
-                  x,
-                  y,
-                  w,
-                  h,
-                  info.rects[mi],
-                  Math.round(s.edge_offset * scale),
-                );
-                activePresetRef.current = preset;
-                applyCharTransform(preset);
-                const next = {
-                  ...settingsRef.current,
-                  presence_pos: { x, y, monitor: mi, preset },
-                };
-                setSettings(next);
-                try {
-                  await invokeCommand("update_settings", {
-                    settings: settingsToRecord(next),
-                  });
-                } catch {
-                  /* demo mode */
-                }
-              } catch {
-                /* ignore */
-              }
-            })();
-          }, 600);
-        });
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      if (timer !== null) window.clearTimeout(timer);
-      unlisten?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // First-launch greeting.
-  useEffect(() => {
-    let inner: number | null = null;
-    const t = window.setTimeout(() => {
-      engineRef.current!.wave();
-      setGreeted(true);
-      inner = window.setTimeout(() => engineRef.current!.returnToIdle(), 2500);
-    }, 600);
-    // The window starts hidden in the tray; seat it at her presence spot
-    // before it first appears so entrances always start right.
-    void (async () => {
-      if (!isTauri()) return;
-      const target = await resolveIdleTarget();
-      if (target) {
-        activePresetRef.current = target.preset;
-        applyCharTransform(target.preset);
-        try {
-          await getCurrentWindow().setPosition(
-            new PhysicalPosition(target.x, target.y),
-          );
-        } catch {
-          /* leave the OS default */
-        }
-      }
-    })();
-    return () => {
-      window.clearTimeout(t);
-      if (inner !== null) window.clearTimeout(inner);
-    };
   }, []);
 
   // Load settings + reminders; seed built-ins on first launch.
@@ -1072,19 +390,6 @@ export default function App() {
           if (cancelled) return;
         }
         setReminders(dtos.map(toReminder));
-        // Migrate the old drag-saved position into the presence store
-        // (spec 43): it becomes a user-placed presence_pos.
-        if (!merged.presence_pos) {
-          const legacy = loadSavedPosition();
-          if (legacy) {
-            merged.presence_pos = {
-              x: legacy.x,
-              y: legacy.y,
-              monitor: 0,
-              preset: "bottom-right",
-            };
-          }
-        }
         setSettings(merged);
         setPaused(isPausedSettings(merged));
         engineRef.current!.setSize(merged.character_size);
@@ -1101,8 +406,10 @@ export default function App() {
             peek ? [peek.enter, peek.exit] : [],
           ).then(() => backgroundPreloadAll());
         }
-        // "Always visible": Nila stays on screen from launch.
-        if (merged.character_visibility === "always") void presentCompanion("idle");
+        // V1 is tray-first: Nila appears via the notification dock when a
+        // reminder is due (or when opened from the tray). There is no
+        // floating character to keep on screen, so "always visible" does
+        // not auto-present anything here.
       } catch {
         // Demo mode (plain vite): defaults stay, backend calls no-op.
       }
@@ -1136,14 +443,6 @@ export default function App() {
         } else {
           return;
         }
-        const kind = (REMINDER_KINDS as readonly string[]).includes(r.kind)
-          ? (r.kind as (typeof REMINDER_KINDS)[number])
-          : "custom";
-        // A new reminder cancels a pending slip-back-to-tray.
-        if (pendingHideRef.current !== null) {
-          window.clearTimeout(pendingHideRef.current);
-          pendingHideRef.current = null;
-        }
         const behavior = settingsRef.current.reminder_behavior;
         const hidden = settingsRef.current.character_visibility === "hidden";
         // "Hidden" mode: Nila never appears on screen. The scheduler
@@ -1152,35 +451,13 @@ export default function App() {
         // "System notification" mode: the OS notification is the whole
         // surface (sent by the scheduler); Nila stays in the tray.
         if (behavior === "system") return;
-        engineRef.current!.beginReminder(kind);
-        if (behavior === "character") {
-          // "Character only" mode: Nila appears quietly with no overlay.
-          // Clicking her reveals the pending reminder; if ignored she
-          // slips back into the tray after a while.
-          pendingReminderRef.current = r;
-          chimeForReminder();
-          setView("companion");
-          void presentCompanion("idle", true);
-          exitAfterBeat(30000);
-          return;
-        }
+        // V1: the top-center notification dock is the only on-screen
+        // surface. The dock machine queues overlapping reminders and
+        // choreographs Nila's gestures; the phase effect seats the
+        // window top-center and shows it.
         setView("companion");
-        // A reminder is due: Nila appears with her configured entrance,
-        // the bubble opening toward the desktop. The overlay takes over
-        // the window.
-        setActiveReminder(r);
-        // She gasps, then points at the reminder bubble. With full frame
-        // motion the reminder-enter sequence does this instead, so the
-        // legacy expression flashes are skipped there.
-        if (settingsRef.current.animation !== "full") {
-          flashExpression("surprised", 800);
-          exprTimers.current.push(
-            window.setTimeout(() => engineRef.current!.showExpression("point"), 800),
-            window.setTimeout(() => engineRef.current!.clearExpression(), 1800),
-          );
-        }
         chimeForReminder();
-        void presentReminder(r);
+        dockRef.current.notify({ id: r.id, title: r.title, message: r.message, kind: r.kind });
       });
     })();
     return () => {
@@ -1220,114 +497,45 @@ export default function App() {
     }
   };
 
-  const openPanel = async (v: View) => {
-    manualOpenRef.current = true;
-    if (v === "settings") void refreshSettings();
-    setView(v);
-    // Sequential on purpose: the window manager must apply the panel
-    // chrome and the panel size before the window is (re)shown,
-    // otherwise the panel can get stuck at the small sprite size.
-    await setPanelChrome(true);
-    await resizeWindow(PANEL_W, PANEL_H);
-    // Always center the settings window on the monitor, regardless of
-    // where Nila was standing.
-    if (isTauri()) {
-      try {
-        await getCurrentWindow().center();
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-
   const minimizeWindow = () => {
     if (!isTauri()) return;
     void getCurrentWindow().minimize().catch(() => {});
-  };
-
-  const waveTimer = useRef<number | null>(null);
-  const handleCompanionClick = (e?: React.MouseEvent) => {
-    // "Character only" mode: clicking Nila reveals the pending reminder.
-    const pending = pendingReminderRef.current;
-    if (pending && !activeReminder) {
-      pendingReminderRef.current = null;
-      engineRef.current!.beginReminder(
-        (REMINDER_KINDS as readonly string[]).includes(pending.kind)
-          ? (pending.kind as (typeof REMINDER_KINDS)[number])
-          : "custom",
-      );
-      setActiveReminder(pending);
-      return;
-    }
-    if (activeReminder) return;
-    // A real drag shouldn't also trigger the wave.
-    const d = downPos.current;
-    if (e && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
-    const engine = engineRef.current!;
-    engine.wave();
-    if (waveTimer.current !== null) window.clearTimeout(waveTimer.current);
-    waveTimer.current = window.setTimeout(() => {
-      waveTimer.current = null;
-      engine.returnToIdle();
-    }, 1800);
   };
 
   /**
    * Exit sequence (spec 16): the bubble fades first, then Nila reacts,
    * then she leaves with her exit behavior. Never unmounts instantly.
    */
-  const hideBubbleThen = (fn: () => void, delayMs = 220) => {
-    if (bubbleTimer.current !== null) {
-      window.clearTimeout(bubbleTimer.current);
-      bubbleTimer.current = null;
-    }
-    setBubbleVisible(false);
-    window.setTimeout(() => {
-      setActiveReminder(null);
-      setBubbleLayout(null);
-      fn();
-    }, delayMs);
-  };
-
+  /**
+   * Dock V1: Done/Dismiss. Records the action (unless this is a local
+   * greeting card with no backend reminder), then the dock machine plays
+   * Nila's acknowledgment gesture and collapses. The phase effect hides
+   * the window when the last notification finishes.
+   */
   const dismissActive = async (id: string, action: "dismissed" | "completed") => {
-    try {
-      await invokeCommand("record_reminder_action", { id, action });
-    } catch {
-      /* demo mode */
+    if (!id.startsWith("greeting-")) {
+      try {
+        await invokeCommand("record_reminder_action", { id, action });
+      } catch {
+        /* demo mode */
+      }
     }
-    hideBubbleThen(() => {
-      engineRef.current!.dismissReminder(action === "completed");
-      if (action === "completed") {
-        // Bubble out first; she gives a thumbs-up, then leaves.
-        const frames = settingsRef.current.animation === "full";
-        if (!frames) flashExpression("proud", 1600);
-        exitAfterBeat(frames ? 1600 : 1300);
-        return;
-      }
-      // Plain dismiss: with full motion she reacts, then retreats, and
-      // only then does the window exit (so the beats stay visible).
-      // Legacy motion keeps the immediate exit.
-      if (settingsRef.current.animation === "full") {
-        exitAfterBeat(2300); // react (1550) + retreat (340) + beat
-      } else {
-        maybeHideAfterReminder();
-      }
-    });
+    dock.dismiss(action);
   };
 
+  /** Dock V1: Snooze. Reschedules (unless a greeting card), then ack. */
   const snoozeActive = async (id: string, minutes: 10 | 30 | 60) => {
-    try {
-      await invokeCommand("snooze_reminder", { id, minutes });
-    } catch {
-      /* demo mode */
+    if (!id.startsWith("greeting-")) {
+      try {
+        await invokeCommand("snooze_reminder", { id, minutes });
+      } catch {
+        /* demo mode */
+      }
+      dock.dismiss("snoozed");
+    } else {
+      // Greetings have no backend reminder to reschedule: just acknowledge.
+      dock.dismiss("dismissed");
     }
-    hideBubbleThen(() => {
-      engineRef.current!.snoozeReminder();
-      // A nod of acknowledgment, then she leaves.
-      const frames = settingsRef.current.animation === "full";
-      if (!frames) flashExpression("sleepy", 1400);
-      exitAfterBeat(frames ? 1700 : 1200);
-    });
   };
 
   const pauseAll = async (minutes: 30 | 60 | null) => {
@@ -1337,13 +545,8 @@ export default function App() {
       /* demo mode */
     }
     engineRef.current!.pause();
-    if (bubbleTimer.current !== null) {
-      window.clearTimeout(bubbleTimer.current);
-      bubbleTimer.current = null;
-    }
-    setBubbleVisible(false);
-    setBubbleLayout(null);
-    setActiveReminder(null);
+    dock.forceHide();
+    if (view === "companion") void hideDockWindow();
     setPaused(true);
     // Keep the settings state in sync: pause_all writes paused_until to the
     // Rust store, but a later saveSettings() with a stale settings object
@@ -1356,7 +559,6 @@ export default function App() {
     } catch {
       /* demo mode */
     }
-    maybeHideAfterReminder();
   };
 
   const resumeAll = async () => {
@@ -1379,32 +581,23 @@ export default function App() {
   };
 
   const testReminder = async () => {
-    // The overlay must be visible: leave the panel first (this was the bug —
+    // The dock must be visible: leave the panel first (this was the bug —
     // the reminder fired underneath the open settings panel).
-    // In "system notification" mode there is no overlay: the backend sends
+    // In "system notification" mode there is no dock: the backend sends
     // an OS notification instead, so Nila stays in the tray. Same for
     // "hidden" visibility.
     const behavior = settingsRef.current.reminder_behavior;
     const hidden = settingsRef.current.character_visibility === "hidden";
-    if (behavior !== "system" && !hidden) {
-      manualOpenRef.current = true;
-      setView("companion");
-      void presentCompanion("idle");
-    }
     if (!isTauri()) {
       if (behavior === "system" || hidden) return;
-      const r: DueReminder = {
+      setView("companion");
+      chimeForReminder();
+      dock.notify({
         id: "demo",
         title: "Vellam",
         message: "Vellam kudicho? (demo)",
         kind: "water",
-      };
-      engineRef.current!.beginReminder("water");
-      // Legacy attention beat (reduced/off motion); full frame motion plays
-      // the reminder-enter sequence instead.
-      if (settingsRef.current.animation !== "full") flashExpression("surprised", 1200);
-      chimeForReminder();
-      setActiveReminder(r);
+      });
       return;
     }
     try {
@@ -1412,6 +605,54 @@ export default function App() {
     } catch {
       /* ignore */
     }
+  };
+
+  /**
+   * Development-only dock preview (from the Character settings page).
+   * Closes the settings panel first — the dock owns the window — then
+   * feeds preview notification(s) through the real dock machine, so
+   * animations, long text, dismissal, snooze, and queueing are all
+   * exercised exactly as a real reminder would.
+   */
+  const previewDock = async (kind: "short" | "long" | "queue") => {
+    hideToTray();
+    // Let the panel close before the dock takes the window.
+    await new Promise((r) => window.setTimeout(r, 120));
+    const stamp = Date.now();
+    if (kind === "short") {
+      dockRef.current.notify({
+        id: `preview-${stamp}`,
+        title: "Vellam",
+        message: "Vellam kudicho? (preview)",
+        kind: "water",
+      });
+      return;
+    }
+    if (kind === "long") {
+      dockRef.current.notify({
+        id: `preview-long-${stamp}`,
+        title: "Time for a short break",
+        message:
+          "Time for a short break. Kurachu neram break eduthu onnu stretch cheyyam — stand up, roll your shoulders, look away from the screen for a minute, and drink some water before you dive back in.",
+        kind: "break",
+      });
+      return;
+    }
+    // Queue: three notifications back-to-back; the dock shows them one
+    // at a time in FIFO order.
+    const msgs: Array<[string, string, string]> = [
+      ["Vellam", "Vellam kudicho? Onnu kudichittu vaa.", "water"],
+      ["Break", "Kurachu neram break eduthu onnu stretch cheyyam.", "break"],
+      ["Food", "Chor kazhicho? Time ayi!", "food"],
+    ];
+    msgs.forEach(([title, message, k], i) => {
+      dockRef.current.notify({
+        id: `preview-q-${stamp}-${i}`,
+        title,
+        message,
+        kind: k,
+      });
+    });
   };
 
   const updateReminder = async (id: string, input: ReminderInput) => {
@@ -1464,16 +705,7 @@ export default function App() {
     } catch {
       /* demo mode */
     }
-    // Settings apply immediately and stay open; closing the panel returns
-    // Nila to the tray. Presence changes re-seat her right away when she
-    // is on screen (no entrance animation, just the new spot/tilt).
-    if (view === "companion" && !activeReminder) {
-      void (async () => {
-        if (!isTauri()) return;
-        const visible = await getCurrentWindow().isVisible().catch(() => false);
-        if (visible) await seatCompanion();
-      })();
-    }
+    // Closing the panel returns Nila to the tray (tray-first V1).
   };
 
   // Tray menu events from the backend.
@@ -1504,21 +736,27 @@ export default function App() {
     let offHidden: (() => void) | null = null;
     (async () => {
       offShow = await listenEvent<string>("TRAY_SHOW", (mode) => {
-        manualOpenRef.current = true;
         if (mode === "settings") {
           void refreshSettings();
           setView("settings");
-          // Same panel treatment as the gear button: resizable, not
-          // always-on-top, sized before showing so the window never
-          // gets stuck at the small companion size.
+          // Resizable panel with native chrome, sized before showing so
+          // the window never gets stuck at a small size.
           void (async () => {
             await setPanelChrome(true);
             await resizeWindow(PANEL_W, PANEL_H);
             await showAppWindow();
           })();
         } else {
+          // V1: "Show Nila" opens the dock with a greeting card (tray-first:
+          // she lives in the tray when idle; there is no floating character).
           setView("companion");
-          void presentCompanion("idle");
+          const s = getStrings(settingsRef.current.language);
+          dockRef.current.notify({
+            id: `greeting-${Date.now()}`,
+            title: "Nila",
+            message: s.dock.greeting,
+            kind: "greeting",
+          });
         }
       });
       offPause = await listenEvent("TRAY_PAUSE", () => {
@@ -1526,14 +764,8 @@ export default function App() {
         else void pauseAll(60);
       });
       offHidden = await listenEvent("TRAY_HIDDEN", () => {
-        manualOpenRef.current = false;
-        if (bubbleTimer.current !== null) {
-          window.clearTimeout(bubbleTimer.current);
-          bubbleTimer.current = null;
-        }
-        setBubbleVisible(false);
-        setBubbleLayout(null);
-        setActiveReminder(null);
+        dockRef.current.forceHide();
+        if (viewRef.current === "companion") void hideDockWindow();
         setView("companion");
       });
     })();
@@ -1595,172 +827,36 @@ export default function App() {
   return (
     <div
       className="companion"
-      onClick={handleCompanionClick}
-      onDoubleClick={() => engineRef.current!.playAnimation("happy-bounce")}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setCtxMenu({ x: e.clientX, y: e.clientY });
-      }}
-      role="button"
-      aria-label="Nila"
-      tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") handleCompanionClick();
+        // Escape anywhere outside the dock card sends her back to the tray.
         if (e.key === "Escape") hideToTray();
       }}
     >
-      {ctxMenu && (
-        <>
-          <div
-            className="ctx-backdrop"
-            onClick={() => setCtxMenu(null)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setCtxMenu(null);
-            }}
-          />
-          <div
-            className="ctx-menu"
-            style={{ left: ctxMenu.x, top: ctxMenu.y }}
-            role="menu"
-          >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={hideNila}
-            >
-              {getStrings(settings.language).companion.hideNila}
-            </button>
-          </div>
-        </>
-      )}
-      {snap.visible && (
-        <div
-          className={`nila-stage${stageFading ? " stage-hidden" : ""}${enterAnim ? ` ${enterAnim}` : ""}`}
-          style={enterAnim ? { animationDuration: `${settings.entrance_ms}ms` } : undefined}
-        >
-          {activeReminder && bubbleLayout ? (
-            <div className="reminder-stage">
-              <div
-                className="reminder-char"
-                style={{
-                  left: bubbleLayout.charX,
-                  top: bubbleLayout.charY,
-                  transform: charTransform,
-                }}
-              >
-                <div className="char-drag" onMouseDown={startDrag}>
-                  <NilaCharacter
-                    state={snap.state}
-                    animation={snap.animation}
-                    size={snap.size}
-                    dark={dark}
-                    expression={snap.expression}
-                    groundShadow={showGroundShadow}
-                    frame={snap.frame}
-                    frameSrc={frameSrc}
-                    debug={nilaDebug}
-                    debugPosition={activePresetRef.current}
-                  />
-                </div>
-              </div>
-              <div
-                className={`reminder-bubble side-${bubbleLayout.side}${bubbleVisible ? " bubble-enter" : ""}`}
-                style={{
-                  left: bubbleLayout.bubbleX,
-                  top: bubbleLayout.bubbleY,
-                  width: bubbleLayout.bubbleW,
-                  ["--tail-frac" as string]: bubbleLayout.tailFrac,
-                  opacity: bubbleVisible ? 1 : 0,
-                }}
-              >
-                <ReminderOverlay
-                  inLayout
-                  reminder={activeReminder}
-                  onDone={dismissActive}
-                  onSnooze={snoozeActive}
-                  onPause={() => void pauseAll(30)}
-                />
-              </div>
-            </div>
-          ) : activeReminder ? (
-            <div className={`reminder-stage side-${bubbleSide}`}>
-              {(bubbleSide === "left" || bubbleSide === "above") && (
-                <div className="reminder-bubble">
-                  <ReminderOverlay
-                    inLayout
-                    reminder={activeReminder}
-                    onDone={dismissActive}
-                    onSnooze={snoozeActive}
-                    onPause={() => void pauseAll(30)}
-                  />
-                </div>
-              )}
-              <div className="reminder-char" style={{ transform: charTransform }}>
-                <div className="char-drag" onMouseDown={startDrag}>
-                  <NilaCharacter
-                    state={snap.state}
-                    animation={snap.animation}
-                    size={snap.size}
-                    dark={dark}
-                    expression={snap.expression}
-                    groundShadow={showGroundShadow}
-                    frame={snap.frame}
-                    frameSrc={frameSrc}
-                    debug={nilaDebug}
-                    debugPosition={activePresetRef.current}
-                  />
-                </div>
-              </div>
-              {(bubbleSide === "right" || bubbleSide === "below") && (
-                <div className="reminder-bubble">
-                  <ReminderOverlay
-                    inLayout
-                    reminder={activeReminder}
-                    onDone={dismissActive}
-                    onSnooze={snoozeActive}
-                    onPause={() => void pauseAll(30)}
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="idle-char" style={{ transform: charTransform }}>
-              <div className="char-drag" onMouseDown={startDrag}>
-                <NilaCharacter
-                  state={snap.state}
-                  animation={snap.animation}
-                  size={snap.size}
-                  dark={dark}
-                  expression={snap.expression}
-                  groundShadow={showGroundShadow}
-                  frame={snap.frame}
-                  frameSrc={frameSrc}
-                  debug={nilaDebug}
-                  debugPosition={activePresetRef.current}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      {greeted && !activeReminder && snap.state === "waving" && (
-        <div className="bubble" role="status">
-          {ONBOARDING.hello}
-        </div>
-      )}
-      {view === "companion" && !activeReminder && (
-        <button
-          type="button"
-          className="gear-btn"
-          aria-label={getStrings(settings.language).window.title}
-          onClick={(e) => {
-            e.stopPropagation();
-            void openPanel("settings");
-          }}
-        >
-          <IconGeneral />
-        </button>
+      {view === "companion" && dock.phase !== "hidden" && (
+        <NotificationDock
+          phase={dock.phase}
+          reminder={dock.current}
+          queueCount={dock.queueLength}
+          reducedMotion={settings.animation !== "full" || prefersReducedMotion}
+          nila={
+            <NilaCharacter
+              state={snap.state}
+              animation={snap.animation}
+              size="small"
+              dark={dark}
+              expression={snap.expression}
+              frame={snap.frame}
+              frameSrc={frameSrc}
+              shadow="soft"
+            />
+          }
+          onDone={dismissActive}
+          onSnooze={snoozeActive}
+          onInteract={dock.interact}
+          onDisengage={dock.disengage}
+          onKeyDismiss={(id) => void dismissActive(id, "dismissed")}
+          onMeasure={handleDockMeasure}
+        />
       )}
       {import.meta.env.DEV && nilaDebug && view === "companion" && (
         <button
@@ -1788,6 +884,7 @@ export default function App() {
             onPause={(m) => void pauseAll(m)}
             onResume={() => void resumeAll()}
             onTest={() => void testReminder()}
+            onPreviewDock={(kind) => void previewDock(kind)}
             onClose={hideToTray}
             onMinimize={minimizeWindow}
             onDataChanged={() => void reloadAfterImport()}
