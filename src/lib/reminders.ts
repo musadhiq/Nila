@@ -63,6 +63,24 @@ export function scheduleToJson(s: Schedule): string {
   return JSON.stringify(s);
 }
 
+/**
+ * Combine a local calendar date ("YYYY-MM-DD") and time ("HH:MM") from the
+ * editor into a UTC ISO instant for storage. Returns null when either part
+ * is missing or the combination isn't a valid date-time.
+ */
+export function onceToIso(date: string, time: string): string | null {
+  if (!date || !time) return null;
+  const d = new Date(`${date}T${time}`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+/** True when the ISO instant is at or before now (a once-reminder that could never fire). */
+export function isPastIso(iso: string, nowMs: number = Date.now()): boolean {
+  const at = Date.parse(iso);
+  return Number.isNaN(at) || at <= nowMs;
+}
+
 /** Short Malayalam description of a schedule, for list rows. */
 export function describeSchedule(s: Schedule): string {
   switch (s.type) {
