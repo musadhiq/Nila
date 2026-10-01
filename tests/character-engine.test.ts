@@ -18,40 +18,46 @@ describe("CharacterEngine", () => {
     assert.throws(() => e.setState("waving"), /Illegal character transition/);
   });
 
-  it("runs the water reminder sequence: attention -> reminding -> happy -> idle", () => {
+  it("runs the water reminder sequence: attention -> reminding -> happy wave", () => {
     const e = new CharacterEngine();
     e.beginReminder("water");
     assert.equal(e.snapshot().state, "reminding");
     assert.equal(e.isReminding(), true);
     e.dismissReminder();
-    assert.equal(e.snapshot().state, "idle");
+    // She smiles and waves; the caller sequences the exit. The wave must
+    // be the visible final animation (not batched away).
+    assert.equal(e.snapshot().state, "happy");
+    assert.equal(e.snapshot().animation, "wave");
     assert.equal(e.isReminding(), false);
   });
 
-  it("custom reminders go through thinking first", () => {
+  it("custom reminders go straight to reminding with attention", () => {
     const e = new CharacterEngine();
     const seen: string[] = [];
     e.onChange((s) => seen.push(s.state));
     e.beginReminder("custom");
-    assert.ok(seen.includes("thinking"));
+    // No invisible intermediate: the attention plays on reminding.
+    assert.ok(!seen.includes("thinking"));
     assert.equal(e.snapshot().state, "reminding");
+    assert.equal(e.snapshot().animation, "attention");
   });
 
-  it("sleep reminders start sleepy", () => {
+  it("sleep reminders go straight to reminding", () => {
     const e = new CharacterEngine();
     const seen: string[] = [];
     e.onChange((s) => seen.push(s.state));
     e.beginReminder("sleep");
-    assert.ok(seen.includes("sleeping"));
+    assert.ok(!seen.includes("sleeping"));
     assert.equal(e.snapshot().state, "reminding");
   });
 
-  it("snooze sequence ends hidden: reminding -> sleeping -> hidden", () => {
+  it("snooze leaves her drowsy but visible; the caller hides the window", () => {
     const e = new CharacterEngine();
     e.beginReminder("water");
     e.snoozeReminder();
-    assert.equal(e.snapshot().state, "hidden");
-    assert.equal(e.snapshot().visible, false);
+    assert.equal(e.snapshot().state, "sleeping");
+    assert.equal(e.snapshot().visible, true);
+    assert.equal(e.snapshot().animation, "snooze");
   });
 
   it("pause works from any state and resume returns", () => {

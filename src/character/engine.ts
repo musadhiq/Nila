@@ -200,30 +200,35 @@ export class CharacterEngine {
 
   // --- Reminder-experience sequences (spec section 36) ---
 
-  /** idle -> attention -> reminding */
-  beginReminder(kind: "water" | "food" | "break" | "move" | "sleep" | "custom"): void {
-    if (kind === "custom") {
-      this.setState("thinking");
-    } else if (kind === "sleep") {
-      this.setState("sleeping");
-    }
-    if (this.motion !== "off") this.playAnimation("attention");
+  /**
+   * idle -> attention -> reminding. Single meaningful transition; the
+   * "attention" animation plays on the reminding state. (Previously this
+   * stepped through thinking/sleeping in the same tick — React batched
+   * them so the intermediate was never visible.)
+   */
+  beginReminder(_kind: "water" | "food" | "break" | "move" | "sleep" | "custom"): void {
     this.setState("reminding");
+    if (this.motion !== "off") this.playAnimation("attention");
   }
 
-  /** Dismiss: happy/wave -> idle */
+  /**
+   * Dismiss: happy wave. Leaves her smiling; the caller sequences the
+   * exit (expression beat + exit behavior). Single transition so the
+   * wave actually plays instead of being batched away.
+   */
   dismissReminder(): void {
-    this.playAnimation("dismiss");
     this.setState("happy");
-    this.playAnimation("wave");
-    this.setState("idle");
+    if (this.motion !== "off") this.playAnimation("wave");
   }
 
-  /** Snooze: sleepy -> sleep -> hidden */
+  /**
+   * Snooze: she gets drowsy but stays visible; the caller (exitAfterBeat
+   * + dismissCompanion) hides the window after the beat. Previously this
+   * jumped to "hidden" in the same tick, so the sleepy beat never played.
+   */
   snoozeReminder(): void {
     this.setState("sleeping");
-    this.playAnimation("snooze");
-    this.setState("hidden");
+    if (this.motion !== "off") this.playAnimation("snooze");
   }
 
   /** Pause from any state: sleep -> paused */

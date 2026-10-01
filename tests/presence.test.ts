@@ -9,6 +9,7 @@ import {
   nearestPreset,
   nextNaturalPosition,
   orientationFor,
+  placeBubble,
   presetEdges,
   reminderWindowRect,
   slideStartFor,
@@ -154,6 +155,70 @@ describe("bubble placement", () => {
       bubbleW: 300, bubbleH: 280, edgeOffset: EDGE,
     });
     assert.ok(l.x + l.w <= tiny.width, `right ${l.x + l.w}`);
+  });
+});
+
+describe("placeBubble (collision-aware)", () => {
+  it("prefers above and centers on Nila", () => {
+    const l = placeBubble({
+      charX: 800, charY: 700, charW: 160, charH: 210,
+      monitor: MON, bubbleW: 300, bubbleH: 200,
+    });
+    assert.equal(l.side, "above");
+    // Bubble bottom + gap = character top.
+    assert.equal(l.bubbleY + l.bubbleH + 12, l.charY);
+    // Tail tracks her head (center).
+    assert.ok(l.tailFrac > 0.4 && l.tailFrac < 0.6, `tail ${l.tailFrac}`);
+  });
+
+  it("shifts horizontally when above would clip", () => {
+    // Nila near the right edge: centered-above would overflow.
+    const l = placeBubble({
+      charX: 1700, charY: 700, charW: 160, charH: 210,
+      monitor: MON, bubbleW: 300, bubbleH: 200,
+    });
+    assert.equal(l.side, "above");
+    assert.ok(l.bubbleX + l.bubbleW <= MON.width - 8, "inside right");
+    // Tail still points at her head (right of center).
+    assert.ok(l.tailFrac > 0.5, `tail ${l.tailFrac}`);
+  });
+
+  it("goes below when there is no room above", () => {
+    const l = placeBubble({
+      charX: 800, charY: 10, charW: 160, charH: 210,
+      monitor: MON, bubbleW: 300, bubbleH: 200,
+    });
+    assert.equal(l.side, "below");
+    assert.ok(l.bubbleY >= 8, "inside top");
+  });
+
+  it("uses the side when vertical space is tight", () => {
+    // Short monitor: neither above nor below fits a 200px bubble.
+    const short: WinMonitorRect = { x: 0, y: 0, width: 1920, height: 300 };
+    const l = placeBubble({
+      charX: 800, charY: 50, charW: 160, charH: 210,
+      monitor: short, bubbleW: 300, bubbleH: 200,
+    });
+    assert.ok(l.side === "left" || l.side === "right", `side ${l.side}`);
+  });
+
+  it("never leaves the monitor", () => {
+    const spots: Array<[number, number]> = [
+      [0, 0], [1760, 0], [0, 870], [1760, 870], [880, 430],
+    ];
+    for (const [cx, cy] of spots) {
+      const l = placeBubble({
+        charX: cx, charY: cy, charW: 160, charH: 210,
+        monitor: MON, bubbleW: 300, bubbleH: 200,
+      });
+      const bx = l.x + l.bubbleX;
+      const by = l.y + l.bubbleY;
+      assert.ok(bx >= MON.x - 1, `x ${bx}`);
+      assert.ok(by >= MON.y - 1, `y ${by}`);
+      assert.ok(bx + l.bubbleW <= MON.width + 1, `right ${bx + l.bubbleW}`);
+      assert.ok(by + l.bubbleH <= MON.height + 1, `bottom ${by + l.bubbleH}`);
+      assert.ok(l.tailFrac >= 0.1 && l.tailFrac <= 0.9, `tail ${l.tailFrac}`);
+    }
   });
 });
 

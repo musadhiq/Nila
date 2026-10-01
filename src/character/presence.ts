@@ -302,15 +302,149 @@ export interface ReminderLayout {
   w: number;
   h: number;
   side: BubbleSide;
-  /** Character box inside the window (logical px). */
+  /** Character box inside the window (same units as x/y/w/h). */
   charX: number;
   charY: number;
+  /** Bubble box inside the window (same units). */
+  bubbleX: number;
+  bubbleY: number;
+  bubbleW: number;
+  bubbleH: number;
+  /** Tail anchor: where the bubble tail points, as a fraction (0..1)
+   *  along the bubble edge facing Nila. */
+  tailFrac: number;
+}
+
+export interface BubblePlacementOpts {
+  /** Nila's screen-space rect (same units as monitor). */
+  charX: number;
+  charY: number;
+  charW: number;
+  charH: number;
+  monitor: MonitorRect;
+  bubbleW: number;
+  bubbleH: number;
+  gap?: number;
+  /** Margin from the monitor edge. */
+  margin?: number;
+}
+
+/**
+ * Collision-aware bubble placement (spec 5/6/7).
+ *
+ * Priority: above → above-shifted → side → below. The bubble is placed
+ * in screen coordinates relative to Nila's actual bounds, clamped to
+ * the monitor with a margin. The tail fraction tracks Nila's head so
+ * the tail always points at her, even after clamping.
+ */
+export function placeBubble(o: BubblePlacementOpts): ReminderLayout {
+  const gap = o.gap ?? 12;
+  const margin = o.margin ?? 8;
+  const m = o.monitor;
+  const bw = o.bubbleW;
+  const bh = o.bubbleH;
+
+  // Nila's head anchor: top-center of her bounds.
+  const headX = o.charX + o.charW / 2;
+
+  // Usable area (inside the margin).
+  const ux = m.x + margin;
+  const uy = m.y + margin;
+  const uw = m.width - margin * 2;
+  const uh = m.height - margin * 2;
+
+  const fits = (bx: number, by: number) =>
+    bx >= ux && by >= uy && bx + bw <= ux + uw && by + bh <= uy + uh;
+
+  // Candidate positions, in priority order.
+  // Spec §5: when Nila is at the top edge, the bubble goes below her
+  // (not to the side) — it stays close to her head.
+  type Cand = { side: BubbleSide; bx: number; by: number };
+  const aboveY = o.charY - gap - bh;
+  const belowY = o.charY + o.charH + gap;
+  const leftX = o.charX - gap - bw;
+  const rightX = o.charX + o.charW + gap;
+  const centerX = headX - bw / 2;
+  const midY = o.charY + o.charH / 2 - bh / 2;
+
+  const noRoomAbove = aboveY < uy;
+  const candidates: Cand[] = [
+    { side: "above", bx: centerX, by: aboveY },
+    // Shifted: keep the bubble onscreen by sliding it horizontally.
+    { side: "above", bx: Math.min(Math.max(centerX, ux), ux + uw - bw), by: aboveY },
+  ];
+  if (noRoomAbove) {
+    // Top edge: below keeps the bubble near her head.
+    candidates.push(
+      { side: "below", bx: centerX, by: belowY },
+      { side: "below", bx: Math.min(Math.max(centerX, ux), ux + uw - bw), by: belowY },
+    );
+  }
+  candidates.push(
+    { side: "left", bx: leftX, by: midY },
+    { side: "right", bx: rightX, by: midY },
+  );
+  if (!noRoomAbove) {
+    candidates.push(
+      { side: "below", bx: centerX, by: belowY },
+      { side: "below", bx: Math.min(Math.max(centerX, ux), ux + uw - bw), by: belowY },
+    );
+  }
+
+  let pick: Cand | null = null;
+  for (const c of candidates) {
+    if (fits(c.bx, c.by)) {
+      pick = c;
+      break;
+    }
+  }
+  if (!pick) {
+    // Nothing fits cleanly: clamp the preferred "above" into the usable area.
+    pick = {
+      side: "above",
+      bx: Math.min(Math.max(centerX, ux), ux + uw - bw),
+      by: Math.min(Math.max(aboveY, uy), uy + uh - bh),
+    };
+  }
+
+  // Tail: project Nila's head onto the bubble edge facing her, as 0..1.
+  let tailFrac: number;
+  if (pick.side === "above" || pick.side === "below") {
+    tailFrac = Math.min(0.9, Math.max(0.1, (headX - pick.bx) / bw));
+  } else {
+    const cy = o.charY + o.charH / 2;
+    tailFrac = Math.min(0.9, Math.max(0.1, (cy - pick.by) / bh));
+  }
+
+  // Window = bounding box of character + bubble.
+  const wx = Math.min(o.charX, pick.bx);
+  const wy = Math.min(o.charY, pick.by);
+  const ww = Math.max(o.charX + o.charW, pick.bx + bw) - wx;
+  const wh = Math.max(o.charY + o.charH, pick.by + bh) - wy;
+
+  return {
+    x: Math.round(wx),
+    y: Math.round(wy),
+    w: Math.round(ww),
+    h: Math.round(wh),
+    side: pick.side,
+    charX: Math.round(o.charX - wx),
+    charY: Math.round(o.charY - wy),
+    bubbleX: Math.round(pick.bx - wx),
+    bubbleY: Math.round(pick.by - wy),
+    bubbleW: Math.round(bw),
+    bubbleH: Math.round(bh),
+    tailFrac,
+  };
 }
 
 /**
  * Reminder window: character stays at her preset anchor, the bubble opens
  * toward the desktop and the whole window is clamped onscreen (spec 46/47).
  * All sizes in the same units (logical or physical — caller decides).
+ *
+ * @deprecated Use placeBubble() with an explicit character rect. Kept for
+ * the settings preview and existing tests.
  */
 export function reminderWindowRect(o: {
   preset: PositionPreset;
@@ -323,7 +457,6 @@ export function reminderWindowRect(o: {
   gap?: number;
 }): ReminderLayout {
   const gap = o.gap ?? 12;
-  const side = bubbleSideFor(o.preset);
   const anchor = windowRectForPreset({
     preset: o.preset,
     monitor: o.monitor,
@@ -332,42 +465,23 @@ export function reminderWindowRect(o: {
     edgeOffset: o.edgeOffset,
     visibleFrac: 1,
   });
-  let w: number;
-  let h: number;
-  let x: number;
-  let y: number;
-  let charX: number;
-  let charY: number;
-  if (side === "left" || side === "right") {
-    w = o.charW + gap + o.bubbleW;
-    h = Math.max(o.charH, o.bubbleH);
-    charY = Math.round((h - o.charH) / 2);
-    if (side === "left") {
-      // Bubble opens toward the desktop (left of Nila).
-      x = anchor.x - gap - o.bubbleW;
-      charX = gap + o.bubbleW;
-    } else {
-      x = anchor.x;
-      charX = 0;
-    }
-    y = Math.round(anchor.y - (h - o.charH) / 2);
-  } else {
-    w = Math.max(o.charW, o.bubbleW);
-    h = o.charH + gap + o.bubbleH;
-    charX = Math.round((w - o.charW) / 2);
-    if (side === "above") {
-      y = anchor.y - gap - o.bubbleH;
-      charY = gap + o.bubbleH;
-    } else {
-      y = anchor.y;
-      charY = 0;
-    }
-    x = Math.round(anchor.x - (w - o.charW) / 2);
-  }
-  const fixed = ensureVisible(x, y, w, h, [o.monitor]);
-  return { x: fixed.x, y: fixed.y, w, h, side, charX, charY };
+  return placeBubble({
+    charX: anchor.x,
+    charY: anchor.y,
+    charW: o.charW,
+    charH: o.charH,
+    monitor: o.monitor,
+    bubbleW: o.bubbleW,
+    bubbleH: o.bubbleH,
+    gap,
+  });
 }
 
+/**
+ * Reminder window: character stays at her preset anchor, the bubble opens
+ * toward the desktop and the whole window is clamped onscreen (spec 46/47).
+ * All sizes in the same units (logical or physical — caller decides).
+ */
 /** Mini-desktop preview math for the settings page (percentages). */
 export function stagePositionFor(preset: PositionPreset): { left: string; top: string } {
   const edges = presetEdges(preset);

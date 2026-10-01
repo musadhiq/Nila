@@ -88,17 +88,28 @@ export function isOnAnyMonitor(p: Xy, mons: MonitorRect[], tolerance = 48): bool
 
 /**
  * Ease-out-cubic glide from `from` to `to`, calling setPos per frame.
- * Resolves when the glide finishes.
+ * Resolves when the glide finishes. Pass an AbortSignal to cancel a
+ * glide in flight (e.g. a new reminder interrupts an entrance) — the
+ * promise resolves early and later glides win.
  */
 export function glidePosition(
   from: Xy,
   to: Xy,
   durationMs: number,
   setPos: (x: number, y: number) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
     const t0 = performance.now();
     const frame = (now: number) => {
+      if (signal?.aborted) {
+        resolve();
+        return;
+      }
       const t = Math.min(1, (now - t0) / durationMs);
       const e = 1 - Math.pow(1 - t, 3);
       setPos(
