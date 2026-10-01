@@ -75,6 +75,9 @@ interface Props {
   debug?: boolean;
   /** Position label for the debug overlay (e.g. "bottom-right"). */
   debugPosition?: string | null;
+  /** Drop-shadow intensity. The dock uses "soft" so Nila sits gently
+   *  inside the white card; "none" disables it entirely. */
+  shadow?: "default" | "soft" | "none";
 }
 
 const SIZE_PX: Record<CharacterSize, number> = { small: 96, medium: 160, large: 224 };
@@ -235,6 +238,7 @@ export function NilaCharacter({
   frameSrc = null,
   debug = false,
   debugPosition = null,
+  shadow = "default",
 }: Props) {
   const px = SIZE_PX[size];
 
@@ -287,10 +291,16 @@ export function NilaCharacter({
   }
   if (!src) return null;
 
-  // Drop shadow is alpha-aware so she lifts off the wallpaper.
-  const dropShadow = dark
-    ? "drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5)) brightness(0.94)"
-    : "drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35))";
+  // Drop shadow is alpha-aware so she lifts off the wallpaper. The dock
+  // renders her inside a white card, where a softer shadow sits better.
+  const dropShadow =
+    shadow === "none"
+      ? undefined
+      : shadow === "soft"
+        ? "drop-shadow(0 4px 10px rgba(0, 0, 0, 0.22))"
+        : dark
+          ? "drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5)) brightness(0.94)"
+          : "drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35))";
 
   const showDebug = debug && isDevBuild();
   const anchor: FrameAnchor = useFrame
