@@ -848,10 +848,38 @@ export default function App() {
    * the motion-frame attention gesture is retired from the dock). Each
    * built-in reminder kind gets its own expression (see kindExpressions);
    * user-configured events fall back to the pointing attention face.
-   * Expressions crossfade on change; the engine sequences keep playing
-   * silently underneath and are ignored while an expression is set.
+   * Two beats use the peek library instead: on entry she peeks over the
+   * top edge (`peek-top`, held through expanding), and when another
+   * reminder queues behind the visible one she glances sideways
+   * (`peek-right`). Expressions crossfade on change; the engine sequences
+   * keep playing silently underneath and are ignored while an expression
+   * is set.
    */
-  const dockExpression = ((): ExpressionName => {
+  const [queuePeek, setQueuePeek] = useState(false);
+  const prevQueueLen = useRef(0);
+  const queuePeekTimer = useRef<number | null>(null);
+  useEffect(() => {
+    const q = dock.queueLength;
+    const grew = q > prevQueueLen.current;
+    prevQueueLen.current = q;
+    if (
+      grew &&
+      (dock.phase === "visible" || dock.phase === "interacting") &&
+      !queuePeek
+    ) {
+      engineRef.current?.playSequence("peek-right");
+      setQueuePeek(true);
+      if (queuePeekTimer.current !== null)
+        window.clearTimeout(queuePeekTimer.current);
+      queuePeekTimer.current = window.setTimeout(() => {
+        setQueuePeek(false);
+        queuePeekTimer.current = null;
+      }, 1000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dock.queueLength, dock.phase]);
+
+  const dockExpression = ((): ExpressionName | null => {
     const ack = dock.ackAction;
     if (dock.phase === "acknowledging" || dock.phase === "collapsing") {
       return ack === "completed"
@@ -860,8 +888,10 @@ export default function App() {
           ? "sleepy"
           : "confused";
     }
-    if (dock.phase === "entering" || dock.phase === "expanding")
-      return "surprised";
+    // Peek beats: entry hangs from the top edge; a queued arrival gets a
+    // sideways glance. Frames show while no expression is set.
+    if (queuePeek) return null;
+    if (dock.phase === "entering" || dock.phase === "expanding") return null;
     return expressionForKind(dock.current?.kind);
   })();
 

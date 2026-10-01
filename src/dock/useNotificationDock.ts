@@ -12,11 +12,12 @@ import {
  * Nila's gesture choreography (via the character engine's playSequence).
  *
  * Phase choreography (full motion):
- * - entering (300ms): dock slides/fades in; Nila plays `reminder-enter`.
- * - expanding (400ms): card settles to full size.
- * - visible: Nila loops `reminder-wait` (with blinks) until the user
- *   acts. The dock card itself presents a character *expression*
- *   (point/surprised/...) instead of the motion frames — the old
+ * - entering (300ms): dock slides/fades in; Nila peeks over the top
+ *   edge (`peek-top`) — she hangs from behind the top bar, then the
+ *   card settles and she takes her kind expression.
+ * - expanding (400ms): card settles to full size; the peek holds.
+ * - visible: the dock card presents a character *expression*
+ *   (per kind — see kindExpressions) instead of motion frames. The old
  *   `reminder-point` attention image was corrupted and is retired.
  * - acknowledging: Done -> `thumbsup`; Snooze -> `snooze-ack`;
  *   Dismiss -> `reminder-react`.
@@ -101,7 +102,7 @@ export function useNotificationDock(opts: {
     };
     switch (state.phase) {
       case "entering":
-        playRef.current("reminder-enter");
+        playRef.current("peek-top");
         later(t.entering, () => dispatch({ type: "enter-done" }));
         break;
       case "expanding":
