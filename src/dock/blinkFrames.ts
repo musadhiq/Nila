@@ -33,6 +33,8 @@ import stretchingHalfUrl from "../../character/expressions/blink/stretching_blin
 import stretchingClosedUrl from "../../character/expressions/blink/stretching_blink_closed.png";
 import thirstyHalfUrl from "../../character/expressions/blink/thirsty_blink_half.png";
 import thirstyClosedUrl from "../../character/expressions/blink/thirsty_blink_closed.png";
+import thumbsUpHalfUrl from "../../character/expressions/blink/thumbs_up_blink_half.png";
+import thumbsUpClosedUrl from "../../character/expressions/blink/thumbs_up_blink_closed.png";
 import type { ExpressionSlot } from "./expressionSlots";
 
 export interface BlinkFrameUrls {
@@ -54,6 +56,7 @@ const BLINK_FRAME_URLS: Record<ExpressionSlot, BlinkFrameUrls> = {
   happy: { half: happyHalfUrl, closed: happyClosedUrl },
   sad: { half: sadHalfUrl, closed: sadClosedUrl },
   annoyed: { half: annoyedHalfUrl, closed: annoyedClosedUrl },
+  acknowledge: { half: thumbsUpHalfUrl, closed: thumbsUpClosedUrl },
 };
 
 /** Resolve a slot to its half-blink / fully-closed frame URLs. */

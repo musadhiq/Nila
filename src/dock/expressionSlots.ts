@@ -3,7 +3,7 @@
  *
  * This is the single source of truth for *which face Nila shows and
  * when*. Components never pick an image directly — they describe the
- * *context* (a reminder kind, a greeting, a success, a rejection) and
+ * *context* (a reminder kind, a greeting, a success, a snooze, a rejection) and
  * this module resolves it to an expression slot. `expressions.ts` then
  * turns the slot into a bundled PNG URL.
  *
@@ -30,7 +30,8 @@ export type ExpressionSlot =
   | "playful" // warm fallback
   | "happy" // success: the reminder was completed
   | "sad" // one rejection: brief, cute, no guilt
-  | "annoyed"; // repeated rejections: mild huff, still cute
+  | "annoyed" // repeated rejections: mild huff, still cute
+  | "acknowledge"; // snooze: understanding thumbs-up, "got it, later"
 
 /**
  * Every moment Nila can react to. Exactly one resolver —
@@ -41,6 +42,7 @@ export type ExpressionContext =
   | { type: "kind"; kind: string }
   | { type: "greeting" }
   | { type: "success" }
+  | { type: "snoozed" }
   | { type: "rejected"; consecutiveRejections: number };
 
 /**
@@ -78,6 +80,11 @@ export function expressionSlotForSuccess(): ExpressionSlot {
   return "happy";
 }
 
+/** The reminder was snoozed — Nila acknowledges, "got it, I'll remind you later". */
+export function expressionSlotForSnooze(): ExpressionSlot {
+  return "acknowledge";
+}
+
 /**
  * Negative-action reaction. `consecutiveRejections` counts back-to-back
  * dismissals in this session (reset by done/snooze). One rejection gets
@@ -103,6 +110,8 @@ export function expressionSlotForContext(
       return expressionSlotForGreeting();
     case "success":
       return expressionSlotForSuccess();
+    case "snoozed":
+      return expressionSlotForSnooze();
     case "rejected":
       return expressionSlotForDismissal(ctx.consecutiveRejections);
   }
@@ -128,6 +137,7 @@ export const SLOT_FILENAMES: Record<ExpressionSlot, string> = {
   happy: "happy.png",
   sad: "sad.png",
   annoyed: "annoyed.png",
+  acknowledge: "thumbs_up.png",
 };
 
 /**
@@ -191,5 +201,9 @@ export const SLOT_BLINK_FILENAMES: Record<ExpressionSlot, BlinkFilenames> = {
   annoyed: {
     half: "blink/annoyed_blink_half.png",
     closed: "blink/annoyed_blink_closed.png",
+  },
+  acknowledge: {
+    half: "blink/thumbs_up_blink_half.png",
+    closed: "blink/thumbs_up_blink_closed.png",
   },
 };

@@ -29,7 +29,8 @@ import {
  * - acknowledging: a short beat, then the card collapses away. A
  *   dismissal holds ~1s on Nila's reaction (sad, or annoyed after a
  *   streak of dismissals) before collapsing; completing the reminder
- *   holds ~1s on her happy beat; snooze collapses fast.
+ *   holds ~1s on her happy beat; snoozing holds ~1s on her
+ *   understanding thumbs-up beat; then the dock returns to idle.
  * - collapsing (260ms): dock contracts away; then the next queued
  *   notification enters (or the dock hides and Nila returns to idle).
  *
@@ -64,9 +65,11 @@ export interface NotificationDockApi {
   ackAction: DockAckAction | null;
   /**
    * Nila's acknowledgement reaction, set while an action is being
-   * acknowledged: happy on success, sad on a rejection (or annoyed
-   * after a streak of rejections). Null otherwise — the card then
-   * shows the per-kind expression.
+   * acknowledged: happy on success, an understanding thumbs-up on
+   * snooze, sad on a rejection (or annoyed after a streak of
+   * rejections). Null otherwise — the card then shows the per-kind
+   * expression. Every reaction is a brief beat; afterwards the dock
+   * returns to idle.
    */
   reaction: ExpressionSlot | null;
   notify: (n: DockNotification) => void;
@@ -156,9 +159,13 @@ export function useNotificationDock(opts: {
           setReaction(expressionSlotForContext({ type: "success" }));
           later(t.react, () => dispatch({ type: "ack-done" }));
         } else {
-          // Snooze resets the streak and collapses without a beat.
+          // Snooze: Nila shows a brief understanding beat — a gentle
+          // thumbs-up, "got it, I'll remind you later". Neutral, no
+          // guilt and no celebration. The beat holds ~1s, then the
+          // card collapses back to idle. Resets the rejection streak.
           dismissStreak.current = 0;
-          later(t.ack, () => dispatch({ type: "ack-done" }));
+          setReaction(expressionSlotForContext({ type: "snoozed" }));
+          later(t.react, () => dispatch({ type: "ack-done" }));
         }
         break;
       case "collapsing":

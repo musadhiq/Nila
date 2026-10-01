@@ -5,6 +5,7 @@ import {
   expressionSlotForDismissal,
   expressionSlotForGreeting,
   expressionSlotForKind,
+  expressionSlotForSnooze,
   expressionSlotForSuccess,
   type ExpressionContext,
   type ExpressionSlot,
@@ -41,6 +42,10 @@ describe("expressionSlots", () => {
     assert.equal(expressionSlotForSuccess(), "happy");
   });
 
+  it("acknowledges a snooze with an understanding thumbs-up", () => {
+    assert.equal(expressionSlotForSnooze(), "acknowledge");
+  });
+
   it("reacts sad to a single rejection, annoyed after a streak", () => {
     assert.equal(expressionSlotForDismissal(1), "sad");
     assert.equal(expressionSlotForDismissal(2), "sad");
@@ -61,6 +66,7 @@ describe("expressionSlots", () => {
       [{ type: "kind", kind: "custom" }, "pointing"],
       [{ type: "greeting" }, "greeting"],
       [{ type: "success" }, "happy"],
+      [{ type: "snoozed" }, "acknowledge"],
       [{ type: "rejected", consecutiveRejections: 1 }, "sad"],
       [{ type: "rejected", consecutiveRejections: 2 }, "sad"],
       [{ type: "rejected", consecutiveRejections: 3 }, "annoyed"],

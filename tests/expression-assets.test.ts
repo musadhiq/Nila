@@ -42,9 +42,9 @@ describe("expression assets", () => {
 
   it("the binding table covers every slot exactly once", () => {
     const slots = Object.keys(SLOT_FILENAMES);
-    // 13 slots: greeting, 8 kind expressions, pointing, playful,
-    // happy, sad, annoyed.
-    assert.equal(slots.length, 13);
+    // 14 slots: greeting, 8 kind expressions, pointing, playful,
+    // happy, sad, annoyed, acknowledge (snooze).
+    assert.equal(slots.length, 14);
     assert.equal(new Set(Object.values(SLOT_FILENAMES)).size, slots.length);
   });
 });

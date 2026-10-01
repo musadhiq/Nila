@@ -20,6 +20,7 @@ import sadUrl from "../../character/expressions/sad.png";
 import sleepyUrl from "../../character/expressions/sleepy.png";
 import stretchingUrl from "../../character/expressions/stretching.png";
 import thirstyUrl from "../../character/expressions/thirsty.png";
+import thumbsUpUrl from "../../character/expressions/thumbs_up.png";
 import type { ExpressionSlot } from "./expressionSlots";
 
 const EXPRESSION_URLS: Record<ExpressionSlot, string> = {
@@ -36,6 +37,7 @@ const EXPRESSION_URLS: Record<ExpressionSlot, string> = {
   happy: happyUrl,
   sad: sadUrl,
   annoyed: annoyedUrl,
+  acknowledge: thumbsUpUrl,
 };
 
 /** Resolve a slot to its bundled image URL. */
