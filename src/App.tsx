@@ -63,6 +63,12 @@ export default function App() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [view, setView] = useState<View>("companion");
   const [paused, setPaused] = useState(false);
+  /** First-run setup flow: the panel opens on the welcome page with a
+   *  finish button. Cleared once the user completes setup. */
+  const [setupMode, setSetupMode] = useState(false);
+  /** Bumped every time the panel opens so it mounts fresh on the
+   *  right page (welcome for setup, general otherwise). */
+  const [panelKey, setPanelKey] = useState(0);
   /** True while the settings panel uses native OS window decorations
    *  (titlebar + resize handles). The custom titlebar hides then. */
   const [decorated, setDecorated] = useState(false);
@@ -412,6 +418,10 @@ export default function App() {
         // reminder is due (or when opened from the tray). There is no
         // floating character to keep on screen, so "always visible" does
         // not auto-present anything here.
+        // First run: open the setup flow instead of staying hidden.
+        if (isTauri() && !merged.setup_complete) {
+          openPanel("setup");
+        }
       } catch {
         // Demo mode (plain vite): defaults stay, backend calls no-op.
       }
@@ -486,6 +496,27 @@ export default function App() {
     } catch {
       /* demo mode */
     }
+  };
+
+  /**
+   * Open the settings panel. "setup" is the first-run flow: the panel
+   * opens on the welcome page with a finish button; "settings" opens
+   * normally on the general page.
+   */
+  const openPanel = (mode: "settings" | "setup") => {
+    const setup = mode === "setup";
+    void refreshSettings();
+    setSetupMode(setup);
+    setView("settings");
+    // Remount so the panel starts on the right page.
+    setPanelKey((k) => k + 1);
+    // Resizable panel with native chrome, sized before showing so
+    // the window never gets stuck at a small size.
+    void (async () => {
+      await setPanelChrome(true);
+      await resizeWindow(PANEL_W, PANEL_H);
+      await showAppWindow();
+    })();
   };
 
   // After a backup import: keep the "first launch" seed from re-firing,
@@ -753,16 +784,9 @@ export default function App() {
     let cancelled = false;
     (async () => {
       const show = await listenEvent<string>("TRAY_SHOW", (mode) => {
-        if (mode === "settings") {
-          void refreshSettings();
-          setView("settings");
-          // Resizable panel with native chrome, sized before showing so
-          // the window never gets stuck at a small size.
-          void (async () => {
-            await setPanelChrome(true);
-            await resizeWindow(PANEL_W, PANEL_H);
-            await showAppWindow();
-          })();
+        if (mode === "settings" || mode === "setup") {
+          // Panel opens: normal settings, or the first-run setup flow.
+          openPanel(mode);
         } else {
           // V1: "Show Nila" opens the dock with a greeting card (tray-first:
           // she lives in the tray when idle; there is no floating character).
@@ -916,12 +940,15 @@ export default function App() {
         <CharacterLab onClose={() => setLabOpen(false)} />
       )}
       {view !== "companion" && (
-        <div className="panel-wrap">
+        <div className="panel-wrap" key={panelKey}>
           <SettingsPanel
             settings={settings}
             paused={paused}
             reminders={reminders}
             nativeTitlebar={decorated}
+            initialPage={setupMode ? "welcome" : undefined}
+            setupMode={setupMode}
+            onSetupComplete={() => setSetupMode(false)}
             onSave={(s) => void saveSettings(s)}
             onPause={(m) => void pauseAll(m)}
             onResume={() => void resumeAll()}

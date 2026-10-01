@@ -11,6 +11,7 @@ import type { AppSettings, Reminder } from "../lib/types";
 import { quietHoursActive } from "../lib/reminders";
 import type { ExpressionName } from "../character/expressions";
 import { SettingsLayout, type PageId } from "./settings/SettingsLayout";
+import { WelcomePage } from "./settings/pages/WelcomePage";
 import { GeneralPage } from "./settings/pages/GeneralPage";
 import { RemindersPage } from "./settings/pages/RemindersPage";
 import { CharacterPage } from "./settings/pages/CharacterPage";
@@ -43,6 +44,12 @@ interface Props {
   onPreviewDock?: (kind: "short" | "long" | "queue") => void;
   onClose: () => void;
   onMinimize: () => void;
+  /** Page the panel opens on. Defaults to "general". */
+  initialPage?: PageId;
+  /** First-run flow: the welcome page shows its finish button. */
+  setupMode?: boolean;
+  /** Called when the user finishes the first-run setup. */
+  onSetupComplete?: () => void;
   onDataChanged: () => void;
   onFlash?: (name: ExpressionName) => void;
   onToggleReminder: (id: string, enabled: boolean) => void;
@@ -63,6 +70,9 @@ export function SettingsPanel({
   onPreviewDock,
   onClose,
   onMinimize,
+  initialPage,
+  setupMode,
+  onSetupComplete,
   onDataChanged,
   onFlash,
   onToggleReminder,
@@ -70,7 +80,7 @@ export function SettingsPanel({
   onCreateReminder,
   onUpdateReminder,
 }: Props) {
-  const [page, setPage] = useState<PageId>("general");
+  const [page, setPage] = useState<PageId>(initialPage ?? "general");
   const lang: Language = settings.language;
   const t = getStrings(lang);
 
@@ -134,6 +144,19 @@ export function SettingsPanel({
           <div className="quiet-banner" role="status">
             {fill(t.window.quietActive, { time: quietUntil })}
           </div>
+        )}
+        {page === "welcome" && (
+          <WelcomePage
+            t={t}
+            settings={settings}
+            update={update}
+            setupMode={setupMode}
+            onFinishSetup={() => {
+              update({ setup_complete: true });
+              onSetupComplete?.();
+              setPage("general");
+            }}
+          />
         )}
         {page === "general" && (
           <GeneralPage
