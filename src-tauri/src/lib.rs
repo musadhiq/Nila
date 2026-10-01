@@ -381,6 +381,7 @@ pub fn run() {
             commands::import_data,
             commands::stt_models_status,
             commands::download_stt_models,
+            commands::delete_stt_models,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nila");
