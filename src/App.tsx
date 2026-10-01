@@ -13,7 +13,6 @@ import type { CharacterSnapshot } from "./character";
 import type { ExpressionName } from "./character/expressions";
 import {
   backgroundPreloadAll,
-  frameUrl,
   preloadForFirstAppearance,
 } from "./character/motionAssets";
 import { getStrings } from "./lib/i18n";
@@ -33,6 +32,11 @@ import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
 import { NotificationDock } from "./dock/NotificationDock";
 import curiousUrl from "../character/expressions/curious.png";
+import ideaUrl from "../character/expressions/idea.png";
+import playfulUrl from "../character/expressions/playful.png";
+import pointUrl from "../character/expressions/point.png";
+import restChinUrl from "../character/expressions/rest-chin.png";
+import sleepyUrl from "../character/expressions/sleepy.png";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockOnScreen } from "./dock/dockMachine";
@@ -52,6 +56,29 @@ function isPausedSettings(s: AppSettings): boolean {
  * panel or the top-center notification dock. Listens for REMINDER_DUE
  * from the Rust scheduler; settings live in the tray menu.
  */
+/**
+ * Square expression for the dock's white character box, per reminder
+ * kind. The introduction shows curious; everything else gets its own
+ * face (several show her front hands). Unknown kinds point.
+ */
+function dockExpressionFor(n: { id: string; kind: string }): string {
+  if (n.id.startsWith("greeting-")) return curiousUrl;
+  switch (n.kind) {
+    case "water":
+      return ideaUrl;
+    case "food":
+      return playfulUrl;
+    case "break":
+      return restChinUrl;
+    case "move":
+      return pointUrl;
+    case "sleep":
+      return sleepyUrl;
+    default:
+      return pointUrl;
+  }
+}
+
 export default function App() {
   const engineRef = useRef<CharacterEngine | null>(null);
   if (!engineRef.current) engineRef.current = new CharacterEngine();
@@ -866,24 +893,17 @@ export default function App() {
           reminder={dock.current}
           reducedMotion={settings.animation !== "full" || prefersReducedMotion}
           nila={
-            /* The introduction card shows the curious expression; every
-             * other notification shows the static lean-in frame. Both are
-             * single calm images — no looping motion. frameUrl resolves
-             * synchronously (eager-bundled); null renders nothing. */
-            (() => {
-              const isIntro = dock.current?.id.startsWith("greeting-") ?? false;
-              const src = isIntro ? curiousUrl : frameUrl("nila_corner_tl_08");
-              if (!src) return null;
-              return (
-                <img
-                  src={src}
-                  width={192}
-                  height={isIntro ? 192 : 398}
-                  alt={getStrings(settings.language).dock.nilaAlt}
-                  draggable={false}
-                />
-              );
-            })()
+            /* Square expression per reminder kind — single calm images
+             * (several show her front hands), no portrait frames. */
+            dock.current ? (
+              <img
+                src={dockExpressionFor(dock.current)}
+                width={192}
+                height={192}
+                alt={getStrings(settings.language).dock.nilaAlt}
+                draggable={false}
+              />
+            ) : null
           }
           okayLabel={getStrings(settings.language).dock.okay}
           snoozeLabel={getStrings(settings.language).dock.in10min}

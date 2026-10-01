@@ -407,10 +407,9 @@ html, body {
 /* ============================================================
  * Notification dock (V1 surface): a chat-bubble card at the
  * top-center of the screen, hanging just below the system top bar.
- * Nila sits in her own small white box to the left of the bubble —
- * the introduction shows her curious expression, other notifications
- * the lean-in portrait. Both are single static frames: calm, no
- * looping motion. The bubble has a left-pointing tail, a title row
+ * Nila sits in her own small white box to the left of the bubble,
+ * showing a square expression per reminder kind (several show her
+ * front hands). Both are single static frames: calm, no looping motion. The bubble has a left-pointing tail, a title row
  * with a close button, and two quick-reply pills (Okay, Nila /
  * In 10 min). The card auto-hides after 15s; clicking it dismisses it.
  * Minimal and powerful: no tick, no badge, no extra chrome.
