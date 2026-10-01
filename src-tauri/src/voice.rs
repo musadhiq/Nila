@@ -24,10 +24,15 @@
 //! existing settings flag) only for the command window, so the microphone
 //! is never double-opened.
 //!
+//! Models are NOT bundled with the app: see `models.rs` — they download
+//! once into the app-data dir on first run, and the engine below loads
+//! lazily on first wake (after `voice:started`, so a first-run download
+//! shows progress in the pill instead of silence).
+//!
 //! Privacy: audio lives only in RAM as transient f32 blocks. Nothing is
 //! ever written to disk.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -40,6 +45,7 @@ use sherpa_onnx::{
 };
 use tauri::{AppHandle, Emitter, Listener, Manager};
 
+use crate::models;
 use crate::wakeword;
 
 /// Frontend event: the post-wake voice session started (VAD armed, mic
@@ -155,6 +161,9 @@ pub fn spawn(app: &AppHandle) {
     let _ = app.listen(wakeword::EVENT_WAKE_DETECTED, move |_| {
         let _ = wake_tx.send(());
     });
+    // First-run model fetch starts now, so it is usually done before the
+    // first "Hi Nila" (see models.rs); the worker re-ensures on wake.
+    models::ensure_background(app.clone());
     let app = app.clone();
     thread::Builder::new()
         .name("nila-voice-worker".into())
@@ -169,13 +178,6 @@ pub fn request_stop(app: &AppHandle) {
     }
 }
 
-/// Env var overriding the STT model directory (contains
-/// `model.int8.onnx`, `tokens.txt`, `silero_vad.onnx`).
-const ENV_MODEL_DIR: &str = "NILA_STT_MODEL_DIR";
-/// Env vars overriding individual model files.
-const ENV_MODEL: &str = "NILA_STT_MODEL";
-const ENV_TOKENS: &str = "NILA_STT_TOKENS";
-const ENV_VAD_MODEL: &str = "NILA_STT_VAD_MODEL";
 /// Env vars tuning the session timeouts (seconds; floats allowed).
 const ENV_SPEECH_TIMEOUT: &str = "NILA_VOICE_SPEECH_TIMEOUT";
 const ENV_SILENCE_TIMEOUT: &str = "NILA_VOICE_SILENCE_TIMEOUT";
@@ -221,78 +223,6 @@ fn env_f32(name: &str, default: f32) -> f32 {
 fn env_duration_ms(name: &str, default: Duration) -> Duration {
     let ms = env_f32(name, default.as_millis() as f32);
     Duration::from_millis(ms.max(1.0) as u64)
-}
-
-/// Directories searched for `models/stt/`, in order (mirrors the
-/// wake-word module's search strategy).
-fn search_dirs(app: &AppHandle) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    if let Ok(v) = std::env::var(ENV_MODEL_DIR) {
-        let p = PathBuf::from(v.trim());
-        if p.is_dir() {
-            return vec![p];
-        }
-        eprintln!("nila: voice: {ENV_MODEL_DIR}='{}' is not a directory", p.display());
-    }
-    // Next to the working directory (covers `cargo run` and `tauri dev`
-    // from either the workspace root or src-tauri/).
-    if let Ok(cwd) = std::env::current_dir() {
-        dirs.push(cwd.join("models").join("stt"));
-        if let Some(parent) = cwd.parent() {
-            dirs.push(parent.join("models").join("stt"));
-        }
-    }
-    // Next to the executable (dev builds, manual installs).
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            dirs.push(parent.join("models").join("stt"));
-        }
-    }
-    // Tauri bundled resources (packaged .deb / .AppImage).
-    if let Ok(res) = app.path().resource_dir() {
-        dirs.push(res.join("models").join("stt"));
-    }
-    dirs
-}
-
-/// Resolve one model file: the explicit env var wins on its own;
-/// anything unset falls back to `dir/name`. A var that is set but points
-/// at a missing file is a hard miss (fail fast instead of silently using
-/// a different model).
-fn resolve_one_file(env: &str, name: &str, dir: Option<&Path>) -> Option<PathBuf> {
-    match std::env::var(env) {
-        Ok(v) => {
-            let p = PathBuf::from(v.trim());
-            if p.is_file() {
-                Some(p)
-            } else {
-                eprintln!("nila: voice: {env} points at missing file '{}'", p.display());
-                None
-            }
-        }
-        Err(_) => dir.map(|d| d.join(name)),
-    }
-}
-
-/// Resolve the three model files: `NILA_STT_MODEL_DIR` (or the first
-/// `models/stt/` found by [`search_dirs`]) supplies the defaults, and
-/// [`ENV_MODEL`]/[`ENV_TOKENS`]/[`ENV_VAD_MODEL`] each override their own
-/// file independently.
-fn resolve_models(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> {
-    let dir = search_dirs(app).into_iter().find(|d| {
-        d.join("model.int8.onnx").is_file()
-            && d.join("tokens.txt").is_file()
-            && d.join("silero_vad.onnx").is_file()
-    });
-    let dir = dir.as_deref();
-    match (
-        resolve_one_file(ENV_MODEL, "model.int8.onnx", dir),
-        resolve_one_file(ENV_TOKENS, "tokens.txt", dir),
-        resolve_one_file(ENV_VAD_MODEL, "silero_vad.onnx", dir),
-    ) {
-        (Some(model), Some(tokens), Some(vad)) => Some((model, tokens, vad)),
-        _ => None,
-    }
 }
 
 /// The loaded sherpa-onnx engine: one offline recognizer plus the VAD.
@@ -405,37 +335,38 @@ fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, wake_rx: mpsc::Receiver<
         if !await_wake(stop, &wake_rx, Duration::from_secs(3600)) {
             continue;
         }
-        if engine.is_none() {
-            match resolve_models(app) {
-                Some((model, tokens, vad_model)) => match load_engine(&model, &tokens, &vad_model) {
-                    Ok(e) => engine = Some(e),
-                    Err(e) => {
-                        transition(&mut phase, Phase::Error);
-                        emit_error(app, "model_error", format!("STT engine failed to load: {e}"));
-                        continue;
-                    }
-                },
-                None => {
-                    transition(&mut phase, Phase::Error);
-                    emit_error(
-                        app,
-                        "model_error",
-                        "STT models not found — run src-tauri/models/stt/download-stt-model.sh, then restart Nila",
-                    );
-                    continue;
-                }
-            }
+        run_session(app, &mut engine, stop, &mut phase);
+        if let Some(eng) = engine.as_ref() {
+            eng.vad.reset();
         }
-        let eng = engine.as_ref().expect("engine loaded above");
-        run_session(app, eng, stop, &mut phase);
-        eng.vad.reset();
     }
     eprintln!("nila: voice: worker stopped");
 }
 
+/// Load the STT engine on first wake, downloading the models first on a
+/// fresh install (see `models.rs`). The pill is already up
+/// (`voice:started` was emitted before this runs), so a first-run
+/// download shows progress instead of silence.
+fn ensure_engine(app: &AppHandle) -> Result<Engine, (&'static str, String)> {
+    models::ensure_blocking(app)
+        .map_err(|e| ("model_error", format!("voice models unavailable: {e}")))?;
+    let (model, tokens, vad_model) = models::resolve_models(app).ok_or((
+        "model_error",
+        "voice models missing after download — check your connection and try the wake word again"
+            .to_string(),
+    ))?;
+    load_engine(&model, &tokens, &vad_model)
+        .map_err(|e| ("model_error", format!("STT engine failed to load: {e}")))
+}
+
 /// One post-wake voice session: park the wake listener, capture the
 /// command, transcribe, emit events, hand the mic back.
-fn run_session(app: &AppHandle, engine: &Engine, stop: &Arc<AtomicBool>, phase: &mut Phase) {
+fn run_session(
+    app: &AppHandle,
+    engine: &mut Option<Engine>,
+    stop: &Arc<AtomicBool>,
+    phase: &mut Phase,
+) {
     let speech_timeout = env_f32(ENV_SPEECH_TIMEOUT, DEFAULT_SPEECH_TIMEOUT_SECS);
     let silence_timeout = env_f32(ENV_SILENCE_TIMEOUT, DEFAULT_SILENCE_TIMEOUT_SECS);
     let max_duration = env_f32(ENV_MAX_DURATION, DEFAULT_MAX_DURATION_SECS);
@@ -453,6 +384,23 @@ fn run_session(app: &AppHandle, engine: &Engine, stop: &Arc<AtomicBool>, phase: 
     emit(app, EVENT_VOICE_STARTED, StartedPayload { kind: "voice:started" });
     eprintln!("nila: voice: session started (wake listener parked)");
 
+    // Lazy engine load on first wake. On a fresh install this downloads
+    // the models first — the pill is already showing, so the wait is
+    // visible via `nila://models-downloading` progress, not silent.
+    if engine.is_none() {
+        match ensure_engine(app) {
+            Ok(loaded) => *engine = Some(loaded),
+            Err((code, message)) => {
+                transition(phase, Phase::Error);
+                emit_error(app, code, message);
+                emit(app, EVENT_VOICE_ENDED, EndedPayload { kind: "voice:ended" });
+                restore_wake_listener(app, wake_was_enabled);
+                return;
+            }
+        }
+    }
+    let eng = engine.as_ref().expect("engine loaded above");
+
     let audio = match open_audio() {
         Ok(audio) => audio,
         Err(e) => {
@@ -464,7 +412,7 @@ fn run_session(app: &AppHandle, engine: &Engine, stop: &Arc<AtomicBool>, phase: 
     };
     let outcome = capture_command(
         app,
-        engine,
+        eng,
         &audio,
         stop,
         phase,
@@ -489,7 +437,7 @@ fn run_session(app: &AppHandle, engine: &Engine, stop: &Arc<AtomicBool>, phase: 
         Outcome::Done { samples } => {
             // Finalize, then walk PROCESSING -> (Jev handoff) -> idle.
             transition(phase, Phase::Processing);
-            let text = decode_text(&engine.recognizer, &samples);
+            let text = decode_text(&eng.recognizer, &samples);
             let text = text.trim().to_string();
             if text.is_empty() {
                 transition(phase, Phase::Error);
@@ -839,37 +787,5 @@ mod tests {
         let v = serde_json::to_value(&p).unwrap();
         assert_eq!(v["type"], "voice_command");
         assert_eq!(v["text"], "open firefox");
-    }
-
-    #[test]
-    fn resolve_one_file_env_wins_independently() {
-        let tmp = std::env::temp_dir().join("nila-voice-test-resolve");
-        std::fs::create_dir_all(&tmp).unwrap();
-        let custom = tmp.join("custom-model.onnx");
-        let dir_model = tmp.join("model.int8.onnx");
-        std::fs::write(&custom, b"fake").unwrap();
-        std::fs::write(&dir_model, b"fake").unwrap();
-
-        // A set var wins over the directory, on its own.
-        std::env::set_var("NILA_VOICE_TEST_MODEL", custom.to_str().unwrap());
-        let got = resolve_one_file("NILA_VOICE_TEST_MODEL", "model.int8.onnx", Some(&tmp));
-        assert_eq!(got, Some(custom.clone()));
-
-        // An unset var falls back to the directory.
-        std::env::remove_var("NILA_VOICE_TEST_TOKENS");
-        let got = resolve_one_file("NILA_VOICE_TEST_TOKENS", "model.int8.onnx", Some(&tmp));
-        assert_eq!(got, Some(dir_model.clone()));
-
-        // A set-but-missing path is a hard miss, not a silent fallback.
-        std::env::set_var(
-            "NILA_VOICE_TEST_VAD",
-            tmp.join("nope.onnx").to_str().unwrap(),
-        );
-        let got = resolve_one_file("NILA_VOICE_TEST_VAD", "silero_vad.onnx", Some(&tmp));
-        assert_eq!(got, None);
-
-        std::env::remove_var("NILA_VOICE_TEST_MODEL");
-        std::env::remove_var("NILA_VOICE_TEST_VAD");
-        std::fs::remove_dir_all(&tmp).ok();
     }
 }

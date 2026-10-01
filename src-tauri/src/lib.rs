@@ -7,9 +7,12 @@
 //   platform       — OS providers (notifications, startup, sleep/wake, display)
 //   commands       — Tauri IPC command handlers
 //   wakeword       — microphone wake-word listener (micro-wakeword)
+//   voice          — post-wake voice-command pipeline (sherpa-onnx STT)
+//   models         — first-run download of the STT models into app-data
 
 pub mod commands;
 pub mod db;
+pub mod models;
 pub mod platform;
 pub mod scheduler;
 pub mod system_monitor;
@@ -342,7 +345,9 @@ pub fn run() {
             // listener while a command is captured, and transcribes it
             // locally with sherpa-onnx (INT8 Conformer-CTC). Audio is
             // never recorded or saved; inference runs only during a
-            // post-wake session, never while idle.
+            // post-wake session, never while idle. The STT models are not
+            // bundled — they download once into the app-data dir on first
+            // run (see models.rs).
             voice::spawn(app.handle());
 
             // Menu-bar tray: the character window stays hidden until a
