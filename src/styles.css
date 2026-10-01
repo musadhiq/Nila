@@ -20,9 +20,20 @@ html, body {
   align-items: center;
   justify-content: center;
   position: relative;
-  cursor: pointer;
+  cursor: default;
   outline: none;
+  /* Only interactive elements receive pointer events; the transparent
+   * padding never blocks the desktop (spec 23). */
+  pointer-events: none;
 }
+.companion .char-drag,
+.companion .gear-btn,
+.companion .reminder-bubble,
+.companion .ctx-menu,
+.companion .ctx-backdrop {
+  pointer-events: auto;
+}
+.companion .char-drag { cursor: pointer; }
 
 .companion:focus-visible {
   outline: 2px solid #6f8ff7;
@@ -178,8 +189,21 @@ html, body {
     --bubble-fg: #f2f5ff;
   }
 }
+/* Bubble entrance: gentle fade + rise, staggered after Nila (spec 15). */
+@keyframes bubble-fade-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.bubble-enter { animation: bubble-fade-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+@media (prefers-reduced-motion: reduce) {
+  .bubble-enter { animation: bubble-fade-in 0.12s ease-out; }
+}
 /* Chat-bubble tail pointing toward Nila. The side class comes from the
- * presence layout: the bubble sits on that side of the character. */
+ * collision-aware layout. --tail-frac (0..1) positions the tail along the
+ * facing edge so it tracks Nila's head; defaults to center. */
+.reminder-bubble {
+  --tail-frac: 0.5;
+}
 .reminder-bubble .overlay-card::after {
   content: "";
   position: absolute;
@@ -189,28 +213,28 @@ html, body {
 }
 .side-left .reminder-bubble .overlay-card::after {
   left: 100%;
-  top: 50%;
+  top: calc(var(--tail-frac) * 100%);
   transform: translateY(-50%);
   border-left-color: var(--bubble-bg);
   border-right: 0;
 }
 .side-right .reminder-bubble .overlay-card::after {
   right: 100%;
-  top: 50%;
+  top: calc(var(--tail-frac) * 100%);
   transform: translateY(-50%);
   border-right-color: var(--bubble-bg);
   border-left: 0;
 }
 .side-above .reminder-bubble .overlay-card::after {
   top: 100%;
-  left: 50%;
+  left: calc(var(--tail-frac) * 100%);
   transform: translateX(-50%);
   border-top-color: var(--bubble-bg);
   border-bottom: 0;
 }
 .side-below .reminder-bubble .overlay-card::after {
   bottom: 100%;
-  left: 50%;
+  left: calc(var(--tail-frac) * 100%);
   transform: translateX(-50%);
   border-bottom-color: var(--bubble-bg);
   border-top: 0;
@@ -266,35 +290,42 @@ html, body {
 }
 .nila-enter-gentle { animation: nila-enter-gentle ease-out; }
 
-/* Reminder layout: Nila + bubble, the bubble always opening toward the
- * desktop and clamped onscreen (spec 46). */
+/* Reminder layout: Nila + bubble, absolutely positioned from the
+ * collision-aware layout (spec 5/6/7). The bubble tail tracks Nila via
+ * --tail-frac (0..1 along the facing edge). */
 .reminder-stage {
-  display: flex;
+  position: relative;
   width: 100%;
   height: 100%;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 8px;
-  box-sizing: border-box;
 }
-.reminder-stage.side-left, .reminder-stage.side-right { flex-direction: row; }
-.reminder-stage.side-above, .reminder-stage.side-below { flex-direction: column; }
 .reminder-char {
-  flex: 0 0 auto;
+  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .reminder-bubble {
-  flex: 0 0 auto;
-  width: 300px;
-  max-width: 100%;
+  position: absolute;
   max-height: 280px;
   overflow-y: auto;
   overflow-x: hidden;
   min-width: 0;
+  transition: opacity 0.22s ease-out;
 }
+/* Legacy flex layout (fallback when no collision layout yet). */
+.reminder-stage.side-left, .reminder-stage.side-right {
+  display: flex; flex-direction: row; align-items: center; justify-content: center;
+  gap: 12px; padding: 8px; box-sizing: border-box;
+}
+.reminder-stage.side-above, .reminder-stage.side-below {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 8px; box-sizing: border-box;
+}
+.reminder-stage[class*="side-"] .reminder-char,
+.reminder-stage[class*="side-"] .reminder-bubble {
+  position: static;
+}
+.reminder-stage[class*="side-"] .reminder-bubble { width: 300px; max-width: 100%; }
 .overlay.overlay-in-layout {
   position: static;
   inset: auto;
