@@ -9,8 +9,8 @@
 //!   -- speech starts -->
 //! RECORDING_COMMAND  (VAD + accumulating audio, live partial decodes)
 //!   -- trailing silence / max duration -->
-//! PROCESSING  (final decode; hands the text to the future Jev layer)
-//!   -->
+//! PROCESSING_STT  (final decode; hands the text to the future Jev layer)
+//!   -- PROCESSING_COMMAND / RESPONSE (reserved for the future Jev layer) -->
 //! WAKE_LISTENING
 //!
 //! Any failure (speech timeout, mic/model error, empty transcript) walks
@@ -34,7 +34,7 @@
 //! ever written to disk.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -126,7 +126,12 @@ enum Phase {
     /// Speech ongoing: VAD + accumulating audio + live partial decodes.
     RecordingCommand,
     /// Final decode done; handing the text off (Jev layer in future).
-    Processing,
+    ProcessingStt,
+    /// Reserved for the future Jev layer (command processing); the
+    /// backend never enters it in V1 — a second "Hi Nila" here is
+    /// ignored because the wake listener is parked for the session.
+    #[allow(dead_code)]
+    ProcessingCommand,
     /// Final transcript emitted; returning to wake listening.
     CommandReady,
     /// Reserved for the future Jev layer (Nila's reply turn); the backend
@@ -136,6 +141,27 @@ enum Phase {
     /// A session failed (timeout / mic / model / empty transcript); the
     /// worker reports it and returns to [`Phase::WakeListening`].
     Error,
+}
+
+/// The legal edges of the state machine. Anything else is a bug: it is
+/// logged loudly (and still applied, so the worker can always recover to
+/// [`Phase::WakeListening`] rather than wedging).
+fn can_transition(from: Phase, to: Phase) -> bool {
+    use Phase::*;
+    matches!(
+        (from, to),
+        (WakeListening, ListeningForSpeech)
+            | (ListeningForSpeech, RecordingCommand)
+            | (ListeningForSpeech, Error)
+            | (RecordingCommand, ProcessingStt)
+            | (RecordingCommand, Error)
+            | (ProcessingStt, CommandReady)
+            | (ProcessingStt, Error)
+            | (CommandReady, WakeListening)
+            | (Error, WakeListening)
+            // run_forever re-asserts the idle state every loop.
+            | (WakeListening, WakeListening)
+    )
 }
 
 /// Shared flags for the voice worker thread.
@@ -190,7 +216,30 @@ const ENV_PARTIAL_INTERVAL_MS: &str = "NILA_VOICE_PARTIAL_MS";
 const DEFAULT_SPEECH_TIMEOUT_SECS: f32 = 8.0;
 const DEFAULT_SILENCE_TIMEOUT_SECS: f32 = 1.2;
 const DEFAULT_MAX_DURATION_SECS: f32 = 20.0;
-const DEFAULT_PARTIAL_INTERVAL: Duration = Duration::from_millis(1000);
+/// Live-partial cadence: fast enough to feel real-time, slow enough
+/// that the repeated full-buffer re-decodes don't burn the CPU. Only
+/// re-decodes when at least `MIN_PARTIAL_NEW_SECS` of new audio arrived
+/// since the last decode (coalescing).
+const DEFAULT_PARTIAL_INTERVAL: Duration = Duration::from_millis(400);
+/// Minimum new audio (seconds) that must have arrived before another
+/// partial decode is attempted.
+const MIN_PARTIAL_NEW_SECS: f32 = 0.4;
+
+/// Debounce after a session ends: a wake arriving this soon after is
+/// treated as the tail of the same utterance (or an eager repeat) and
+/// ignored, so one phrase can never start two sessions.
+const WAKE_DEBOUNCE: Duration = Duration::from_millis(1500);
+/// The missing-model guidance shows at most this often: repeat wakes
+/// without models stay silent instead of nagging.
+const MISSING_MODEL_NOTICE_COOLDOWN: Duration = Duration::from_secs(300);
+
+/// Bounded microphone queue (chunks). The audio callback never blocks:
+/// when the worker is busy decoding and the queue is full, the newest
+/// chunk is dropped and counted (surfaced in the diagnostics). This
+/// guarantees bounded memory even if STT ever runs slower than the mic.
+const AUDIO_QUEUE_CHUNKS: usize = 256;
+/// Bounded stream-error queue (a handful is plenty; errors are fatal).
+const AUDIO_ERROR_QUEUE: usize = 4;
 
 /// Everything the recognizer and VAD run at.
 const SAMPLE_RATE: i32 = 16_000;
@@ -270,11 +319,38 @@ fn load_engine(model: &Path, tokens: &Path, vad_model: &Path) -> Result<Engine, 
 }
 
 /// Log a state transition (the state machine is small; a log line per
-/// transition is the cheapest honest trace).
+/// transition is the cheapest honest trace). Illegal edges are logged
+/// as errors — see [`can_transition`].
 fn transition(phase: &mut Phase, next: Phase) {
-    if *phase != next {
+    if *phase == next {
+        return;
+    }
+    if can_transition(*phase, next) {
         eprintln!("nila: voice: {phase:?} -> {next:?}");
-        *phase = next;
+    } else {
+        eprintln!("nila: voice: INVALID transition {phase:?} -> {next:?} (applied anyway)");
+    }
+    *phase = next;
+}
+
+/// Lightweight development diagnostics, gated behind
+/// `NILA_VOICE_DIAG=1`. Off by default: production stays quiet.
+static DIAG_ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+fn diag_enabled() -> bool {
+    *DIAG_ENABLED.get_or_init(|| {
+        matches!(
+            std::env::var("NILA_VOICE_DIAG").as_deref(),
+            Ok("1") | Ok("true")
+        )
+    })
+}
+
+/// One diagnostic line (wake latency, decode timings, ...). Compiled
+/// out of the hot path cost-wise: a single atomic load when disabled.
+fn diag(message: &str) {
+    if diag_enabled() {
+        eprintln!("nila: voice: [diag] {message}");
     }
 }
 
@@ -298,46 +374,67 @@ fn emit_error(app: &AppHandle, code: &'static str, message: impl Into<String>) {
     );
 }
 
-/// Wait up to `timeout` for a wake event. Returns true if one arrived.
-/// Stale queued events are coalesced: one session per burst.
-fn await_wake(stop: &Arc<AtomicBool>, wake_rx: &mpsc::Receiver<()>, timeout: Duration) -> bool {
+/// Wait up to `timeout` for a wake event. Returns the arrival time, or
+/// `None` on stop/timeout/disconnect.
+///
+/// Stale queued events are coalesced: one session per burst. A wake that
+/// arrives before `ignore_until` (just after a session ended) is
+/// treated as the tail of the same utterance and ignored, so a single
+/// phrase can never start two sessions back-to-back.
+fn await_wake(
+    stop: &Arc<AtomicBool>,
+    wake_rx: &mpsc::Receiver<()>,
+    timeout: Duration,
+    ignore_until: Instant,
+) -> Option<Instant> {
     // Coalesce anything already queued.
     let mut pending = false;
     while wake_rx.try_recv().is_ok() {
         pending = true;
     }
-    if pending {
-        return !stop.load(Ordering::SeqCst);
+    if pending && Instant::now() >= ignore_until {
+        return Some(Instant::now());
     }
+    // Either nothing queued, or a stale burst inside the debounce
+    // window (already drained above): keep waiting.
     let deadline = Instant::now() + timeout;
     while !stop.load(Ordering::SeqCst) {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            return false;
+            return None;
         }
         match wake_rx.recv_timeout(remaining.min(Duration::from_millis(250))) {
             Ok(()) => {
                 while wake_rx.try_recv().is_ok() {}
-                return true;
+                let now = Instant::now();
+                if now >= ignore_until {
+                    return Some(now);
+                }
+                diag("wake arrived inside post-session debounce; ignoring");
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => return false,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return None,
         }
     }
-    false
+    None
 }
 
 /// Outer loop: wait for wake detections and run one voice session each.
-/// The engine loads lazily on first wake so app startup pays nothing.
+/// The engine loads lazily on first wake so app startup pays nothing,
+/// and stays loaded afterwards (no 40–50 MB reload per command).
 fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, wake_rx: mpsc::Receiver<()>) {
     let mut engine: Option<Engine> = None;
     let mut phase = Phase::WakeListening;
+    let mut last_missing_notice: Option<Instant> = None;
+    let mut ignore_wake_until = Instant::now();
     while !stop.load(Ordering::SeqCst) {
         transition(&mut phase, Phase::WakeListening);
-        if !await_wake(stop, &wake_rx, Duration::from_secs(3600)) {
+        let Some(wake_at) = await_wake(stop, &wake_rx, Duration::from_secs(3600), ignore_wake_until)
+        else {
             continue;
-        }
-        run_session(app, &mut engine, stop, &mut phase);
+        };
+        run_session(app, &mut engine, stop, &mut phase, wake_at, &mut last_missing_notice);
+        ignore_wake_until = Instant::now() + WAKE_DEBOUNCE;
         if let Some(eng) = engine.as_ref() {
             eng.vad.reset();
         }
@@ -350,23 +447,78 @@ fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, wake_rx: mpsc::Receiver<
 /// aren't present the session degrades gracefully with `models_missing`
 /// and the wake listener is restored, so Nila keeps working without
 /// voice commands.
+///
+/// [`ModelManager::verify`] runs first: a present-but-truncated set is
+/// reported as `model_error` (with a re-download hint) instead of being
+/// handed to sherpa.
 fn ensure_engine(app: &AppHandle) -> Result<Engine, (&'static str, String)> {
-    let (model, tokens, vad_model) = models::resolve_models(app).ok_or((
-        "models_missing",
-        "voice models not downloaded — available in Settings".to_string(),
-    ))?;
-    load_engine(&model, &tokens, &vad_model)
-        .map_err(|e| ("model_error", format!("STT engine failed to load: {e}")))
+    let paths = models::ModelManager::new(app).verify().map_err(|e| {
+        if models::resolve_models(app).is_none() {
+            (
+                "models_missing",
+                "voice models not downloaded — available in Settings".to_string(),
+            )
+        } else {
+            (
+                "model_error",
+                format!("STT models failed verification ({e}); re-download them in Settings"),
+            )
+        }
+    })?;
+    let t0 = Instant::now();
+    let engine = load_engine(&paths.model, &paths.tokens, &paths.vad)
+        .map_err(|e| ("model_error", format!("STT engine failed to load: {e}")))?;
+    diag(&format!(
+        "STT engine load: {} ms",
+        t0.elapsed().as_millis()
+    ));
+    Ok(engine)
 }
 
 /// One post-wake voice session: park the wake listener, capture the
 /// command, transcribe, emit events, hand the mic back.
+///
+/// When the STT models aren't installed this returns before touching
+/// the microphone at all: the wake listener keeps running untouched,
+/// and the "get them in Settings" guidance shows at most once per
+/// [`MISSING_MODEL_NOTICE_COOLDOWN`] so repeat wakes don't nag.
 fn run_session(
     app: &AppHandle,
     engine: &mut Option<Engine>,
     stop: &Arc<AtomicBool>,
     phase: &mut Phase,
+    wake_at: Instant,
+    last_missing_notice: &mut Option<Instant>,
 ) {
+    let session_t0 = Instant::now();
+
+    if models::ModelManager::new(app).verify().is_err() {
+        // Models missing (or failed verification): free the engine if
+        // the user deleted them mid-run, then degrade gracefully.
+        if engine.take().is_some() {
+            eprintln!("nila: voice: STT models unavailable; engine unloaded");
+        }
+        let due = last_missing_notice
+            .map(|t| t.elapsed() >= MISSING_MODEL_NOTICE_COOLDOWN)
+            .unwrap_or(true);
+        if due {
+            *last_missing_notice = Some(Instant::now());
+            transition(phase, Phase::ListeningForSpeech);
+            emit(app, EVENT_VOICE_STARTED, StartedPayload { kind: "voice:started" });
+            transition(phase, Phase::Error);
+            emit_error(
+                app,
+                "models_missing",
+                "voice commands need the STT model — get it in Settings → General → Voice models",
+            );
+            emit(app, EVENT_VOICE_ENDED, EndedPayload { kind: "voice:ended" });
+            transition(phase, Phase::WakeListening);
+        } else {
+            diag("models missing; notice suppressed by cooldown");
+        }
+        return;
+    }
+
     let speech_timeout = env_f32(ENV_SPEECH_TIMEOUT, DEFAULT_SPEECH_TIMEOUT_SECS);
     let silence_timeout = env_f32(ENV_SILENCE_TIMEOUT, DEFAULT_SILENCE_TIMEOUT_SECS);
     let max_duration = env_f32(ENV_MAX_DURATION, DEFAULT_MAX_DURATION_SECS);
@@ -384,11 +536,8 @@ fn run_session(
     emit(app, EVENT_VOICE_STARTED, StartedPayload { kind: "voice:started" });
     eprintln!("nila: voice: session started (wake listener parked)");
 
-    // Lazy engine load on first wake. When the models were never
-    // downloaded (a manual, settings-driven step), the session ends
-    // gracefully: the pill shows where to get them and the wake
-    // listener is restored, so Nila keeps working without voice
-    // commands.
+    // Lazy engine load on first wake; reused for every later command
+    // (the 40–50 MB model is never reloaded per command).
     if engine.is_none() {
         match ensure_engine(app) {
             Ok(loaded) => *engine = Some(loaded),
@@ -404,10 +553,19 @@ fn run_session(
     let eng = engine.as_ref().expect("engine loaded above");
 
     let audio = match open_audio() {
-        Ok(audio) => audio,
+        Ok(audio) => {
+            diag(&format!(
+                "wake->mic-open latency: {} ms",
+                wake_at.elapsed().as_millis()
+            ));
+            audio
+        }
         Err(e) => {
             transition(phase, Phase::Error);
             emit_error(app, "mic_error", format!("microphone unavailable: {e}"));
+            // The UI must always see the session end, even when the mic
+            // never opened — otherwise the pill sticks on "listening".
+            emit(app, EVENT_VOICE_ENDED, EndedPayload { kind: "voice:ended" });
             restore_wake_listener(app, wake_was_enabled);
             return;
         }
@@ -418,13 +576,18 @@ fn run_session(
         &audio,
         stop,
         phase,
+        wake_at,
         speech_timeout,
         silence_timeout,
         max_duration,
         partial_interval,
     );
     // The stream is dropped here: capture stops, mic released.
+    let dropped = audio.dropped_chunks.load(Ordering::Relaxed);
     drop(audio);
+    if dropped > 0 {
+        eprintln!("nila: voice: dropped {dropped} audio chunks (queue full during decode)");
+    }
 
     match outcome {
         Outcome::Stopped => { /* app is exiting; nothing to emit */ }
@@ -437,9 +600,15 @@ fn run_session(
             emit_error(app, "mic_error", "microphone stream ended unexpectedly");
         }
         Outcome::Done { samples } => {
-            // Finalize, then walk PROCESSING -> (Jev handoff) -> idle.
-            transition(phase, Phase::Processing);
+            // Finalize, then walk PROCESSING_STT -> (Jev handoff) -> idle.
+            transition(phase, Phase::ProcessingStt);
+            let t0 = Instant::now();
             let text = decode_text(&eng.recognizer, &samples);
+            diag(&format!(
+                "final decode: {} ms ({} samples)",
+                t0.elapsed().as_millis(),
+                samples.len()
+            ));
             let text = text.trim().to_string();
             if text.is_empty() {
                 transition(phase, Phase::Error);
@@ -459,8 +628,14 @@ fn run_session(
                 transition(phase, Phase::CommandReady);
                 thread::sleep(FINAL_BEAT);
             }
+            // `samples` (the only large buffer, ≤ max_duration of audio)
+            // is dropped here with the Outcome.
         }
     }
+    diag(&format!(
+        "session total: {} ms",
+        session_t0.elapsed().as_millis()
+    ));
     emit(app, EVENT_VOICE_ENDED, EndedPayload { kind: "voice:ended" });
     restore_wake_listener(app, wake_was_enabled);
     eprintln!("nila: voice: session ended");
@@ -501,12 +676,14 @@ fn capture_command(
     audio: &AudioInput,
     stop: &Arc<AtomicBool>,
     phase: &mut Phase,
+    wake_at: Instant,
     speech_timeout: f32,
     silence_timeout: f32,
     max_duration: f32,
     partial_interval: Duration,
 ) -> Outcome {
     let session_start = Instant::now();
+    let mut first_speech_at: Option<Instant> = None;
     let mut pending: Vec<f32> = Vec::new();
     let mut samples: Vec<f32> = Vec::new();
     let mut silence_chunks: u32 = 0;
@@ -514,10 +691,20 @@ fn capture_command(
     let mut last_partial = String::new();
     let mut last_partial_at = Instant::now();
     let mut decoded_len: usize = 0;
+    let mut first_partial_done = false;
+    // Coalescing gate: don't spend a full-buffer re-decode on a trickle.
+    let min_partial_new = (SAMPLE_RATE as f32 * MIN_PARTIAL_NEW_SECS) as usize;
 
     loop {
         if stop.load(Ordering::SeqCst) {
             return Outcome::Stopped;
+        }
+        // A stream error is fatal: the device is gone (or dying) and
+        // retrying on a dead stream just burns CPU. The session ends
+        // with `mic_error` and the worker returns to WAKE_LISTENING.
+        if audio.err_rx.try_recv().is_ok() {
+            eprintln!("nila: voice: audio stream error; ending capture");
+            return Outcome::MicError;
         }
         match audio.rx.recv_timeout(Duration::from_millis(200)) {
             Ok(chunk) => push_resampled(&audio.resampler, &mut pending, &chunk),
@@ -538,10 +725,15 @@ fn capture_command(
             if *phase == Phase::ListeningForSpeech {
                 if speech {
                     transition(phase, Phase::RecordingCommand);
+                    first_speech_at = Some(Instant::now());
                     samples.extend_from_slice(&chunk);
                     speech_chunks += 1;
                     last_partial_at = Instant::now();
                     eprintln!("nila: voice: speech detected");
+                    diag(&format!(
+                        "wake->speech-start latency: {} ms",
+                        wake_at.elapsed().as_millis()
+                    ));
                 } else if session_start.elapsed().as_secs_f32() >= speech_timeout {
                     return Outcome::SpeechTimeout;
                 }
@@ -557,10 +749,25 @@ fn capture_command(
                 // Live partials: re-decode the growing buffer (the model
                 // is offline/full-context, so partials are just repeated
                 // decodes — sherpa's simulated-streaming pattern).
-                if last_partial_at.elapsed() >= partial_interval && samples.len() > decoded_len {
+                // Throttled two ways: by cadence AND by requiring a
+                // minimum amount of new audio, so a slow decode can't
+                // trigger a decode storm on the next tick.
+                let new_since_decode = samples.len().saturating_sub(decoded_len);
+                if last_partial_at.elapsed() >= partial_interval
+                    && new_since_decode >= min_partial_new
+                {
                     decoded_len = samples.len();
                     last_partial_at = Instant::now();
+                    let t0 = Instant::now();
                     let text = decode_text(&engine.recognizer, &samples);
+                    let decode_ms = t0.elapsed().as_millis();
+                    if !first_partial_done {
+                        first_partial_done = true;
+                        diag(&format!(
+                            "first partial: {} ms after speech start (decode {decode_ms} ms)",
+                            first_speech_at.map(|t| t.elapsed().as_millis()).unwrap_or(0)
+                        ));
+                    }
                     let text = text.trim().to_string();
                     if !text.is_empty() && text != last_partial {
                         last_partial = text.clone();
@@ -582,9 +789,14 @@ fn capture_command(
                     eprintln!("nila: voice: end of speech ({silence_secs:.1}s silence)");
                     return Outcome::Done { samples };
                 }
-                if session_start.elapsed().as_secs_f32() >= max_duration {
-                    eprintln!("nila: voice: max command duration reached");
-                    return Outcome::Done { samples };
+                // The cap runs from first speech, not from the wake: the
+                // user gets their full command window even if they
+                // paused before starting to speak.
+                if let Some(t) = first_speech_at {
+                    if t.elapsed().as_secs_f32() >= max_duration {
+                        eprintln!("nila: voice: max command duration reached");
+                        return Outcome::Done { samples };
+                    }
                 }
             }
         }
@@ -606,12 +818,19 @@ fn decode_text(recognizer: &OfflineRecognizer, samples: &[f32]) -> String {
 }
 
 /// An open microphone: the CPAL stream (kept alive for the session), a
-/// channel of mono 16 kHz blocks, and an optional resampler for devices
-/// whose native rate isn't 16 kHz.
+/// bounded channel of mono 16 kHz blocks, a stream-error channel, and
+/// an optional resampler for devices whose native rate isn't 16 kHz.
+///
+/// The queue is bounded ([`AUDIO_QUEUE_CHUNKS`]): the audio callback
+/// uses `try_send` and never blocks, so memory stays flat even if a
+/// partial decode keeps the worker busy. Dropped newest chunks are
+/// counted in `dropped_chunks` and reported at session end.
 struct AudioInput {
     _stream: cpal::Stream,
     rx: mpsc::Receiver<Vec<f32>>,
+    err_rx: mpsc::Receiver<String>,
     resampler: Option<LinearResampler>,
+    dropped_chunks: Arc<AtomicUsize>,
 }
 
 fn push_resampled(resampler: &Option<LinearResampler>, out: &mut Vec<f32>, chunk: &[f32]) {
@@ -660,8 +879,19 @@ fn try_open_audio() -> Result<AudioInput, String> {
     } else {
         None
     };
-    let (tx, rx) = mpsc::channel::<Vec<f32>>();
-    let err_fn = |err| eprintln!("nila: voice: audio stream error: {err}");
+    let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(AUDIO_QUEUE_CHUNKS);
+    let (err_tx, err_rx) = mpsc::sync_channel::<String>(AUDIO_ERROR_QUEUE);
+    let dropped_chunks = Arc::new(AtomicUsize::new(0));
+    // One error closure per stream build (each branch moves its own):
+    // the callback thread must never block, so the send is best-effort.
+    // The worker treats the first reported error as fatal — a dead
+    // device ends the session with `mic_error` instead of spinning.
+    let err_fn_for = |err_tx: mpsc::SyncSender<String>| {
+        move |err| {
+            eprintln!("nila: voice: audio stream error: {err}");
+            let _ = err_tx.try_send(format!("{err}"));
+        }
+    };
     // Build the stream config explicitly (channels/rate from the device,
     // default buffering) rather than relying on SupportedStreamConfig
     // accessors that vary across cpal versions.
@@ -671,36 +901,57 @@ fn try_open_audio() -> Result<AudioInput, String> {
         buffer_size: cpal::BufferSize::Default,
     };
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => device.build_input_stream(
-            &stream_config,
-            move |data: &[f32], _: &_| {
-                if !data.is_empty() {
-                    let _ = tx.send(downmix_f32(data, channels));
-                }
-            },
-            err_fn,
-            None,
-        ),
-        cpal::SampleFormat::I16 => device.build_input_stream(
-            &stream_config,
-            move |data: &[i16], _: &_| {
-                if !data.is_empty() {
-                    let _ = tx.send(downmix_i16(data, channels));
-                }
-            },
-            err_fn,
-            None,
-        ),
-        cpal::SampleFormat::U16 => device.build_input_stream(
-            &stream_config,
-            move |data: &[u16], _: &_| {
-                if !data.is_empty() {
-                    let _ = tx.send(downmix_u16(data, channels));
-                }
-            },
-            err_fn,
-            None,
-        ),
+        cpal::SampleFormat::F32 => {
+            let tx = tx.clone();
+            let dropped = dropped_chunks.clone();
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[f32], _: &_| {
+                    if data.is_empty() {
+                        return;
+                    }
+                    if tx.try_send(downmix_f32(data, channels)).is_err() {
+                        dropped.fetch_add(1, Ordering::Relaxed);
+                    }
+                },
+                err_fn_for(err_tx.clone()),
+                None,
+            )
+        }
+        cpal::SampleFormat::I16 => {
+            let tx = tx.clone();
+            let dropped = dropped_chunks.clone();
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[i16], _: &_| {
+                    if data.is_empty() {
+                        return;
+                    }
+                    if tx.try_send(downmix_i16(data, channels)).is_err() {
+                        dropped.fetch_add(1, Ordering::Relaxed);
+                    }
+                },
+                err_fn_for(err_tx.clone()),
+                None,
+            )
+        }
+        cpal::SampleFormat::U16 => {
+            let tx = tx.clone();
+            let dropped = dropped_chunks.clone();
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[u16], _: &_| {
+                    if data.is_empty() {
+                        return;
+                    }
+                    if tx.try_send(downmix_u16(data, channels)).is_err() {
+                        dropped.fetch_add(1, Ordering::Relaxed);
+                    }
+                },
+                err_fn_for(err_tx),
+                None,
+            )
+        }
         other => return Err(format!("unsupported sample format: {other:?}")),
     }
     .map_err(|e| format!("build input stream: {e}"))?;
@@ -708,7 +959,9 @@ fn try_open_audio() -> Result<AudioInput, String> {
     Ok(AudioInput {
         _stream: stream,
         rx,
+        err_rx,
         resampler,
+        dropped_chunks,
     })
 }
 
@@ -789,5 +1042,89 @@ mod tests {
         let v = serde_json::to_value(&p).unwrap();
         assert_eq!(v["type"], "voice_command");
         assert_eq!(v["text"], "open firefox");
+    }
+
+    #[test]
+    fn state_machine_allows_the_happy_path() {
+        use Phase::*;
+        let path = [
+            WakeListening,
+            ListeningForSpeech,
+            RecordingCommand,
+            ProcessingStt,
+            CommandReady,
+            WakeListening,
+        ];
+        for w in path.windows(2) {
+            assert!(can_transition(w[0], w[1]), "{:?} -> {:?}", w[0], w[1]);
+        }
+    }
+
+    #[test]
+    fn state_machine_allows_error_recovery() {
+        use Phase::*;
+        for from in [ListeningForSpeech, RecordingCommand, ProcessingStt] {
+            assert!(can_transition(from, Error), "{from:?} -> Error");
+        }
+        assert!(can_transition(Error, WakeListening));
+    }
+
+    #[test]
+    fn state_machine_rejects_invalid_edges() {
+        use Phase::*;
+        // A second wake must never start a session mid-command; the
+        // response turn must never feed back into listening.
+        assert!(!can_transition(RecordingCommand, ListeningForSpeech));
+        assert!(!can_transition(ProcessingStt, RecordingCommand));
+        assert!(!can_transition(CommandReady, RecordingCommand));
+        assert!(!can_transition(Response, WakeListening));
+        assert!(!can_transition(ProcessingCommand, RecordingCommand));
+        assert!(!can_transition(WakeListening, RecordingCommand));
+    }
+
+    #[test]
+    fn await_wake_honors_post_session_debounce() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel::<()>();
+
+        // A wake arriving mid-wait but inside the debounce window is
+        // ignored: the worker keeps waiting instead of starting a
+        // session.
+        let tx2 = tx.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            let _ = tx2.send(());
+        });
+        let ignore_until = Instant::now() + Duration::from_secs(3600);
+        let got = await_wake(&stop, &rx, Duration::from_millis(150), ignore_until);
+        assert!(got.is_none(), "debounced wake must not start a session");
+
+        // After the window, a wake arrives normally.
+        tx.send(()).unwrap();
+        let got = await_wake(
+            &stop,
+            &rx,
+            Duration::from_millis(50),
+            Instant::now() - Duration::from_secs(1),
+        );
+        assert!(got.is_some());
+    }
+
+    #[test]
+    fn await_wake_coalesces_bursts_into_one() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel::<()>();
+        tx.send(()).unwrap();
+        tx.send(()).unwrap();
+        tx.send(()).unwrap();
+        let got = await_wake(
+            &stop,
+            &rx,
+            Duration::from_millis(50),
+            Instant::now() - Duration::from_secs(1),
+        );
+        assert!(got.is_some());
+        // The burst was drained: nothing left queued.
+        assert!(rx.try_recv().is_err());
     }
 }
