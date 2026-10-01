@@ -60,6 +60,20 @@ pub enum Schedule {
     Daily { time: String },            // "HH:MM" local
     Weekly { days: Vec<u32>, time: String }, // days: 0=Sunday
     Interval { minutes: u32 },
+    /// Fired by the system health monitor (system_monitor.rs), not the
+    /// deadline driver: `next_occurrence` returns None for this variant.
+    /// Serializes as {"type":"system","metric":"battery_low"}.
+    System { metric: SystemMetric },
+}
+
+/// Which system condition a `Schedule::System` reminder watches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemMetric {
+    BatteryLow,
+    CpuHigh,
+    MemoryHigh,
+    DiskLow,
 }
 
 /// Next occurrence strictly after `from`, ignoring eligibility filters.
@@ -68,6 +82,9 @@ pub fn next_occurrence(schedule: &Schedule, from: DateTime<Utc>) -> Option<DateT
     let local = from.with_timezone(&Local);
     match schedule {
         Schedule::Once { at } => (*at > from).then_some(*at),
+        // System reminders are fired by the monitor, never by the
+        // deadline driver, so they have no next occurrence here.
+        Schedule::System { .. } => None,
         Schedule::Interval { minutes } => {
             if *minutes == 0 { return None; }
             Some(from + Duration::minutes(*minutes as i64))
@@ -259,6 +276,9 @@ pub fn validate_reminders(reminders: &[db::Reminder]) -> Vec<StartupIssue> {
                             bad("interval must be at least 1 minute".to_string());
                         }
                     }
+                    // The monitor owns system schedules; the metric was
+                    // already validated by deserialization above.
+                    Schedule::System { .. } => {}
                 }
             }
         }
@@ -347,6 +367,75 @@ pub fn recover_missed(app: &AppHandle) -> Vec<String> {
                 .and_then(|conn| recover_missed_in(&conn, now).ok())
         })
         .unwrap_or_default()
+}
+
+/// Built-in system health reminders. Seeded once by fixed id: existing
+/// rows — including a user's enabled toggle — are never overwritten, so
+/// turning one off stays off across restarts and updates.
+pub fn seed_system_reminders(app: &AppHandle) {
+    // (id, kind, title, message, schedule JSON). Messages stay Manglish:
+    // the reminder voice is Manglish in either settings language.
+    const SEEDS: &[(&str, &str, &str, &str, &str)] = &[
+        (
+            "sys-battery",
+            "battery",
+            "Battery",
+            "Battery 20%-ilum kuranju — charger connect cheyyu.",
+            r#"{"type":"system","metric":"battery_low"}"#,
+        ),
+        (
+            "sys-cpu",
+            "cpu",
+            "CPU Load",
+            "CPU 85%-ilum kooduthal load-il aanu — bhaaram koodiya apps onnu nokku.",
+            r#"{"type":"system","metric":"cpu_high"}"#,
+        ),
+        (
+            "sys-memory",
+            "memory",
+            "Memory",
+            "Memory niranja varunnu — aavashyamillatha apps close cheyyu.",
+            r#"{"type":"system","metric":"memory_high"}"#,
+        ),
+        (
+            "sys-disk",
+            "disk",
+            "Disk Space",
+            "Disk space kuranja varunnu — aavashyamillatha files clean cheyyu.",
+            r#"{"type":"system","metric":"disk_low"}"#,
+        ),
+    ];
+    // Same E0515 note as validate_store: the guard never leaves the closure.
+    let seeded: Vec<&str> = app
+        .try_state::<db::DbState>()
+        .and_then(|st| {
+            st.0.lock().ok().map(|conn| {
+                let mut done = Vec::new();
+                for (id, kind, title, message, schedule) in SEEDS {
+                    let exists = db::get_reminder(&conn, id).ok().flatten().is_some();
+                    if exists {
+                        continue;
+                    }
+                    let r = db::Reminder {
+                        id: id.to_string(),
+                        title: title.to_string(),
+                        message: message.to_string(),
+                        kind: kind.to_string(),
+                        schedule: schedule.to_string(),
+                        enabled: true,
+                    };
+                    match db::upsert_reminder(&conn, &r) {
+                        Ok(()) => done.push(*id),
+                        Err(e) => eprintln!("nila: failed to seed system reminder '{id}': {e}"),
+                    }
+                }
+                done
+            })
+        })
+        .unwrap_or_default();
+    for id in seeded {
+        eprintln!("nila: startup: seeded system reminder '{id}'");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -547,7 +636,7 @@ async fn wait_for_change(app: &AppHandle) {
     app.unlisten(id);
 }
 
-async fn fire_if_eligible(app: &AppHandle, reminder_id: &str) {
+pub(crate) async fn fire_if_eligible(app: &AppHandle, reminder_id: &str) {
     // Internal sentinels just wake the loop to recompute.
     if reminder_id == "__nila_unpause__" {
         if let Some(state) = app.try_state::<db::DbState>() {
@@ -741,6 +830,30 @@ mod tests {
             serde_json::from_str(r#"{"type":"interval","minutes":45}"#).unwrap();
         assert!(matches!(interval, Schedule::Interval { minutes: 45 }));
         assert!(serde_json::from_str::<Schedule>(r#"{"type":"bogus"}"#).is_err());
+        // System schedules: the monitor's shapes.
+        let sys: Schedule =
+            serde_json::from_str(r#"{"type":"system","metric":"battery_low"}"#).unwrap();
+        assert!(matches!(
+            sys,
+            Schedule::System { metric: SystemMetric::BatteryLow }
+        ));
+        assert!(serde_json::from_str::<Schedule>(
+            r#"{"type":"system","metric":"warp_drive"}"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn system_schedule_has_no_deadline_and_validates() {
+        let sys = Schedule::System { metric: SystemMetric::CpuHigh };
+        // The deadline driver never fires system reminders.
+        assert_eq!(next_occurrence(&sys, utc(2026, 10, 1, 12, 0)), None);
+        assert!(recover_after_wake(&sys, utc(2026, 10, 1, 12, 0), ((22, 0), (8, 0))).is_none());
+        // …but they pass startup validation like any healthy reminder.
+        let mut r = valid_reminder("sys");
+        r.kind = "cpu".into();
+        r.schedule = r#"{"type":"system","metric":"cpu_high"}"#.into();
+        assert!(validate_reminders(std::slice::from_ref(&r)).is_empty());
     }
 
     fn valid_reminder(id: &str) -> db::Reminder {
