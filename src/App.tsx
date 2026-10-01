@@ -33,8 +33,10 @@ import {
 } from "./lib/reminders";
 import { invokeCommand, isTauri, listenEvent } from "./lib/tauri";
 import {
+  MODEL_EVENTS,
   VOICE_EVENTS,
   voiceErrorLabel,
+  type ModelsDownloadingPayload,
   type VoiceErrorCode,
   type VoiceErrorPayload,
   type VoiceFinalPayload,
@@ -685,6 +687,24 @@ export default function App() {
           setVoice("idle");
           setWakeListening(false);
         }),
+      );
+      unlistens.push(
+        await listenEvent<ModelsDownloadingPayload>(
+          MODEL_EVENTS.downloading,
+          (p) => {
+            // First-run model fetch: surface progress in the active
+            // session's bubble. Silent when no voice session owns the
+            // surface (the usual background-download case).
+            if (!voiceActiveRef.current) return;
+            const pct =
+              p.total_bytes > 0
+                ? Math.round((p.downloaded_bytes / p.total_bytes) * 100)
+                : 0;
+            setVoiceText(
+              `${getStrings(settingsRef.current.language).voice.modelsDownloading} ${pct}%`,
+            );
+          },
+        ),
       );
       if (cancelled) {
         for (const off of unlistens) off();
