@@ -123,9 +123,19 @@ export function voiceErrorLabel(code: VoiceErrorCode, voice: Dict["voice"]): str
  * shows when the wake word is enabled). Nothing downloads
  * automatically: Nila works without the models, and a wake with none
  * present surfaces the `models_missing` error code above.
+ *
+ * `status` mirrors the backend ModelManager: "installed" means the
+ * files are present AND verified (a truncated download never counts).
+ * "Update available" is not supported — the upstream release is pinned.
  */
+export type SttModelStatus = "not_installed" | "downloading" | "installed";
+
 export interface SttModelsStatus {
-  ready: boolean;
+  status: SttModelStatus;
+  /** Total bytes of the installed set; null unless installed. */
+  size_bytes: number | null;
+  /** Last download failure, if any; null when installed. */
+  error: string | null;
 }
 
 export interface SttDownloadResult {
@@ -133,7 +143,7 @@ export interface SttDownloadResult {
   started: boolean;
 }
 
-/** Whether the STT models are present (downloaded or env-overridden). */
+/** Whether the STT models are present and verified. */
 export function getSttModelsStatus(): Promise<SttModelsStatus> {
   return invokeCommand<SttModelsStatus>("stt_models_status");
 }
@@ -145,4 +155,13 @@ export function getSttModelsStatus(): Promise<SttModelsStatus> {
  */
 export function downloadSttModels(): Promise<SttDownloadResult> {
   return invokeCommand<SttDownloadResult>("download_stt_models");
+}
+
+/**
+ * Delete the downloaded models from the app-managed data directory
+ * (env-override paths are never touched). Resolves true when at least
+ * one file was removed.
+ */
+export function deleteSttModels(): Promise<boolean> {
+  return invokeCommand<boolean>("delete_stt_models");
 }

@@ -52,8 +52,14 @@ Session timeouts are also tunable:
 |---|---|---|
 | `NILA_VOICE_SPEECH_TIMEOUT` | `8.0` | Seconds to wait for speech after the wake word |
 | `NILA_VOICE_SILENCE_TIMEOUT` | `1.2` | Trailing silence (s) that ends the command |
-| `NILA_VOICE_MAX_DURATION` | `20.0` | Longest a command recording may run (s) |
-| `NILA_VOICE_PARTIAL_MS` | `1000` | Live-partial re-decode cadence (ms) |
+| `NILA_VOICE_MAX_DURATION` | `20.0` | Longest a command recording may run (s), measured from first speech |
+| `NILA_VOICE_PARTIAL_MS` | `400` | Live-partial re-decode cadence (ms); also gated on ≥0.4 s of new audio |
+| `NILA_VOICE_DIAG` | unset | Set to `1` for dev diagnostics (wake/speech/decode latencies) on stderr |
+
+Downloads are staged as `.part` files and atomically renamed only
+after the sizes verify; an interrupted download never counts as
+installed. Settings also offers Delete, which removes the downloaded
+set from the app-data dir (the in-memory engine unloads on next wake).
 
 ## Replacing the model later
 

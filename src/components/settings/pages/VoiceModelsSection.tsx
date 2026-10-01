@@ -3,12 +3,16 @@
  * enabled (see GeneralPage). The STT models are a manual, one-time
  * download (~80 MB) into the app-data dir; Nila works fine without
  * them, so this is strictly opt-in and nothing downloads on its own.
+ *
+ * States: not installed / downloading / installed (+ size) / error.
+ * "Update available" is not supported — the upstream release is pinned.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fill, type Dict } from "../../../lib/i18n";
 import { isTauri, listenEvent } from "../../../lib/tauri";
 import {
   MODEL_EVENTS,
+  deleteSttModels,
   downloadSttModels,
   getSttModelsStatus,
   type ModelsDownloadingPayload,
@@ -16,11 +20,13 @@ import {
 } from "../../../lib/voice";
 import { SettingsRow, SettingsSection } from "../ui";
 
-type Status = "checking" | "ready" | "missing" | "downloading" | "error";
+type Status = "checking" | "installed" | "not_installed" | "downloading" | "error";
 
 export function VoiceModelsSection({ t }: { t: Dict }) {
   const g = t.general;
   const [status, setStatus] = useState<Status>("checking");
+  const [sizeBytes, setSizeBytes] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pct, setPct] = useState(0);
   const alive = useRef(true);
 
@@ -28,9 +34,22 @@ export function VoiceModelsSection({ t }: { t: Dict }) {
     if (!isTauri()) return; // demo mode: no backend to ask
     try {
       const s = await getSttModelsStatus();
-      if (alive.current) setStatus(s.ready ? "ready" : "missing");
+      if (!alive.current) return;
+      setSizeBytes(s.size_bytes);
+      if (s.status === "installed") {
+        setErrorMsg(null);
+        setStatus("installed");
+      } else if (s.status === "downloading") {
+        setStatus("downloading");
+      } else if (s.error) {
+        setErrorMsg(s.error);
+        setStatus("error");
+      } else {
+        setErrorMsg(null);
+        setStatus("not_installed");
+      }
     } catch {
-      if (alive.current) setStatus("missing");
+      if (alive.current) setStatus("not_installed");
     }
   }, []);
 
@@ -55,11 +74,16 @@ export function VoiceModelsSection({ t }: { t: Dict }) {
         ),
       );
       unlistens.push(
-        await listenEvent(MODEL_EVENTS.ready, () => setStatus("ready")),
+        await listenEvent(MODEL_EVENTS.ready, () => {
+          // Re-check so the installed size is picked up.
+          void check();
+        }),
       );
       unlistens.push(
-        await listenEvent<ModelsErrorPayload>(MODEL_EVENTS.error, () => {
-          if (!cancelled) setStatus("error");
+        await listenEvent<ModelsErrorPayload>(MODEL_EVENTS.error, (p) => {
+          if (cancelled) return;
+          setErrorMsg(p.message);
+          setStatus("error");
         }),
       );
       if (cancelled) for (const off of unlistens) off();
@@ -73,28 +97,46 @@ export function VoiceModelsSection({ t }: { t: Dict }) {
 
   const onDownload = async () => {
     setPct(0);
+    setErrorMsg(null);
     setStatus("downloading");
     try {
       const r = await downloadSttModels();
       // `started: false` means the models were already present.
-      if (!r.started && alive.current) setStatus("ready");
+      if (!r.started) await check();
     } catch {
       if (alive.current) setStatus("error");
     }
   };
 
+  const onDelete = async () => {
+    setStatus("checking");
+    try {
+      await deleteSttModels();
+    } catch {
+      // A failed delete just re-checks; the status line stays honest.
+    }
+    await check();
+  };
+
+  const sizeLine =
+    status === "installed" && sizeBytes != null
+      ? ` · ${g.voiceModelsSize}: ${(sizeBytes / 1_000_000).toFixed(1)} MB`
+      : "";
+
   const line = (() => {
     switch (status) {
       case "checking":
         return "…";
-      case "ready":
-        return g.voiceModelsReady;
-      case "missing":
+      case "installed":
+        return `${g.voiceModelsReady}${sizeLine}`;
+      case "not_installed":
         return g.voiceModelsMissing;
       case "downloading":
         return fill(g.voiceModelsDownloading, { pct });
       case "error":
-        return g.voiceModelsFailed;
+        return errorMsg
+          ? fill(g.voiceModelsError, { msg: errorMsg })
+          : g.voiceModelsFailed;
     }
   })();
 
@@ -106,18 +148,29 @@ export function VoiceModelsSection({ t }: { t: Dict }) {
         title={g.voiceModelsSection}
         description={g.voiceModelsDesc}
         control={
-          <button
-            type="button"
-            className="btn"
-            disabled={!isTauri() || busy || status === "ready"}
-            onClick={() => void onDownload()}
-          >
-            {g.voiceModelsDownload}
-          </button>
+          status === "installed" ? (
+            <button
+              type="button"
+              className="btn"
+              disabled={!isTauri() || busy}
+              onClick={() => void onDelete()}
+            >
+              {g.voiceModelsDelete}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              disabled={!isTauri() || busy}
+              onClick={() => void onDownload()}
+            >
+              {g.voiceModelsDownload}
+            </button>
+          )
         }
       />
       <p
-        className={`status-line${status === "error" ? " err" : status === "ready" ? " ok" : ""}`}
+        className={`status-line${status === "error" ? " err" : status === "installed" ? " ok" : ""}`}
         role="status"
       >
         {line}

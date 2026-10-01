@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import {
   MODEL_EVENTS,
   VOICE_EVENTS,
+  deleteSttModels,
   downloadSttModels,
   getSttModelsStatus,
   voiceErrorLabel,
   type ModelsDownloadingPayload,
+  type SttModelsStatus,
   type VoiceErrorCode,
 } from "../src/lib/voice.ts";
 import { STRINGS, type Language } from "../src/lib/i18n.ts";
@@ -94,11 +96,15 @@ describe("model provisioning events", () => {
         "voiceModelsDownload",
         "voiceModelsDownloading",
         "voiceModelsFailed",
+        "voiceModelsDelete",
+        "voiceModelsSize",
+        "voiceModelsError",
       ] as const) {
         assert.ok(g[key].trim().length > 0, `${lang}: empty ${key}`);
       }
       // The progress template carries a {pct} placeholder.
       assert.ok(g.voiceModelsDownloading.includes("{pct}"));
+      assert.ok(g.voiceModelsError.includes("{msg}"));
     }
   });
 });
@@ -107,5 +113,23 @@ describe("manual model download commands", () => {
   it("rejects outside Tauri (settings UI gates on isTauri)", async () => {
     await assert.rejects(getSttModelsStatus(), /tauri-unavailable/);
     await assert.rejects(downloadSttModels(), /tauri-unavailable/);
+    await assert.rejects(deleteSttModels(), /tauri-unavailable/);
+  });
+
+  it("status shape matches the backend ModelInfo contract", () => {
+    // Compile-time shape check against the Rust ModelInfo serialization:
+    // { status, size_bytes, error }.
+    const s: SttModelsStatus = {
+      status: "installed",
+      size_bytes: 83_400_000,
+      error: null,
+    };
+    assert.equal(s.status, "installed");
+    const missing: SttModelsStatus = {
+      status: "not_installed",
+      size_bytes: null,
+      error: "boom",
+    };
+    assert.equal(missing.error, "boom");
   });
 });
