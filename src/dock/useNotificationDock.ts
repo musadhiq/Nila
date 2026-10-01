@@ -14,8 +14,10 @@ import {
  * Phase choreography (full motion):
  * - entering (300ms): dock slides/fades in; Nila plays `reminder-enter`.
  * - expanding (400ms): card settles to full size.
- * - visible: Nila does the `reminder-point` attention gesture, then
- *   loops `reminder-wait` (with blinks) until the user acts.
+ * - visible: Nila loops `reminder-wait` (with blinks) until the user
+ *   acts. The dock card itself presents a character *expression*
+ *   (point/surprised/...) instead of the motion frames — the old
+ *   `reminder-point` attention image was corrupted and is retired.
  * - acknowledging: Done -> `thumbsup`; Snooze -> `snooze-ack`;
  *   Dismiss -> `reminder-react`.
  * - collapsing (260ms): dock contracts away; then the next queued
@@ -28,7 +30,6 @@ const TIMING = {
   full: {
     entering: 300,
     expanding: 400,
-    pointHold: 800,
     ackCompleted: 1100,
     ackDismissed: 1600,
     ackSnoozed: 1200,
@@ -37,7 +38,6 @@ const TIMING = {
   reduced: {
     entering: 120,
     expanding: 120,
-    pointHold: 300,
     ackCompleted: 400,
     ackDismissed: 400,
     ackSnoozed: 400,
@@ -49,6 +49,8 @@ export interface NotificationDockApi {
   phase: DockPhase;
   current: DockNotification | null;
   queueLength: number;
+  /** The action being acknowledged (set during acknowledging/collapsing). */
+  ackAction: DockAckAction | null;
   notify: (n: DockNotification) => void;
   dismiss: (action: DockAckAction) => void;
   interact: () => void;
@@ -106,8 +108,7 @@ export function useNotificationDock(opts: {
         later(t.expanding, () => dispatch({ type: "expand-done" }));
         break;
       case "visible":
-        playRef.current("reminder-point");
-        later(t.pointHold, () => playRef.current("reminder-wait"));
+        playRef.current("reminder-wait");
         break;
       case "acknowledging": {
         const ack = state.ackAction;
@@ -133,6 +134,7 @@ export function useNotificationDock(opts: {
     phase: state.phase,
     current: state.current,
     queueLength: state.queue.length,
+    ackAction: state.ackAction,
     notify,
     dismiss,
     interact,

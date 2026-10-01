@@ -67,7 +67,6 @@ describe("motionManifest", () => {
       "idle",
       "wave",
       "reminder-enter",
-      "reminder-point",
       "reminder-wait",
       "reminder-react",
       "reminder-retreat",

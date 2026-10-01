@@ -520,21 +520,6 @@ export default function App() {
     dock.dismiss(action);
   };
 
-  /** Dock V1: Snooze. Reschedules (unless a greeting card), then ack. */
-  const snoozeActive = async (id: string, minutes: 10 | 30 | 60) => {
-    if (!id.startsWith("greeting-")) {
-      try {
-        await invokeCommand("snooze_reminder", { id, minutes });
-      } catch {
-        /* demo mode */
-      }
-      dock.dismiss("snoozed");
-    } else {
-      // Greetings have no backend reminder to reschedule: just acknowledge.
-      dock.dismiss("dismissed");
-    }
-  };
-
   const pauseAll = async (minutes: 30 | 60 | null) => {
     try {
       await invokeCommand("pause_all", { minutes });
@@ -818,6 +803,28 @@ export default function App() {
 
   const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 
+  /**
+   * The dock presents notifications with character *expressions* (not the
+   * reminder motion frames — `nila_reminder_point.png` was corrupted, so
+   * the motion-frame attention gesture is retired from the dock). The
+   * expression crossfades on change; the engine sequences keep playing
+   * silently underneath and are ignored while an expression is set.
+   */
+  const dockExpression = ((): ExpressionName => {
+    const ack = dock.ackAction;
+    if (dock.phase === "acknowledging" || dock.phase === "collapsing") {
+      return ack === "completed"
+        ? "thumbs-up"
+        : ack === "snoozed"
+          ? "sleepy"
+          : "confused";
+    }
+    if (dock.current?.kind === "greeting") return "playful";
+    if (dock.phase === "entering" || dock.phase === "expanding")
+      return "surprised";
+    return "point";
+  })();
+
   return (
     <div
       className="companion"
@@ -838,14 +845,13 @@ export default function App() {
               animation={snap.animation}
               size="small"
               dark={dark}
-              expression={snap.expression}
+              expression={dockExpression}
               frame={snap.frame}
               frameSrc={frameSrc}
               shadow="soft"
             />
           }
           onDone={dismissActive}
-          onSnooze={snoozeActive}
           onInteract={dock.interact}
           onDisengage={dock.disengage}
           onKeyDismiss={(id) => void dismissActive(id, "dismissed")}

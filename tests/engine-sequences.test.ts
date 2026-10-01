@@ -51,21 +51,22 @@ describe("engine frame sequences", () => {
     );
   });
 
-  it("chains sequences: point -> wait loop", () => {
+  it("chains sequences: enter -> wait loop", () => {
     const e = new CharacterEngine();
     const ended: string[] = [];
     e.onSequenceEnd((n) => ended.push(n));
-    e.playChain(["reminder-point", "reminder-wait"]);
-    assert.equal(e.snapshot().sequence, "reminder-point");
-    e.advanceFrame(); // point is a single held frame -> moves to wait
+    e.playChain(["reminder-enter", "reminder-wait"]);
+    assert.equal(e.snapshot().sequence, "reminder-enter");
+    // Advance past the enter beats -> moves to wait.
+    for (let i = 0; i < 4; i++) e.advanceFrame();
     assert.equal(e.snapshot().sequence, "reminder-wait");
-    assert.deepEqual(ended, ["reminder-point"]);
+    assert.deepEqual(ended, ["reminder-enter"]);
     // The wait loop keeps cycling without ending.
     const k1 = e.snapshot().frame!.key;
     e.advanceFrame();
     e.advanceFrame();
     assert.equal(e.snapshot().sequence, "reminder-wait");
-    assert.deepEqual(ended, ["reminder-point"]);
+    assert.deepEqual(ended, ["reminder-enter"]);
     assert.notEqual(k1, undefined);
   });
 

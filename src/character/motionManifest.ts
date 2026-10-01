@@ -110,13 +110,6 @@ export const MOTION_SEQUENCES: Record<string, SequenceDef> = {  // -- Idle micro
     holdLast: true,
     anchor: CENTER_BOTTOM,
   },
-  "reminder-point": {
-    name: "reminder-point",
-    frames: [{ key: "nila_reminder_point", ms: 750 }],
-    loop: "none",
-    holdLast: true,
-    anchor: CENTER_BOTTOM,
-  },
   "reminder-wait": {
     name: "reminder-wait",
     frames: [
@@ -352,7 +345,6 @@ export const CORE_SEQUENCE_NAMES = [
   "idle",
   "wave",
   "reminder-enter",
-  "reminder-point",
   "reminder-wait",
   "reminder-react",
   "reminder-retreat",

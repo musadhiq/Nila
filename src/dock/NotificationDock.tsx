@@ -24,7 +24,6 @@ interface Props {
   /** Nila, rendered by the host from the character engine snapshot. */
   nila: ReactNode;
   onDone: (id: string, action: "completed" | "dismissed") => void;
-  onSnooze: (id: string, minutes: 10 | 30 | 60) => void;
   onInteract: () => void;
   onDisengage: () => void;
   onKeyDismiss: (id: string) => void;
@@ -51,7 +50,6 @@ export function NotificationDock({
   reducedMotion,
   nila,
   onDone,
-  onSnooze,
   onInteract,
   onDisengage,
   onKeyDismiss,
@@ -147,32 +145,6 @@ export function NotificationDock({
             <div className="dock-message" id={`dock-msg-${reminder.id}`}>
               {reminder.message}
             </div>
-          </div>
-          <div className={`dock-foot${busy ? " is-disabled" : ""}`} aria-disabled={busy}>
-            <button
-              type="button"
-              className="dock-snooze"
-              disabled={busy}
-              onClick={() => onSnooze(reminder.id, 10)}
-            >
-              {ACTIONS.later}
-            </button>
-            <button
-              type="button"
-              className="dock-snooze"
-              disabled={busy}
-              onClick={() => onSnooze(reminder.id, 30)}
-            >
-              {ACTIONS.snooze30}
-            </button>
-            <button
-              type="button"
-              className="dock-snooze"
-              disabled={busy}
-              onClick={() => onSnooze(reminder.id, 60)}
-            >
-              {ACTIONS.snooze60}
-            </button>
           </div>
         </div>
         <div className="dock-nila" aria-hidden="true">
