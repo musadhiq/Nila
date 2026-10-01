@@ -1,5 +1,7 @@
-import type { CharacterAnimation, CharacterSize, CharacterState } from "./engine";
+import { useEffect, useState } from "react";
+import type { CharacterAnimation, CharacterSize, CharacterState, MotionFrame } from "./engine";
 import { EXPRESSION_LABEL, type ExpressionName } from "./expressions";
+import { MOTION_SEQUENCES, type FrameAnchor } from "./motionManifest";
 // Character art lives in the repo's character/ folder (single source of
 // truth); Vite bundles these imports into dist/assets at build time.
 // States in character/states/, momentary faces in character/expressions/.
@@ -63,6 +65,16 @@ interface Props {
   /** Soft elliptical ground shadow under the character. Only meaningful
    *  with variant="cutout" at a bottom-anchored position. */
   groundShadow?: boolean;
+  /** Active motion frame from the engine (generated asset library). When
+   *  set, it wins over the legacy state image. */
+  frame?: MotionFrame | null;
+  /** Bundled URL for `frame` (resolved via motionAssets.frameUrl). */
+  frameSrc?: string | null;
+  /** Dev-only debug overlay (state/sequence/frame/anchor). Rendered only
+   *  in DEV builds. */
+  debug?: boolean;
+  /** Position label for the debug overlay (e.g. "bottom-right"). */
+  debugPosition?: string | null;
 }
 
 const SIZE_PX: Record<CharacterSize, number> = { small: 96, medium: 160, large: 224 };
@@ -132,6 +144,85 @@ function animClass(animation: CharacterAnimation | null): string {
   }
 }
 
+/** Dev-only flag: the debug overlay never ships in production builds. */
+function isDevBuild(): boolean {
+  try {
+    const meta = import.meta as unknown as { env?: { DEV?: boolean } };
+    return !!meta.env?.DEV;
+  } catch {
+    return false;
+  }
+}
+
+const FLEX_FOR_X: Record<FrameAnchor["x"], string> = {
+  left: "flex-start",
+  center: "center",
+  right: "flex-end",
+};
+const FLEX_FOR_Y: Record<FrameAnchor["y"], string> = {
+  top: "flex-start",
+  center: "center",
+  bottom: "flex-end",
+};
+
+interface XLayer {
+  id: number;
+  src: string;
+  fadeKey: string;
+}
+
+/**
+ * Crossfade stack: consecutive frames of one sequence swap directly
+ * (same fadeKey), while sequence/state/expression changes fade over
+ * ~160ms. Only the newest two layers are ever mounted.
+ */
+function useCrossfade(src: string | null, fadeKey: string): { layers: XLayer[]; entered: boolean } {
+  const [layers, setLayers] = useState<XLayer[]>(() =>
+    src ? [{ id: 0, src, fadeKey }] : [],
+  );
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    if (!src) {
+      setLayers([]);
+      return;
+    }
+    let changed = false;
+    setLayers((prev) => {
+      const top = prev[prev.length - 1];
+      if (top && top.fadeKey === fadeKey) {
+        if (top.src === src) return prev;
+        changed = true;
+        return [...prev.slice(0, -1), { ...top, src }];
+      }
+      changed = true;
+      const next: XLayer = { id: (top?.id ?? -1) + 1, src, fadeKey };
+      return [...prev, next].slice(-2);
+    });
+    if (changed) setEntered(false);
+  }, [src, fadeKey]);
+
+  useEffect(() => {
+    if (layers.length < 2) {
+      setEntered(true);
+      return;
+    }
+    // Double rAF so the browser paints opacity 0 before transitioning.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setEntered(true));
+    });
+    const t = window.setTimeout(() => setLayers((p) => p.slice(-1)), 240);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      window.clearTimeout(t);
+    };
+  }, [layers]);
+
+  return { layers, entered };
+}
+
 export function NilaCharacter({
   state,
   animation,
@@ -140,16 +231,45 @@ export function NilaCharacter({
   expression = null,
   variant = "cutout",
   groundShadow = false,
+  frame = null,
+  frameSrc = null,
+  debug = false,
+  debugPosition = null,
 }: Props) {
-  const src = expression ? EXPRESSION_IMAGES[expression] : imageForState(state);
-  if (!src) return null;
   const px = SIZE_PX[size];
-  const label = expression ? EXPRESSION_LABEL[expression] : STATE_LABEL[state];
+
+  // Frame mode wins over the legacy state image (but never over an
+  // explicit expression overlay).
+  const useFrame = !expression && frame !== null && frameSrc !== null;
+  const src = expression
+    ? EXPRESSION_IMAGES[expression]
+    : useFrame
+      ? frameSrc
+      : imageForState(state);
+  const avatarSrc = expression ? EXPRESSION_IMAGES[expression] : imageForState(state);
+
+  // Crossfade group: consecutive frames of one sequence share a group
+  // (direct swap, no flicker); sequence/state/expression changes fade.
+  // NOTE: this hook must run before any early return so the hook order
+  // stays stable across renders.
+  const fadeKey = expression
+    ? `expr:${expression}`
+    : useFrame
+      ? `seq:${frame!.sequence}`
+      : `state:${state}`;
+  const { layers, entered } = useCrossfade(src, fadeKey);
+
+  const label = expression
+    ? EXPRESSION_LABEL[expression]
+    : useFrame
+      ? `Nila ${frame!.sequence} frame ${frame!.index + 1}`
+      : STATE_LABEL[state];
 
   if (variant === "avatar") {
+    if (!avatarSrc) return null;
     return (
       <img
-        src={src}
+        src={avatarSrc}
         width={px}
         height={px}
         alt={label}
@@ -165,19 +285,39 @@ export function NilaCharacter({
       />
     );
   }
+  if (!src) return null;
 
-  // Cutout: full transparent character, aspect-ratio preserved, with an
-  // alpha-aware drop shadow so she lifts off the wallpaper. The ground
-  // shadow (when enabled) is a sibling of the img so idle animations
-  // (breathe/bounce on the img) don't move the shadow — it stays planted.
+  // Drop shadow is alpha-aware so she lifts off the wallpaper.
   const dropShadow = dark
     ? "drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5)) brightness(0.94)"
     : "drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35))";
-  return (
-    <span className="nila-cutout" style={{ width: px }}>
-      {groundShadow && <span className="nila-ground-shadow" aria-hidden="true" />}
+
+  const showDebug = debug && isDevBuild();
+  const anchor: FrameAnchor = useFrame
+    ? (MOTION_SEQUENCES[frame.sequence]?.anchor ?? { x: "center", y: "bottom" })
+    : { x: "center", y: "bottom" };
+
+  const renderLayerImg = (layerSrc: string) =>
+    useFrame ? (
       <img
-        src={src}
+        src={layerSrc}
+        alt={label}
+        role="img"
+        draggable={false}
+        style={{
+          // Natural size capped by the stage; the flex anchor positions
+          // the frame (peeks hug their edge, hangs hang from the top).
+          maxWidth: "100%",
+          maxHeight: "100%",
+          objectFit: "contain",
+          display: "block",
+          filter: dropShadow,
+          pointerEvents: "none",
+        }}
+      />
+    ) : (
+      <img
+        src={layerSrc}
         alt={label}
         role="img"
         className={animClass(animation)}
@@ -190,6 +330,54 @@ export function NilaCharacter({
           pointerEvents: "none",
         }}
       />
+    );
+
+  return (
+    <span
+      className={useFrame ? "nila-frame-stage" : "nila-cutout"}
+      style={
+        useFrame
+          ? { width: px, height: px, position: "relative", display: "block", overflow: "hidden" }
+          : { width: px, position: "relative", display: "block" }
+      }
+    >
+      {groundShadow && <span className="nila-ground-shadow" aria-hidden="true" />}
+      {layers.map((layer, i) => {
+        const isTop = i === layers.length - 1 && layers.length > 1;
+        return (
+          <span
+            key={layer.id}
+            aria-hidden={isTop ? undefined : true}
+            style={
+              useFrame
+                ? {
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: FLEX_FOR_Y[anchor.y],
+                    justifyContent: FLEX_FOR_X[anchor.x],
+                    opacity: isTop && !entered ? 0 : 1,
+                    transition: "opacity 160ms ease",
+                  }
+                : isTop
+                  ? {
+                      position: "absolute",
+                      inset: 0,
+                      opacity: !entered ? 0 : 1,
+                      transition: "opacity 160ms ease",
+                    }
+                  : { position: "relative", display: "block" }
+            }
+          >
+            {renderLayerImg(layer.src)}
+          </span>
+        );
+      })}
+      {showDebug && (
+        <span className="nila-debug">
+          {`NILA DEBUG\nState: ${state}\nAnim: ${animation ?? "-"}\nSeq: ${frame?.sequence ?? "-"}\nFrame: ${frame ? `${frame.index + 1}/${frame.total}` : "-"}\nAsset: ${frame?.key ?? "-"}\nPos: ${debugPosition || "-"}\nAnchor: ${anchor.x}/${anchor.y}`}
+        </span>
+      )}
     </span>
   );
 }
