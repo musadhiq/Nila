@@ -27,7 +27,6 @@ export type ExpressionSlot =
   | "relaxed" // break: calm, hand under chin
   | "focused" // work/study: intent, thinking
   | "pointing" // custom/unknown: gets your attention
-  | "playful" // warm fallback
   | "happy" // success: the reminder was completed
   | "sad" // one rejection: brief, cute, no guilt
   | "annoyed" // repeated rejections: mild huff, still cute
@@ -133,7 +132,6 @@ export const SLOT_FILENAMES: Record<ExpressionSlot, string> = {
   relaxed: "rest_chin.png",
   focused: "focused.png",
   pointing: "point.png",
-  playful: "playful.png",
   happy: "happy.png",
   sad: "sad.png",
   annoyed: "annoyed.png",
@@ -188,10 +186,6 @@ export const SLOT_BLINK_FILENAMES: Record<ExpressionSlot, BlinkFilenames> = {
   pointing: {
     half: "blink/point_blink_half.png",
     closed: "blink/point_blink_closed.png",
-  },
-  playful: {
-    half: "blink/playful_blink_half.png",
-    closed: "blink/playful_blink_closed.png",
   },
   happy: {
     half: "blink/happy_blink_half.png",

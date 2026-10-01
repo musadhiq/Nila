@@ -121,3 +121,18 @@ export function dockReducer(state: DockState, event: DockEvent): DockState {
 export function isDockOnScreen(phase: DockPhase): boolean {
   return phase !== "hidden";
 }
+
+/**
+ * Phases in which a user action on the card (done / dismiss / snooze) is
+ * still meaningful. Once the dock is acknowledging or collapsing, the
+ * first action has won: later clicks must not reach the backend, or a
+ * rapid Done-then-Snooze would record both a completion and a snooze.
+ */
+export function isDockActionable(phase: DockPhase): boolean {
+  return (
+    phase === "entering" ||
+    phase === "expanding" ||
+    phase === "visible" ||
+    phase === "interacting"
+  );
+}

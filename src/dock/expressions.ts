@@ -13,7 +13,6 @@ import energeticUrl from "../../character/expressions/energetic.png";
 import focusedUrl from "../../character/expressions/focused.png";
 import happyUrl from "../../character/expressions/happy.png";
 import hungryUrl from "../../character/expressions/hungry.png";
-import playfulUrl from "../../character/expressions/playful.png";
 import pointUrl from "../../character/expressions/point.png";
 import restChinUrl from "../../character/expressions/rest_chin.png";
 import sadUrl from "../../character/expressions/sad.png";
@@ -33,7 +32,6 @@ const EXPRESSION_URLS: Record<ExpressionSlot, string> = {
   relaxed: restChinUrl,
   focused: focusedUrl,
   pointing: pointUrl,
-  playful: playfulUrl,
   happy: happyUrl,
   sad: sadUrl,
   annoyed: annoyedUrl,

@@ -46,6 +46,8 @@ interface Props {
   onMinimize: () => void;
   /** Page the panel opens on. Defaults to "general". */
   initialPage?: PageId;
+  /** Open the reminder editor immediately (tray "New Reminder"). */
+  autoNewReminder?: boolean;
   /** First-run flow: the welcome page shows its finish button. */
   setupMode?: boolean;
   /** Called when the user finishes the first-run setup. */
@@ -71,6 +73,7 @@ export function SettingsPanel({
   onClose,
   onMinimize,
   initialPage,
+  autoNewReminder,
   setupMode,
   onSetupComplete,
   onDataChanged,
@@ -177,6 +180,7 @@ export function SettingsPanel({
             t={t}
             lang={lang}
             reminders={reminders}
+            autoNew={autoNewReminder}
             onToggle={onToggleReminder}
             onDelete={onDeleteReminder}
             onCreate={onCreateReminder}

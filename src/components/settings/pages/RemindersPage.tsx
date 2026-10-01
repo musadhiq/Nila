@@ -28,6 +28,7 @@ export function RemindersPage({
   t,
   lang,
   reminders,
+  autoNew,
   onToggle,
   onDelete,
   onCreate,
@@ -36,13 +37,17 @@ export function RemindersPage({
   t: Dict;
   lang: Language;
   reminders: Reminder[];
+  /** Open the editor immediately (tray "New Reminder"). */
+  autoNew?: boolean;
   onToggle: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
   onCreate: (input: ReminderInput) => void;
   onUpdate: (id: string, input: ReminderInput) => void;
 }) {
   const r = t.reminders;
-  const [editing, setEditing] = useState<Reminder | "new" | null>(null);
+  const [editing, setEditing] = useState<Reminder | "new" | null>(
+    autoNew ? "new" : null,
+  );
 
   // Ask the backend what it loaded, validated, and scheduled: the
   // scheduler owns all timing; this page only formats its answer.

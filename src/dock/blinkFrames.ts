@@ -19,8 +19,6 @@ import happyHalfUrl from "../../character/expressions/blink/happy_blink_half.png
 import happyClosedUrl from "../../character/expressions/blink/happy_blink_closed.png";
 import hungryHalfUrl from "../../character/expressions/blink/hungry_blink_half.png";
 import hungryClosedUrl from "../../character/expressions/blink/hungry_blink_closed.png";
-import playfulHalfUrl from "../../character/expressions/blink/playful_blink_half.png";
-import playfulClosedUrl from "../../character/expressions/blink/playful_blink_closed.png";
 import pointHalfUrl from "../../character/expressions/blink/point_blink_half.png";
 import pointClosedUrl from "../../character/expressions/blink/point_blink_closed.png";
 import restChinHalfUrl from "../../character/expressions/blink/rest_chin_blink_half.png";
@@ -52,7 +50,6 @@ const BLINK_FRAME_URLS: Record<ExpressionSlot, BlinkFrameUrls> = {
   relaxed: { half: restChinHalfUrl, closed: restChinClosedUrl },
   focused: { half: focusedHalfUrl, closed: focusedClosedUrl },
   pointing: { half: pointHalfUrl, closed: pointClosedUrl },
-  playful: { half: playfulHalfUrl, closed: playfulClosedUrl },
   happy: { half: happyHalfUrl, closed: happyClosedUrl },
   sad: { half: sadHalfUrl, closed: sadClosedUrl },
   annoyed: { half: annoyedHalfUrl, closed: annoyedClosedUrl },

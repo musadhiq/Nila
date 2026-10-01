@@ -8,8 +8,9 @@
  * disabled when `reducedMotion` is set.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ImgHTMLAttributes } from "react";
 import type { ExpressionSlot } from "./expressionSlots";
+import { expressionUrl } from "./expressions";
 import { blinkFrames } from "./blinkFrames";
 import { dockNilaAnimClass, dockNilaAnimForReaction } from "./dockNilaAnim";
 
@@ -79,6 +80,34 @@ interface DockNilaFigureProps {
   reducedMotion: boolean;
 }
 
+/**
+ * An <img> that never renders a broken-image icon: on error it falls back
+ * once to a guaranteed slot (the curious greeting face), and only if that
+ * also fails does it unmount, leaving the figure box empty. Either way the
+ * dock card layout is untouched. Keyed by src by the caller, so each new
+ * src starts fresh.
+ */
+function SafeImg({
+  fallbackSrc,
+  ...props
+}: ImgHTMLAttributes<HTMLImageElement> & { fallbackSrc?: string }) {
+  // 0: primary src, 1: fallback, 2: give up (unmount).
+  const [stage, setStage] = useState(0);
+  const effectiveSrc = stage === 0 ? props.src : fallbackSrc;
+  if (stage >= 2 || !effectiveSrc) return null;
+  return (
+    <img
+      {...props}
+      src={effectiveSrc}
+      decoding="async"
+      onError={() => setStage((s) => s + 1)}
+    />
+  );
+}
+
+/** Blink-frame URLs already warmed this session (per-slot preload). */
+const warmedBlinkUrls = new Set<string>();
+
 export function DockNilaFigure({ slot, src, alt, reaction, reducedMotion }: DockNilaFigureProps) {
   // Crossfade bookkeeping: keep the previous src mounted briefly so the
   // old expression fades out under the incoming one.
@@ -103,13 +132,18 @@ export function DockNilaFigure({ slot, src, alt, reaction, reducedMotion }: Dock
   const animClass = reducedMotion ? "" : dockNilaAnimClass(dockNilaAnimForReaction(reaction));
 
   // Preload this slot's blink frames so the first beat swaps instantly.
+  // Skipped under reduced motion (the overlay never renders there — no
+  // point decoding ~20 MiB of lids) and deduped per session.
   useEffect(() => {
+    if (reducedMotion) return;
     const frames = blinkFrames(slot);
     for (const url of [frames.half, frames.closed]) {
+      if (warmedBlinkUrls.has(url)) continue;
+      warmedBlinkUrls.add(url);
       const img = new Image();
       img.src = url;
     }
-  }, [slot]);
+  }, [slot, reducedMotion]);
 
   // Hard-cut overlay: a real blink swaps lid frames, it doesn't fade.
   const blinkSrc =
@@ -119,18 +153,19 @@ export function DockNilaFigure({ slot, src, alt, reaction, reducedMotion }: Dock
     <div className="dock-nila-fig">
       <div className="dock-nila-xfade">
         {previous && !reducedMotion && (
-          <img key={`prev-${previous}`} src={previous} alt="" aria-hidden className="is-prev" draggable={false} />
+          <SafeImg key={`prev-${previous}`} src={previous} alt="" aria-hidden className="is-prev" draggable={false} />
         )}
         {/* Keyed by src+reaction so a new reaction replays its one-shot. */}
-        <img
+        <SafeImg
           key={`${current}-${reaction ?? "none"}`}
           src={current}
+          fallbackSrc={expressionUrl("greeting")}
           alt={alt}
           className={previous && !reducedMotion ? `is-new ${animClass}`.trim() : animClass}
           draggable={false}
         />
         {blinkSrc && (
-          <img
+          <SafeImg
             key={blinkSrc}
             src={blinkSrc}
             alt=""
