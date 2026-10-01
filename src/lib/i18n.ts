@@ -286,21 +286,12 @@ const en = {
     cooldownValue: "{count} minutes",
   },
   notifications: {
-    desktopSection: "Desktop notifications",
-    desktopTitle: "Desktop notifications",
-    desktopDesc: "Also show a system notification with each reminder.",
+    soundSection: "Sound",
     soundTitle: "Sound",
     soundDesc: "Play a gentle sound when a reminder appears.",
     soundNone: "None",
     soundSoft: "Soft",
     soundGentle: "Gentle",
-    behaviorSection: "Reminder behavior",
-    behaviorDock: "Notification dock",
-    behaviorDockDesc:
-      "Nila appears in a small dock at the top center of your screen.",
-    behaviorSystem: "System notification",
-    behaviorSystemDesc:
-      "Only a system notification; Nila stays in the tray.",
   },
   languagePage: {
     section: "Language",
@@ -615,20 +606,12 @@ const manglish: Dict = {
     cooldownValue: "{count} minute",
   },
   notifications: {
-    desktopSection: "Desktop notifications",
-    desktopTitle: "Desktop notifications",
-    desktopDesc: "Reminder-odu koode oru system notification-um kaanikkum.",
+    soundSection: "Sound",
     soundTitle: "Sound",
     soundDesc: "Reminder varumbol oru gentle sound kalikkum.",
     soundNone: "Venda",
     soundSoft: "Soft",
     soundGentle: "Gentle",
-    behaviorSection: "Reminder eppozhaanu kaanunnathu",
-    behaviorDock: "Notification dock",
-    behaviorDockDesc:
-      "Screen-inte mukalil cheriya oru dock-il Nila varum.",
-    behaviorSystem: "System notification",
-    behaviorSystemDesc: "System notification mathram — Nila tray-il thanne irikkum.",
   },
   languagePage: {
     section: "Language",
