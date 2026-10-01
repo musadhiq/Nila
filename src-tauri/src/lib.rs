@@ -1,15 +1,17 @@
 // Nila native backend library.
 //
 // Modules:
-//   db        — SQLite schema, migrations, queries
-//   scheduler — event-driven reminder scheduling
-//   platform  — OS providers (notifications, startup, sleep/wake, display)
-//   commands  — Tauri IPC command handlers
+//   db             — SQLite schema, migrations, queries
+//   scheduler      — event-driven reminder scheduling
+//   system_monitor — battery / CPU / memory / disk health reminders
+//   platform       — OS providers (notifications, startup, sleep/wake, display)
+//   commands       — Tauri IPC command handlers
 
 pub mod commands;
 pub mod db;
 pub mod platform;
 pub mod scheduler;
+pub mod system_monitor;
 
 use tauri::Manager;
 use tauri::{
@@ -286,6 +288,12 @@ pub fn run() {
             // first deadline → resume. The driver recomputes on every
             // wake, but doing it once here makes a failed resume visible
             // in the logs instead of silent.
+            //
+            // System health reminders are seeded before validation so a
+            // fresh install (or an update adding new ones) always has
+            // them; seeding never overwrites an existing row, so a user's
+            // toggle stays as they left it.
+            scheduler::seed_system_reminders(app.handle());
             let issues = scheduler::validate_store(app.handle());
             for issue in &issues {
                 eprintln!(
@@ -311,6 +319,8 @@ pub fn run() {
 
             // Hand the scheduler its dependencies and let it run.
             scheduler::spawn(app.handle().clone());
+            // System health monitor (battery / CPU / memory / disk).
+            system_monitor::spawn(app.handle().clone());
 
             // Menu-bar tray: the character window stays hidden until a
             // reminder is due (or the user opens it from the tray).

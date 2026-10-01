@@ -88,6 +88,8 @@ pub struct Reminder {
 /// frontend's `ReminderKind` union must stay in sync.
 pub const VALID_KINDS: &[&str] = &[
     "water", "food", "break", "move", "sleep", "stretch", "exercise", "work", "custom",
+    // System health reminders, fired by the system monitor (system_monitor.rs).
+    "battery", "cpu", "memory", "disk",
 ];
 
 pub fn list_reminders(conn: &Connection) -> rusqlite::Result<Vec<Reminder>> {

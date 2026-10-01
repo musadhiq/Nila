@@ -25,7 +25,7 @@ fn validate_input(input: &ReminderInput) -> Result<(), String> {
     let schedule: serde_json::Value =
         serde_json::from_str(&input.schedule).map_err(|_| "Invalid schedule.".to_string())?;
     match schedule.get("type").and_then(|t| t.as_str()) {
-        Some("once") | Some("daily") | Some("weekly") | Some("interval") => {}
+        Some("once") | Some("daily") | Some("weekly") | Some("interval") | Some("system") => {}
         _ => return Err("Invalid schedule type.".into()),
     }
     if !db::VALID_KINDS.contains(&input.kind.as_str()) {
