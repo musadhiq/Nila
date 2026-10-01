@@ -30,6 +30,23 @@ describe("schedule parsing", () => {
     assert.equal(once.type, "once");
   });
 
+  it("parses system schedules (backend monitor)", () => {
+    assert.deepEqual(parseSchedule('{"type":"system","metric":"battery_low"}'), {
+      type: "system",
+      metric: "battery_low",
+    });
+    assert.deepEqual(parseSchedule('{"type":"system","metric":"cpu_high"}'), {
+      type: "system",
+      metric: "cpu_high",
+    });
+    // Unknown metrics fall back to battery_low rather than throwing:
+    // the backend owns the canonical set.
+    assert.deepEqual(parseSchedule('{"type":"system","metric":"warp"}'), {
+      type: "system",
+      metric: "battery_low",
+    });
+  });
+
   it("rejects unknown schedule types", () => {
     assert.throws(() => parseSchedule('{"type":"bogus"}'));
     assert.throws(() => parseSchedule("not json"));

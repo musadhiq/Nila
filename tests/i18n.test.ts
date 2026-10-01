@@ -70,6 +70,8 @@ describe("settings i18n dictionary", () => {
       { type: "weekly", days: [1, 3], time: "10:00" },
       { type: "interval", minutes: 90 },
       { type: "once", at: "2026-10-01T09:00:00.000Z" },
+      { type: "system", metric: "battery_low" },
+      { type: "system", metric: "disk_low" },
     ] as const;
     for (const lang of ["en", "manglish"] as Language[]) {
       for (const s of cases) {

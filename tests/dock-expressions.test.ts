@@ -22,6 +22,10 @@ describe("expressionSlots", () => {
       ["break", "relaxed"],
       ["work", "focused"],
       ["move", "stretching"],
+      ["battery", "sleepy"],
+      ["cpu", "energetic"],
+      ["memory", "focused"],
+      ["disk", "pointing"],
     ];
     for (const [kind, slot] of cases) {
       assert.equal(expressionSlotForKind(kind), slot, `kind ${kind}`);
