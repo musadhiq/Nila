@@ -122,7 +122,7 @@ export function preloadForFirstAppearance(peekSeqNames: string[]): Promise<void>
 
 /**
  * Lazy-load everything else in small background chunks so the first
- * paint is never blocked by celebration/sleep/corner assets.
+ * paint is never blocked by sleep/corner assets.
  */
 export function backgroundPreloadAll(chunkMs = 400): void {
   const remaining = allManifestKeys().filter((k) => !preloaded.has(k));

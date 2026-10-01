@@ -127,7 +127,7 @@ describe("engine frame sequences", () => {
     assert.equal(e.snapshot().frame, null);
   });
 
-  it("wave plays out and back, celebration plays once", () => {
+  it("wave plays out and back", () => {
     const e = new CharacterEngine();
     const ended: string[] = [];
     e.onSequenceEnd((n) => ended.push(n));
@@ -137,14 +137,6 @@ describe("engine frame sequences", () => {
     assert.deepEqual(ended, ["wave"]);
     assert.equal(e.snapshot().frame, null, "wave clears after finishing");
     e.returnToIdle(); // the app does this on the wave end event
-
-    e.celebrate();
-    assert.equal(e.snapshot().state, "celebrating");
-    step(e, 5); // 5 frames, holdLast -> fires on the 5th
-    assert.deepEqual(ended, ["wave", "celebration"]);
-    assert.ok(e.snapshot().frame!.key.includes("celebration"));
-    step(e, 2); // held landing: no double-fire
-    assert.deepEqual(ended, ["wave", "celebration"]);
   });
 
   it("blink flash overrides and then resumes the sequence", () => {

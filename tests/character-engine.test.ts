@@ -100,7 +100,7 @@ describe("CharacterEngine", () => {
   it("motion off kills all animation", () => {
     const e = new CharacterEngine();
     e.setMotion("off");
-    e.playAnimation("celebrate");
+    e.playAnimation("wave");
     assert.equal(e.snapshot().animation, null);
     e.beginReminder("water");
     assert.equal(e.snapshot().state, "reminding");

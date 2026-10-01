@@ -16,7 +16,6 @@ import wavingImg from "../../character/states/waving.png";
 import remindingImg from "../../character/states/reminding.png";
 import sadImg from "../../character/states/sad.png";
 import pausedImg from "../../character/states/paused.png";
-import celebratingImg from "../../character/states/celebrating.png";
 // Momentary expression faces from the concept sheet (character/expressions/).
 import surprisedImg from "../../character/expressions/surprised.png";
 import sleepyImg from "../../character/expressions/sleepy.png";
@@ -93,7 +92,6 @@ const IMAGE_FOR_STATE: Record<Exclude<CharacterState, "hidden">, string> = {
   reminding: remindingImg,
   sad: sadImg,
   paused: pausedImg,
-  celebrating: celebratingImg,
 };
 
 /** Exported for tests and for preloading. */
@@ -131,7 +129,6 @@ const STATE_LABEL: Record<CharacterState, string> = {
   reminding: "Nila reminding you",
   sad: "Sad Nila",
   paused: "Paused Nila",
-  celebrating: "Celebrating Nila",
   hidden: "Nila is hidden",
 };
 

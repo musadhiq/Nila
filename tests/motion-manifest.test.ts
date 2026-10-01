@@ -73,7 +73,6 @@ describe("motionManifest", () => {
       "snooze-ack",
       "thumbsup",
       "sleep",
-      "celebration",
       ...CORE_SEQUENCE_NAMES,
     ]) {
       assert.ok(MOTION_SEQUENCES[name], `missing sequence: ${name}`);

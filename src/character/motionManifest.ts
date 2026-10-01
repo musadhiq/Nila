@@ -194,16 +194,6 @@ export const MOTION_SEQUENCES: Record<string, SequenceDef> = {  // -- Idle micro
     anchor: CENTER_BOTTOM,
   },
 
-  // -- Celebration: intentionally 5 frames (the 6th source cell was
-  // -- glitched and dropped at generation time).
-  celebration: {
-    name: "celebration",
-    frames: numbered("nila_celebration", 5, 160),
-    loop: "none",
-    holdLast: true,
-    anchor: CENTER_BOTTOM,
-  },
-
   // -- Edge peeks (enter + exit pairs). Anchors hug the edge she peeks
   // -- from so the sliver frames sit against the window edge.
   "peek-right": {

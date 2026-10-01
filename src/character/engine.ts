@@ -3,7 +3,7 @@
 // scheduler so states/animations can evolve independently.
 //
 // States (V1): idle, happy, sleeping, thinking, worried, excited,
-// waving, reminding, sad, paused, celebrating, hidden.
+// waving, reminding, sad, paused, hidden.
 //
 // Momentary expression faces (character/expressions/) overlay the current
 // state via showExpression/clearExpression; see expressions.ts.
@@ -22,7 +22,6 @@ export type CharacterState =
   | "reminding"
   | "sad"
   | "paused"
-  | "celebrating"
   | "hidden";
 
 export type CharacterAnimation =
@@ -37,7 +36,6 @@ export type CharacterAnimation =
   | "dismiss"
   | "snooze"
   | "sleep"
-  | "celebrate"
   | "sad";
 
 export type CharacterSize = "small" | "medium" | "large";
@@ -82,17 +80,16 @@ const REMINDER_SEQUENCE: CharacterState[] = ["reminding"];
 
 /** Legal follow-ups per state, used to catch stuck transitions. */
 const ALLOWED_TRANSITIONS: Record<CharacterState, CharacterState[]> = {
-  idle: ["happy", "sleeping", "thinking", "worried", "excited", "waving", "reminding", "sad", "paused", "celebrating", "hidden"],
+  idle: ["happy", "sleeping", "thinking", "worried", "excited", "waving", "reminding", "sad", "paused", "hidden"],
   happy: ["idle", "waving", "excited", "reminding", "hidden", "paused"],
   sleeping: ["idle", "reminding", "paused", "hidden"],
   thinking: ["idle", "reminding", "happy", "hidden", "paused"],
   worried: ["idle", "reminding", "happy", "hidden", "paused"],
-  excited: ["idle", "happy", "celebrating", "hidden", "paused"],
+  excited: ["idle", "happy", "hidden", "paused"],
   waving: ["idle", "happy", "hidden", "paused"],
   reminding: ["idle", "happy", "waving", "sleeping", "sad", "hidden", "paused"],
   sad: ["idle", "happy", "hidden", "paused"],
   paused: ["idle", "sleeping", "hidden"],
-  celebrating: ["idle", "happy", "hidden", "paused"],
   hidden: ["idle", "sleeping", "paused"],
 };
 
@@ -204,7 +201,6 @@ export class CharacterEngine {
       case "thinking": return "thinking";
       case "waving": return "wave";
       case "reminding": return "remind";
-      case "celebrating": return "celebrate";
       case "sad": return "sad";
       case "paused": return "sleep";
       case "hidden": return null;
@@ -506,12 +502,6 @@ export class CharacterEngine {
     this.setState("waving");
     this.playAnimation("wave");
     this.playSequence("wave");
-  }
-
-  /** Milestone beat: the 5-frame celebration, then back to idle. */
-  celebrate(): void {
-    this.setState("celebrating");
-    this.playSequence("celebration");
   }
 
   /** Test helper: is this state part of an active reminder flow? */
