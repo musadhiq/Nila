@@ -16,6 +16,7 @@
  */
 
 import type { Dict } from "./i18n";
+import { invokeCommand } from "./tauri.ts";
 
 export const VOICE_EVENTS = {
   started: "voice:started",
@@ -32,10 +33,10 @@ export type VoiceEventName = (typeof VOICE_EVENTS)[keyof typeof VOICE_EVENTS];
 /**
  * Model provisioning events, emitted by the Rust model downloader
  * (`src-tauri/src/models.rs`). The STT models are not bundled with the
- * app: they download once into the app-data dir on first run (~80 MB).
- * `downloading` only fires while a download is actually running; the UI
- * surfaces its progress inside an active voice session's bubble and
- * otherwise stays silent.
+ * app: the user downloads them once, manually, from Settings (~80 MB
+ * into the app-data dir). `downloading` only fires while a manual
+ * download is actually running; the settings section surfaces its
+ * progress, and an active voice session's bubble does too.
  */
 export const MODEL_EVENTS = {
   downloading: "nila://models-downloading",
@@ -67,7 +68,8 @@ export type VoiceErrorCode =
   | "speech_timeout"
   | "empty_transcript"
   | "mic_error"
-  | "model_error";
+  | "model_error"
+  | "models_missing";
 
 export interface VoiceStartedPayload {
   type: "voice:started";
@@ -111,5 +113,36 @@ export function voiceErrorLabel(code: VoiceErrorCode, voice: Dict["voice"]): str
       return voice.micError;
     case "model_error":
       return voice.modelError;
+    case "models_missing":
+      return voice.modelsMissing;
   }
+}
+
+/**
+ * Manual model provisioning, driven from Settings (the option only
+ * shows when the wake word is enabled). Nothing downloads
+ * automatically: Nila works without the models, and a wake with none
+ * present surfaces the `models_missing` error code above.
+ */
+export interface SttModelsStatus {
+  ready: boolean;
+}
+
+export interface SttDownloadResult {
+  /** False when the models were already present — nothing was started. */
+  started: boolean;
+}
+
+/** Whether the STT models are present (downloaded or env-overridden). */
+export function getSttModelsStatus(): Promise<SttModelsStatus> {
+  return invokeCommand<SttModelsStatus>("stt_models_status");
+}
+
+/**
+ * Start the one-time model download in the background. Progress,
+ * completion and failure arrive on the MODEL_EVENTS events; the
+ * returned `started` is false when the models were already present.
+ */
+export function downloadSttModels(): Promise<SttDownloadResult> {
+  return invokeCommand<SttDownloadResult>("download_stt_models");
 }
