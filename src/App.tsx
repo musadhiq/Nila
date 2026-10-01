@@ -32,6 +32,7 @@ import { playReminderChime } from "./lib/sound";
 import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
 import { NotificationDock } from "./dock/NotificationDock";
+import curiousUrl from "../character/expressions/curious.png";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockOnScreen } from "./dock/dockMachine";
@@ -865,18 +866,24 @@ export default function App() {
           reminder={dock.current}
           reducedMotion={settings.animation !== "full" || prefersReducedMotion}
           nila={
-            /* A single static lean-in frame — exactly like the reference:
-             * calm, no looping motion. The asset is eager-bundled so the
-             * URL resolves synchronously; null renders nothing. */
-            frameUrl("nila_corner_tl_08") ? (
-              <img
-                src={frameUrl("nila_corner_tl_08")!}
-                width={192}
-                height={398}
-                alt={getStrings(settings.language).dock.nilaAlt}
-                draggable={false}
-              />
-            ) : null
+            /* The introduction card shows the curious expression; every
+             * other notification shows the static lean-in frame. Both are
+             * single calm images — no looping motion. frameUrl resolves
+             * synchronously (eager-bundled); null renders nothing. */
+            (() => {
+              const isIntro = dock.current?.id.startsWith("greeting-") ?? false;
+              const src = isIntro ? curiousUrl : frameUrl("nila_corner_tl_08");
+              if (!src) return null;
+              return (
+                <img
+                  src={src}
+                  width={192}
+                  height={isIntro ? 192 : 398}
+                  alt={getStrings(settings.language).dock.nilaAlt}
+                  draggable={false}
+                />
+              );
+            })()
           }
           okayLabel={getStrings(settings.language).dock.okay}
           snoozeLabel={getStrings(settings.language).dock.in10min}

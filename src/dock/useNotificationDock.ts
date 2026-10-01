@@ -10,9 +10,10 @@ import {
 /**
  * useNotificationDock — owns the dock state machine and its timers.
  *
- * The dock's Nila is a single static lean-in frame (see App) — calm,
- * exactly like the reference, with no looping motion. The hook plays
- * no character sequences; on hide it returns the engine to idle so the
+ * The dock's Nila is a single static image in a small white box
+ * (curious expression for the introduction, lean-in portrait for
+ * reminders) — calm, with no looping motion. The hook plays no
+ * character sequences; on hide it returns the engine to idle so the
  * tray state stays clean.
  *
  * Phase choreography (full motion):

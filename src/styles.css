@@ -407,52 +407,53 @@ html, body {
 /* ============================================================
  * Notification dock (V1 surface): a chat-bubble card at the
  * top-center of the screen, hanging just below the system top bar.
- * Nila leans on the bubble's left edge (a single static peek frame —
- * exactly like the reference: calm, no looping motion), her head above
- * the bubble's top edge. The bubble has a left-pointing tail, a title
- * row with a close button, and two quick-reply pills (Okay, Nila /
+ * Nila sits in her own small white box to the left of the bubble —
+ * the introduction shows her curious expression, other notifications
+ * the lean-in portrait. Both are single static frames: calm, no
+ * looping motion. The bubble has a left-pointing tail, a title row
+ * with a close button, and two quick-reply pills (Okay, Nila /
  * In 10 min). The card auto-hides after 15s; clicking it dismisses it.
  * Minimal and powerful: no tick, no badge, no extra chrome.
  * ============================================================ */
 .dock-root {
   position: fixed;
-  top: 2px; /* the window itself already clears the top bar */
+  top: 0; /* the window itself already clears the top bar */
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
   pointer-events: none;
 }
-/* Side-by-side: Nila on the left, the chat bubble tucked to her right. */
+/* Side-by-side: Nila's white box on the left, the chat bubble right. */
 .dock-wrap {
   position: relative;
   display: flex;
   align-items: flex-start;
   pointer-events: auto;
 }
-/* A single static lean-in frame — no sequence playback, so there is
- * nothing to stutter or loop. She sits behind the card (z-index) so
- * her torso hides behind the bubble and only head/shoulders show. */
+/* Nila always sits inside a small white box, like the chat bubble. */
 .dock-nila {
   position: relative;
   z-index: 0;
   flex: none;
-  width: 96px;
-  margin-right: -28px; /* tuck her under the bubble's left edge */
-  margin-top: 0;
+  width: 108px;
+  margin-right: 10px; /* breathing room between her box and the chat */
+  background: #f5f4f1;
+  border-radius: 16px;
+  padding: 6px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
   pointer-events: none;
 }
 .dock-nila img {
-  width: 96px;
+  width: 100%;
   height: auto;
   display: block;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.22));
+  border-radius: 11px;
   pointer-events: none;
 }
 /* The chat bubble. */
 .dock-card {
   position: relative;
-  z-index: 1; /* above Nila: her torso hides behind the bubble */
-  margin-top: 64px; /* bubble top edge lands at her chin, like the reference */
+  z-index: 1;
   background: #f5f4f1;
   color: #1d1a16;
   border-radius: 18px;

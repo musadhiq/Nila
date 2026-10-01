@@ -24,8 +24,7 @@ const en = {
     hideNila: "Hide Nila",
   },
   dock: {
-    greeting:
-      "I'm here! When there's a reminder, I'll pop up here at the top. Otherwise I'm standing by in your tray.",
+    greeting: "Hi! I'll pop up here whenever there's a reminder.",
     okay: "Okay, Nila",
     in10min: "In 10 min",
     nilaAlt: "Nila peeking over the notification",
@@ -348,8 +347,7 @@ const manglish: Dict = {
     hideNila: "Nila ye maraykkuka",
   },
   dock: {
-    greeting:
-      "Njan ivide undu! Orma vendappol mukalil ingane varum. Tray-yil njan standby aanu.",
+    greeting: "Hi! Orma undel njan ivide varum.",
     okay: "Sheri, Nila",
     in10min: "10 minute kazhinj",
     nilaAlt: "Notification-nokkiya Nila",
