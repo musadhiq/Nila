@@ -26,11 +26,10 @@ import {
  * - expanding (400ms): card settles; Nila leans on its left edge.
  * - visible: the bubble holds for 15s, then auto-hides. Nila keeps
  *   leaning on the card — no pose changes, no extra chrome.
- * - acknowledging: a short beat, then the card collapses away. A
- *   dismissal holds ~1s on Nila's reaction (sad, or annoyed after a
- *   streak of dismissals) before collapsing; completing the reminder
- *   holds ~1s on her happy beat; snoozing holds ~1s on her
- *   understanding thumbs-up beat; then the dock returns to idle.
+ * - acknowledging: a short beat, then the card collapses away. Done and
+ *   snooze keep her current expression and play a single subtle blink
+ *   before closing (~450ms); a dismissal holds ~1s on Nila's reaction
+ *   (sad, or annoyed after a streak of dismissals) before collapsing.
  * - collapsing (260ms): dock contracts away; then the next queued
  *   notification enters (or the dock hides and Nila returns to idle).
  *
@@ -64,14 +63,17 @@ export interface NotificationDockApi {
   /** The action being acknowledged (set during acknowledging/collapsing). */
   ackAction: DockAckAction | null;
   /**
-   * Nila's acknowledgement reaction, set while an action is being
-   * acknowledged: happy on success, an understanding thumbs-up on
-   * snooze, sad on a rejection (or annoyed after a streak of
-   * rejections). Null otherwise — the card then shows the per-kind
-   * expression. Every reaction is a brief beat; afterwards the dock
-   * returns to idle.
+   * Nila's acknowledgement reaction, set while a dismissal is being
+   * acknowledged: sad on a rejection (or annoyed after a streak of
+   * rejections). Null otherwise — done and snooze keep the per-kind
+   * expression and answer with a single subtle blink instead.
    */
   reaction: ExpressionSlot | null;
+  /**
+   * Incremented each time done/snooze is acknowledged; DockNilaFigure
+   * plays one immediate blink beat per increment, then the card closes.
+   */
+  blinkSignal: number;
   notify: (n: DockNotification) => void;
   dismiss: (action: DockAckAction) => void;
   interact: () => void;
@@ -92,6 +94,8 @@ export function useNotificationDock(opts: {
   /** Back-to-back dismissals this session; done/snooze reset it. */
   const dismissStreak = useRef(0);
   const [reaction, setReaction] = useState<ExpressionSlot | null>(null);
+  /** Bumped on every done/snooze ack to trigger one blink beat. */
+  const [blinkSignal, setBlinkSignal] = useState(0);
 
   const clearTimers = useCallback(() => {
     for (const id of timers.current) window.clearTimeout(id);
@@ -152,20 +156,14 @@ export function useNotificationDock(opts: {
             }),
           );
           later(t.react, () => dispatch({ type: "ack-done" }));
-        } else if (state.ackAction === "completed") {
-          // Success: Nila is happy about it. The happy beat holds ~1s,
-          // then collapses. Resets the rejection streak.
-          dismissStreak.current = 0;
-          setReaction(expressionSlotForContext({ type: "success" }));
-          later(t.react, () => dispatch({ type: "ack-done" }));
         } else {
-          // Snooze: Nila shows a brief understanding beat — a gentle
-          // thumbs-up, "got it, I'll remind you later". Neutral, no
-          // guilt and no celebration. The beat holds ~1s, then the
-          // card collapses back to idle. Resets the rejection streak.
+          // Done or snooze: no expression swap — she keeps her current
+          // face, gives one subtle blink, and the card closes. Resets
+          // the rejection streak.
           dismissStreak.current = 0;
-          setReaction(expressionSlotForContext({ type: "snoozed" }));
-          later(t.react, () => dispatch({ type: "ack-done" }));
+          setReaction(null);
+          setBlinkSignal((s) => s + 1);
+          later(t.ack, () => dispatch({ type: "ack-done" }));
         }
         break;
       case "collapsing":
@@ -185,6 +183,7 @@ export function useNotificationDock(opts: {
     queueLength: state.queue.length,
     ackAction: state.ackAction,
     reaction,
+    blinkSignal,
     notify,
     dismiss,
     interact,
