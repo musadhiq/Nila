@@ -79,17 +79,15 @@ npm run tauri dev
 
 ## Building installable packages
 
-`npm run tauri build` compiles the app and produces native installers —
-a `.deb` and an `.AppImage` (see `bundle.targets` in
-`src-tauri/tauri.conf.json`). The first build takes several minutes;
-later builds are incremental.
+### Download a released build
 
-### .deb for your machine (x86_64)
+Every version tag (`v0.1.0`, `v0.2.0`, …) is built automatically by
+GitHub Actions — the `.deb` and `.AppImage` are attached to the
+[release](https://github.com/musadhiq/Nila/releases), stamped with the
+tag's version number. Install the `.deb` with:
 
 ```sh
-npm run tauri build
-ls src-tauri/target/release/bundle/deb/
-sudo apt install ./src-tauri/target/release/bundle/deb/*.deb
+sudo apt install ./nila_*.deb
 ```
 
 Use `apt install ./file.deb` (not `dpkg -i`) so the runtime libraries
@@ -97,45 +95,34 @@ Use `apt install ./file.deb` (not `dpkg -i`) so the runtime libraries
 installs the `nila` binary, a desktop launcher and the tray icon.
 Uninstall anytime with `sudo apt remove nila`.
 
-An `.AppImage` is built alongside the `.deb`
-(`src-tauri/target/release/bundle/appimage/`) — `chmod +x` it and run it
-on any Linux distribution, no installation needed.
+Prefer no install? `chmod +x` the `.AppImage` and run it on any Linux
+distribution.
 
-### ARM64 packages (Raspberry Pi, ARM laptops and servers)
+### Build the packages yourself
 
-Nila links against the system's WebKit/GTK libraries, so an ARM64
-package has to be **built on ARM64** — cross-compiling from an x86_64
-machine is not supported by this setup. Two ways to do it:
-
-**A. Build on ARM64 hardware** (recommended) — on your Pi / ARM server /
-ARM VM, run the same setup as on desktop (`scripts/setup-linux.sh` on
-Ubuntu/Debian, or the manual requirements above), then:
+`npm run tauri build` compiles the app and produces a `.deb` and an
+`.AppImage` locally (see `bundle.targets` in `src-tauri/tauri.conf.json`).
+The first build takes several minutes; later builds are incremental.
 
 ```sh
 npm run tauri build
-ls src-tauri/target/release/bundle/deb/   # the *_arm64.deb
+ls src-tauri/target/release/bundle/deb/
+sudo apt install ./src-tauri/target/release/bundle/deb/*.deb
 ```
 
-**B. Build for ARM64 with Docker emulation** (no ARM hardware needed;
-slower — QEMU emulates the whole build):
+### Cutting a release
+
+Push a version tag and the `release` workflow
+(`.github/workflows/release.yml`) builds both packages on Ubuntu and
+attaches them to the GitHub Release:
 
 ```sh
-docker run --rm --platform linux/arm64 -v "$PWD":/work -w /work ubuntu:24.04 bash -c '
-  set -e
-  apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential curl wget file \
-    pkg-config libssl-dev libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null
-  apt-get install -y -qq nodejs
-  curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -q
-  export PATH="$HOME/.cargo/bin:$PATH"
-  npm ci --no-audit --no-fund
-  npm run tauri build'
-# the *_arm64.deb is in src-tauri/target/release/bundle/deb/ afterwards
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
-Copy the resulting `.deb` to the ARM64 device and install it with
-`sudo apt install ./nila_*.deb`.
+The tag must look like `v0.2.0` — the workflow stamps that version into
+the build so the `.deb` carries it.
 
 ## How it works
 
