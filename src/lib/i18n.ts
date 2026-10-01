@@ -33,6 +33,13 @@ const en = {
     listening: "Listening…",
     nilaAlt: "Nila listening",
   },
+  voice: {
+    processing: "Working on it…",
+    speechTimeout: "I didn't hear anything.",
+    emptyTranscript: "Sorry, I didn't catch that.",
+    micError: "Microphone unavailable.",
+    modelError: "Voice models missing.",
+  },
   nav: {
     welcome: "Welcome",
     general: "General",
@@ -407,6 +414,13 @@ const manglish: Dict = {
   wake: {
     listening: "Kelkkunnu…",
     nilaAlt: "Kelkkunna Nila",
+  },
+  voice: {
+    processing: "Cheythondirikkunnu…",
+    speechTimeout: "Onnum kelkkan pattiyilla.",
+    emptyTranscript: "Sorry, manassilayilla.",
+    micError: "Microphone kittiyilla.",
+    modelError: "Voice models illa.",
   },
   nav: {
     welcome: "Welcome",
