@@ -33,7 +33,8 @@ export interface AppSettings {
   /** Settings UI language. "manglish" = Malayalam in Latin script. */
   language: "en" | "manglish";
   /** How a due reminder presents itself. */
-  reminder_behavior: "dock" | "system";
+  /** V1: the top-center notification dock is the only reminder surface. */
+  reminder_behavior: "dock";
   /** Also send an OS notification with each reminder (backstop). */
   desktop_notifications: boolean;
   /** Idle animation ambience for the character. */
@@ -137,7 +138,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   start_at_login: true,
   language: "en",
   reminder_behavior: "dock",
-  desktop_notifications: true,
+  desktop_notifications: false,
   idle_behavior: "normal",
   accent: "teal",
   // Presence defaults (spec 51): predictable and calm.

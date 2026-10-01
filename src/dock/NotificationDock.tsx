@@ -5,10 +5,11 @@ import { ACTIONS } from "../lib/strings";
 /**
  * NotificationDock — Nila's V1 notification surface.
  *
- * A small white notification island at the top-center of the screen.
- * Nila lives INSIDE the card (bottom-right, ~28% of the composition);
- * there is no separate speech bubble. Exactly one notification shows at
- * a time; the rest queue behind it.
+ * A minimal white card at the top-center of the screen, hanging just
+ * below the system top bar. Nila peeks from the right edge, cropped by
+ * the card. A small tick (top-left) marks the reminder done; a slim
+ * pinned row offers snooze choices. Exactly one notification shows at a
+ * time; the rest queue behind it.
  *
  * The card is presentational: `phase` + `reminder` come from
  * useNotificationDock, Nila's frames come from the character engine
@@ -56,15 +57,15 @@ export function NotificationDock({
   onKeyDismiss,
   onMeasure,
 }: Props) {
-  const doneRef = useRef<HTMLButtonElement>(null);
+  const tickRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const prevPhase = useRef<DockPhase>(phase);
 
   // When the notification becomes fully visible, move keyboard focus to
-  // the primary action so the dock is operable without a mouse.
+  // the tick (the primary action) so the dock is operable without a mouse.
   useEffect(() => {
     if (prevPhase.current !== "visible" && phase === "visible") {
-      doneRef.current?.focus({ preventScroll: true });
+      tickRef.current?.focus({ preventScroll: true });
     }
     prevPhase.current = phase;
   }, [phase]);
@@ -112,69 +113,70 @@ export function NotificationDock({
           }
         }}
       >
-        <div className="dock-head">
-          <span className="dock-eyebrow">Nila</span>
-          {queueCount > 0 && (
-            <span className="dock-queue" aria-label={`${queueCount} more reminders queued`}>
-              +{queueCount}
-            </span>
-          )}
-        </div>
-        <div className="dock-body">
+        <div className="dock-main">
+          <div className="dock-head">
+            <button
+              ref={tickRef}
+              type="button"
+              className="dock-tick"
+              disabled={busy}
+              onClick={() => onDone(reminder.id, "completed")}
+              aria-label={ACTIONS.ok}
+              title={ACTIONS.ok}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path
+                  d="M3 8.6l3.1 3.1L13 5.2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <span className="dock-eyebrow">Nila</span>
+            {queueCount > 0 && (
+              <span className="dock-queue" aria-label={`${queueCount} more reminders queued`}>
+                +{queueCount}
+              </span>
+            )}
+          </div>
           <div className="dock-text">
             <div className="dock-title">{reminder.title}</div>
             <div className="dock-message" id={`dock-msg-${reminder.id}`}>
               {reminder.message}
             </div>
           </div>
-          <div className="dock-nila" aria-hidden="true">
-            {nila}
+          <div className={`dock-foot${busy ? " is-disabled" : ""}`} aria-disabled={busy}>
+            <button
+              type="button"
+              className="dock-snooze"
+              disabled={busy}
+              onClick={() => onSnooze(reminder.id, 10)}
+            >
+              {ACTIONS.later}
+            </button>
+            <button
+              type="button"
+              className="dock-snooze"
+              disabled={busy}
+              onClick={() => onSnooze(reminder.id, 30)}
+            >
+              {ACTIONS.snooze30}
+            </button>
+            <button
+              type="button"
+              className="dock-snooze"
+              disabled={busy}
+              onClick={() => onSnooze(reminder.id, 60)}
+            >
+              {ACTIONS.snooze60}
+            </button>
           </div>
         </div>
-        <div className={`dock-actions${busy ? " is-disabled" : ""}`} aria-disabled={busy}>
-          <button
-            ref={doneRef}
-            type="button"
-            className="dock-btn primary"
-            disabled={busy}
-            onClick={() => onDone(reminder.id, "completed")}
-          >
-            {ACTIONS.ok}
-          </button>
-          <button
-            type="button"
-            className="dock-btn"
-            disabled={busy}
-            onClick={() => onSnooze(reminder.id, 10)}
-          >
-            {ACTIONS.later}
-          </button>
-        </div>
-        <div className={`dock-actions secondary${busy ? " is-disabled" : ""}`} aria-disabled={busy}>
-          <button
-            type="button"
-            className="dock-btn small ghost"
-            disabled={busy}
-            onClick={() => onDone(reminder.id, "dismissed")}
-          >
-            {ACTIONS.dismiss}
-          </button>
-          <button
-            type="button"
-            className="dock-btn small ghost"
-            disabled={busy}
-            onClick={() => onSnooze(reminder.id, 30)}
-          >
-            {ACTIONS.snooze30}
-          </button>
-          <button
-            type="button"
-            className="dock-btn small ghost"
-            disabled={busy}
-            onClick={() => onSnooze(reminder.id, 60)}
-          >
-            {ACTIONS.snooze60}
-          </button>
+        <div className="dock-nila" aria-hidden="true">
+          {nila}
         </div>
       </div>
     </div>

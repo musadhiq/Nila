@@ -117,22 +117,11 @@ export function mergeSettings(raw: Record<string, string>): AppSettings {
   if (raw.language === "en" || raw.language === "manglish") {
     s.language = raw.language;
   }
-  if (
-    raw.reminder_behavior === "dock" ||
-    raw.reminder_behavior === "system"
-  ) {
-    s.reminder_behavior = raw.reminder_behavior;
-  } else if (
-    // V1 migration: the old bubble/character-only modes are now the
-    // top-center notification dock.
-    raw.reminder_behavior === "bubble" ||
-    raw.reminder_behavior === "character"
-  ) {
-    s.reminder_behavior = "dock";
-  }
-  if (raw.desktop_notifications !== undefined) {
-    s.desktop_notifications = raw.desktop_notifications === "true";
-  }
+  // V1: the top-center notification dock is the only reminder surface.
+  // Legacy values ("bubble", "character", "system") all migrate to it,
+  // and the extra OS notification is forced off.
+  s.reminder_behavior = "dock";
+  s.desktop_notifications = false;
   if (raw.idle_behavior === "normal" || raw.idle_behavior === "minimal") {
     s.idle_behavior = raw.idle_behavior;
   }

@@ -95,7 +95,7 @@ describe("settings i18n dictionary", () => {
     const pairs: [string, string][] = [
       [en.page.general.subtitle, ml.page.general.subtitle],
       [en.general.startAtLogin, ml.general.startAtLogin],
-      [en.notifications.behaviorDockDesc, ml.notifications.behaviorDockDesc],
+      [en.notifications.soundDesc, ml.notifications.soundDesc],
       [en.errors.generic, ml.errors.generic],
       [en.reminders.emptyCustom, ml.reminders.emptyCustom],
     ];
