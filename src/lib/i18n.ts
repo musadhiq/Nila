@@ -26,7 +26,7 @@ const en = {
   dock: {
     greeting:
       "I'm here! When there's a reminder, I'll pop up here at the top. Otherwise I'm standing by in your tray.",
-    okay: "Okay",
+    okay: "Okay, Nila",
     in10min: "In 10 min",
   },
   nav: {
@@ -349,7 +349,7 @@ const manglish: Dict = {
   dock: {
     greeting:
       "Njan ivide undu! Orma vendappol mukalil ingane varum. Tray-yil njan standby aanu.",
-    okay: "Sheri",
+    okay: "Sheri, Nila",
     in10min: "10 minute kazhinj",
   },
   nav: {
