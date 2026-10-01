@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::db;
 use crate::scheduler::{self, SystemMetric};
