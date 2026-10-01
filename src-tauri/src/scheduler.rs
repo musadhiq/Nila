@@ -270,11 +270,17 @@ pub fn validate_reminders(reminders: &[db::Reminder]) -> Vec<StartupIssue> {
 /// on DB error returns no issues (the driver recomputes anyway and
 /// skips corrupt schedules defensively).
 pub fn validate_store(app: &AppHandle) -> Vec<StartupIssue> {
-    app.try_state::<db::DbState>()
-        .and_then(|st| st.0.lock().ok())
-        .and_then(|conn| db::list_reminders(&conn).ok())
-        .map(|reminders| validate_reminders(&reminders))
-        .unwrap_or_default()
+    // The DB guard is locked and consumed inside the closure: returning it
+    // from the closure would borrow the function parameter (E0515).
+    let reminders: Vec<db::Reminder> = app
+        .try_state::<db::DbState>()
+        .and_then(|st| {
+            st.0.lock()
+                .ok()
+                .and_then(|conn| db::list_reminders(&conn).ok())
+        })
+        .unwrap_or_default();
+    validate_reminders(&reminders)
 }
 
 /// Grace after startup before a recovered reminder fires, so the
@@ -333,9 +339,13 @@ fn recover_missed_in(
 /// on DB error returns an empty list (the driver recomputes anyway).
 pub fn recover_missed(app: &AppHandle) -> Vec<String> {
     let now = Utc::now();
+    // Same E0515 note as validate_store: the guard never leaves the closure.
     app.try_state::<db::DbState>()
-        .and_then(|st| st.0.lock().ok())
-        .and_then(|conn| recover_missed_in(&conn, now).ok())
+        .and_then(|st| {
+            st.0.lock()
+                .ok()
+                .and_then(|conn| recover_missed_in(&conn, now).ok())
+        })
         .unwrap_or_default()
 }
 
