@@ -417,10 +417,11 @@ html, body {
   right: 0;
   display: flex;
   justify-content: center;
-  /* 30px headroom: the safe margin below the camera/notch area plus room
-   * for the entry animation (translateY(-28px)) so the card never clips
-   * against the top of the window mid-flight. */
-  padding-top: 30px;
+  /* The card hangs from the system top bar: 4px of breathing room, and
+   * the entry animation slides it down from behind the bar (clipped by
+   * the window's top edge mid-flight, which is exactly the drawer
+   * effect we want). */
+  padding-top: 4px;
   pointer-events: none;
 }
 .dock-card {
@@ -428,7 +429,7 @@ html, body {
   max-width: calc(100vw - 32px);
   background: #ffffff;
   color: #1c1c1e;
-  border-radius: 10px 10px 22px 22px; /* subtle top, visibly rounded bottom */
+  border-radius: 0 0 14px 14px; /* flush top under the bar, softly rounded bottom */
   border: 1px solid rgba(0, 0, 0, 0.06);
   /* Soft layered elevation: ambient + contact, never a huge dark blob. */
   box-shadow:
@@ -546,12 +547,12 @@ html, body {
 
 /* ---- Dock motion: transform + opacity only (no layout animation). ---- */
 @keyframes dock-in {
-  from { opacity: 0; transform: translateY(-28px) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(-40px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes dock-out {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to   { opacity: 0; transform: translateY(-20px) scale(0.97); }
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-28px); }
 }
 @keyframes dock-rise {
   from { opacity: 0; transform: translateY(10px); }
