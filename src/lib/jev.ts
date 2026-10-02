@@ -23,6 +23,7 @@ export const JEV_EVENTS = {
   confirmationRequired: "jev:confirmation_required",
   result: "jev:result",
   error: "jev:error",
+  uiAction: "jev:ui_action",
 } as const;
 
 export interface JevStatus {
@@ -55,6 +56,18 @@ export interface JevResultPayload {
 export interface JevError {
   code: string;
   response_key: string;
+}
+
+/**
+ * Voice-triggered UI navigation. The Rust UIActionHandler emits this;
+ * the frontend opens existing UI (dialog/page) and completes the
+ * voice pipeline. `prefill` carries best-effort initial values — the
+ * user always reviews before anything is saved.
+ */
+export interface JevUiActionPayload {
+  type: "jev:ui_action";
+  action: "open_new_reminder" | "open_reminders" | "open_settings";
+  prefill?: { title?: string };
 }
 
 /** Status for Settings → AI / Jev. Never contains the token. */

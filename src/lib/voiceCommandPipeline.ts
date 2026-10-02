@@ -179,6 +179,18 @@ export class VoiceCommandPipeline {
     this.finish(message);
   }
 
+/**
+ * `jev:ui_action` — the Rust UIActionHandler asked the frontend to
+ * open existing UI. The UI opening IS the response; the pipeline
+ * returns to idle silently (no spoken message needed).
+ */
+  handleUiAction(): void {
+    if (!this.isActive()) return;
+    this.clearSafetyTimer();
+    this.phase = "idle";
+    this.displayText = "";
+  }
+
   /** `jev:error` — token / network / timeout / bad response. Never crashes. */
   handleError(payload: JevError): void {
     if (!this.isActive()) return;
