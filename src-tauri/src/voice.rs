@@ -297,6 +297,9 @@ fn load_engine(model: &Path, tokens: &Path, vad_model: &Path) -> Result<Engine, 
     vad_config.sample_rate = SAMPLE_RATE;
     vad_config.num_threads = 1;
     vad_config.provider = Some("cpu".to_string());
+    // VAD internals (per-window speech probability) go to stderr when
+    // NILA_VOICE_DIAG=1 — the decisive readout when detection won't fire.
+    vad_config.debug = diag_enabled();
     let vad = VoiceActivityDetector::create(&vad_config, 30.0)
         .ok_or_else(|| "failed to create Silero VAD".to_string())?;
 
