@@ -1,7 +1,7 @@
 //! Manual model provisioning for the local voice pipeline.
 //!
-//! The STT models (~80 MB: INT8 Conformer-CTC + tokens + Silero VAD) are
-//! NOT shipped with the app and NOT committed to the repo. The user
+//! The STT models (~160 MB: INT8 Whisper base.en encoder+decoder +
+//! tokens + Silero VAD) are NOT shipped with the app and NOT committed to the repo. The user
 //! downloads them once, manually, from Settings — the download option
 //! only appears when the wake word is enabled — into the per-user app
 //! data dir (`~/.local/share/nila/models/stt/` on Linux). Nila reuses
@@ -53,34 +53,47 @@ pub const EVENT_MODELS_READY: &str = "nila://models-ready";
 pub const EVENT_MODELS_ERROR: &str = "nila://models-error";
 
 /// Env var overriding the STT model directory (contains
-/// `model.int8.onnx`, `tokens.txt`, `silero_vad.onnx`).
+/// `whisper-encoder.int8.onnx`, `whisper-decoder.int8.onnx`,
+/// `tokens.txt`, `silero_vad.onnx`).
 const ENV_MODEL_DIR: &str = "NILA_STT_MODEL_DIR";
 /// Env vars overriding individual model files.
-const ENV_MODEL: &str = "NILA_STT_MODEL";
+const ENV_ENCODER: &str = "NILA_STT_ENCODER";
+const ENV_DECODER: &str = "NILA_STT_DECODER";
 const ENV_TOKENS: &str = "NILA_STT_TOKENS";
 const ENV_VAD_MODEL: &str = "NILA_STT_VAD_MODEL";
 
-pub const MODEL_FILE: &str = "model.int8.onnx";
+/// Canonical local file names (the tarball's upstream names are
+/// normalized to these on extraction).
+pub const ENCODER_FILE: &str = "whisper-encoder.int8.onnx";
+pub const DECODER_FILE: &str = "whisper-decoder.int8.onnx";
 pub const TOKENS_FILE: &str = "tokens.txt";
 pub const VAD_FILE: &str = "silero_vad.onnx";
+/// Legacy Conformer-CTC model file (pre-Whisper). Removed on the next
+/// successful download or explicit delete so it doesn't sit orphaned.
+const LEGACY_MODEL_FILE: &str = "model.int8.onnx";
 
-/// Upstream release assets (verified 2026-10-01).
-const ASR_TARBALL_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-ctc-en-conformer-small.tar.bz2";
+/// Upstream release assets (verified 2026-10-02). Whisper base.en was
+/// chosen over the Conformer-CTC small model for its far better
+/// handling of Indian English accents (trained on 680k hours of
+/// diverse multilingual audio vs. LibriSpeech audiobooks).
+const ASR_TARBALL_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-base.en.tar.bz2";
 const VAD_URL: &str =
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
 
 /// How long a single download may take overall (slow connections happen;
-/// the 76 MB tarball is the big one).
-const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(1800);
+/// the 208 MB tarball is the big one).
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(3600);
 
 /// Verification floors/ceilings (k2-fsa/sherpa-onnx `asr-models`
-/// release, checked 2026-10-01: tarball 76,482,338 bytes, VAD 643,854
-/// bytes). A truncated or wrong file fails these and never counts as
-/// installed; the real check — loading the model — happens on first
-/// wake, which surfaces `model_error` if the bytes are corrupt.
-const EXPECTED_MODEL_MIN_BYTES: u64 = 40_000_000; // real file is ~44 MB
+/// release, checked 2026-10-02: encoder 29,120,534 bytes, decoder
+/// 130,669,978 bytes, VAD 643,854 bytes). A truncated or wrong file
+/// fails these and never counts as installed; the real check — loading
+/// the model — happens on first wake, which surfaces `model_error` if
+/// the bytes are corrupt.
+const EXPECTED_ENCODER_MIN_BYTES: u64 = 20_000_000; // real file is ~29 MB
+const EXPECTED_DECODER_MIN_BYTES: u64 = 100_000_000; // real file is ~130 MB
 const EXPECTED_VAD_MIN_BYTES: u64 = 600_000; // real file is 643,854 bytes
-const EXPECTED_TOKENS_MAX_BYTES: u64 = 1_000_000;
+const EXPECTED_TOKENS_MAX_BYTES: u64 = 2_000_000; // real file is 835,554 bytes
 
 /// Serializes concurrent downloads: whoever gets the lock downloads,
 /// the other waits and then finds the models ready.
@@ -109,10 +122,11 @@ pub struct ModelsErrorPayload {
     pub message: String,
 }
 
-/// The three model files, in load order.
+/// The four model files, in load order.
 #[derive(Clone, Debug)]
 pub struct ModelPaths {
-    pub model: PathBuf,
+    pub encoder: PathBuf,
+    pub decoder: PathBuf,
     pub tokens: PathBuf,
     pub vad: PathBuf,
 }
@@ -158,7 +172,8 @@ impl ModelManager {
 
     /// The installed file set, if every file resolves.
     pub fn resolve(&self) -> Option<ModelPaths> {
-        resolve_models(&self.app).map(|(model, tokens, vad)| ModelPaths { model, tokens, vad })
+        resolve_models(&self.app)
+            .map(|(encoder, decoder, tokens, vad)| ModelPaths { encoder, decoder, tokens, vad })
     }
 
     /// True only when the files resolve AND pass verification. A
@@ -180,7 +195,7 @@ impl ModelManager {
     /// Total bytes of the installed set, for the Settings UI.
     pub fn get_size(&self) -> Option<u64> {
         let paths = self.resolve()?;
-        let total = [paths.model, paths.tokens, paths.vad]
+        let total = [paths.encoder, paths.decoder, paths.tokens, paths.vad]
             .iter()
             .filter_map(|p| std::fs::metadata(p).ok())
             .map(|m| m.len())
@@ -307,7 +322,7 @@ impl ModelManager {
     pub fn delete(&self) -> Result<bool, String> {
         let dir = self.get_path()?;
         let mut removed = false;
-        for name in [MODEL_FILE, TOKENS_FILE, VAD_FILE] {
+        for name in [ENCODER_FILE, DECODER_FILE, TOKENS_FILE, VAD_FILE, LEGACY_MODEL_FILE] {
             let p = dir.join(name);
             // Only files inside the managed dir, never env overrides.
             if p.is_file() {
@@ -336,12 +351,18 @@ fn file_len(p: &Path) -> Result<u64, String> {
 /// Size/shape sanity for a resolved model set. Pure function over
 /// paths so it is unit-testable without a Tauri [`AppHandle`].
 fn verify_paths(paths: &ModelPaths) -> Result<(), String> {
-    let model_len = file_len(&paths.model)?;
+    let encoder_len = file_len(&paths.encoder)?;
+    let decoder_len = file_len(&paths.decoder)?;
     let vad_len = file_len(&paths.vad)?;
     let tokens_len = file_len(&paths.tokens)?;
-    if model_len < EXPECTED_MODEL_MIN_BYTES {
+    if encoder_len < EXPECTED_ENCODER_MIN_BYTES {
         return Err(format!(
-            "model.int8.onnx is only {model_len} bytes — incomplete download?"
+            "whisper-encoder.int8.onnx is only {encoder_len} bytes — incomplete download?"
+        ));
+    }
+    if decoder_len < EXPECTED_DECODER_MIN_BYTES {
+        return Err(format!(
+            "whisper-decoder.int8.onnx is only {decoder_len} bytes — incomplete download?"
         ));
     }
     if vad_len < EXPECTED_VAD_MIN_BYTES {
@@ -359,7 +380,7 @@ fn verify_paths(paths: &ModelPaths) -> Result<(), String> {
 
 /// Remove stale `.part` staging files left by an interrupted download.
 fn clean_stale_parts(dir: &Path) {
-    for name in [MODEL_FILE, TOKENS_FILE, VAD_FILE] {
+    for name in [ENCODER_FILE, DECODER_FILE, TOKENS_FILE, VAD_FILE] {
         let part = dir.join(name).with_extension("part");
         if part.is_file() {
             eprintln!("nila: models: removing stale {}", part.display());
@@ -440,19 +461,23 @@ fn resolve_one_file(env: &str, name: &str, dir: Option<&Path>) -> Option<PathBuf
 ///
 /// Prefer [`ModelManager::verify`] when "installed" must mean "usable":
 /// this only checks presence, not integrity.
-pub fn resolve_models(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> {
+pub fn resolve_models(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf, PathBuf)> {
     let found = search_dirs(app).into_iter().find(|d| {
-        d.join(MODEL_FILE).is_file()
+        d.join(ENCODER_FILE).is_file()
+            && d.join(DECODER_FILE).is_file()
             && d.join(TOKENS_FILE).is_file()
             && d.join(VAD_FILE).is_file()
     });
     let dir = found.as_deref();
     match (
-        resolve_one_file(ENV_MODEL, MODEL_FILE, dir),
+        resolve_one_file(ENV_ENCODER, ENCODER_FILE, dir),
+        resolve_one_file(ENV_DECODER, DECODER_FILE, dir),
         resolve_one_file(ENV_TOKENS, TOKENS_FILE, dir),
         resolve_one_file(ENV_VAD_MODEL, VAD_FILE, dir),
     ) {
-        (Some(model), Some(tokens), Some(vad)) => Some((model, tokens, vad)),
+        (Some(encoder), Some(decoder), Some(tokens), Some(vad)) => {
+            Some((encoder, decoder, tokens, vad))
+        }
         _ => None,
     }
 }
@@ -529,14 +554,14 @@ fn download_file(
     Ok(())
 }
 
-/// Download the Conformer-CTC tarball and extract just `model.int8.onnx`
-/// + `tokens.txt` (the full-precision model, test wavs and scripts are
-/// skipped). The tarball itself goes to the OS temp dir, never the
-/// project tree.
+/// Download the Whisper base.en tarball and extract just the INT8
+/// `*-encoder.int8.onnx`, `*-decoder.int8.onnx` + `*-tokens.txt` (the
+/// full-precision models, test wavs and scripts are skipped). The
+/// tarball itself goes to the OS temp dir, never the project tree.
 fn download_asr_tarball(app: &AppHandle, dir: &Path) -> Result<(), String> {
     let tarball = std::env::temp_dir().join("nila-stt-asr.tar.bz2");
     let result = (|| -> Result<(), String> {
-        download_file(app, ASR_TARBALL_URL, &tarball, MODEL_FILE)?;
+        download_file(app, ASR_TARBALL_URL, &tarball, ENCODER_FILE)?;
         extract_asr_tarball(&tarball, dir)
     })();
     // Never keep a tarball we couldn't use: the next attempt re-downloads.
@@ -551,7 +576,8 @@ fn extract_asr_tarball(tarball: &Path, dir: &Path) -> Result<(), String> {
     // Only the two files we need, matched by file name so the tarball's
     // top-level directory prefix doesn't matter. Destinations are fully
     // controlled — no path-traversal risk from archive members.
-    let mut found_model = false;
+    let mut found_encoder = false;
+    let mut found_decoder = false;
     let mut found_tokens = false;
     let file =
         std::fs::File::open(tarball).map_err(|e| format!("open {}: {e}", tarball.display()))?;
@@ -567,9 +593,13 @@ fn extract_asr_tarball(tarball: &Path, dir: &Path) -> Result<(), String> {
             .unwrap_or("")
             .to_string();
         let dest_name = match wanted_entry(&name) {
-            Some(MODEL_FILE) => {
-                found_model = true;
-                MODEL_FILE
+            Some(ENCODER_FILE) => {
+                found_encoder = true;
+                ENCODER_FILE
+            }
+            Some(DECODER_FILE) => {
+                found_decoder = true;
+                DECODER_FILE
             }
             Some(TOKENS_FILE) => {
                 found_tokens = true;
@@ -586,20 +616,30 @@ fn extract_asr_tarball(tarball: &Path, dir: &Path) -> Result<(), String> {
             .map_err(|e| format!("extract {name}: {e}"))?;
         drop(out);
     }
-    if !(found_model && found_tokens) {
+    if !(found_encoder && found_decoder && found_tokens) {
         clean_stale_parts(dir);
-        return Err("tarball didn't contain model.int8.onnx and tokens.txt".to_string());
+        return Err(
+            "tarball didn't contain whisper encoder, decoder and tokens.txt".to_string(),
+        );
     }
     // Verify sizes BEFORE the rename: a truncated member must never
     // become the installed model.
-    let model_part = dir.join(MODEL_FILE).with_extension("part");
+    let encoder_part = dir.join(ENCODER_FILE).with_extension("part");
+    let decoder_part = dir.join(DECODER_FILE).with_extension("part");
     let tokens_part = dir.join(TOKENS_FILE).with_extension("part");
-    let model_len = file_len(&model_part)?;
+    let encoder_len = file_len(&encoder_part)?;
+    let decoder_len = file_len(&decoder_part)?;
     let tokens_len = file_len(&tokens_part)?;
-    if model_len < EXPECTED_MODEL_MIN_BYTES {
+    if encoder_len < EXPECTED_ENCODER_MIN_BYTES {
         clean_stale_parts(dir);
         return Err(format!(
-            "extracted model is only {model_len} bytes — corrupt download?"
+            "extracted encoder is only {encoder_len} bytes — corrupt download?"
+        ));
+    }
+    if decoder_len < EXPECTED_DECODER_MIN_BYTES {
+        clean_stale_parts(dir);
+        return Err(format!(
+            "extracted decoder is only {decoder_len} bytes — corrupt download?"
         ));
     }
     if tokens_len == 0 || tokens_len > EXPECTED_TOKENS_MAX_BYTES {
@@ -608,20 +648,34 @@ fn extract_asr_tarball(tarball: &Path, dir: &Path) -> Result<(), String> {
             "extracted tokens.txt has an unexpected size ({tokens_len} bytes)"
         ));
     }
-    std::fs::rename(&model_part, dir.join(MODEL_FILE))
-        .map_err(|e| format!("rename model: {e}"))?;
+    std::fs::rename(&encoder_part, dir.join(ENCODER_FILE))
+        .map_err(|e| format!("rename encoder: {e}"))?;
+    std::fs::rename(&decoder_part, dir.join(DECODER_FILE))
+        .map_err(|e| format!("rename decoder: {e}"))?;
     std::fs::rename(&tokens_part, dir.join(TOKENS_FILE))
         .map_err(|e| format!("rename tokens: {e}"))?;
+    // Drop the legacy Conformer model if it's still around — the new
+    // tokens.txt already overwrote the old one above.
+    let legacy = dir.join(LEGACY_MODEL_FILE);
+    if legacy.is_file() {
+        std::fs::remove_file(&legacy).ok();
+        eprintln!("nila: models: removed legacy {LEGACY_MODEL_FILE}");
+    }
     Ok(())
 }
 
-/// Which tarball members we keep. Everything else (full-precision model,
-/// test wavs, scripts, READMEs) is skipped.
+/// Which tarball members we keep. Everything else (full-precision
+/// encoder/decoder, test wavs, READMEs) is skipped. Matched by suffix
+/// so the exact upstream prefix (e.g. `base.en-`) doesn't matter.
 fn wanted_entry(file_name: &str) -> Option<&'static str> {
-    match file_name {
-        n if n == MODEL_FILE => Some(MODEL_FILE),
-        n if n == TOKENS_FILE => Some(TOKENS_FILE),
-        _ => None,
+    if file_name.ends_with("-encoder.int8.onnx") {
+        Some(ENCODER_FILE)
+    } else if file_name.ends_with("-decoder.int8.onnx") {
+        Some(DECODER_FILE)
+    } else if file_name.ends_with("-tokens.txt") {
+        Some(TOKENS_FILE)
+    } else {
+        None
     }
 }
 
@@ -650,10 +704,20 @@ mod tests {
 
     #[test]
     fn tarball_entry_matching_ignores_directory_prefix() {
-        assert_eq!(wanted_entry("model.int8.onnx"), Some(MODEL_FILE));
-        assert_eq!(wanted_entry("tokens.txt"), Some(TOKENS_FILE));
-        // Everything else in the tarball is skipped.
-        assert_eq!(wanted_entry("model.onnx"), None);
+        assert_eq!(
+            wanted_entry("base.en-encoder.int8.onnx"),
+            Some(ENCODER_FILE)
+        );
+        assert_eq!(
+            wanted_entry("base.en-decoder.int8.onnx"),
+            Some(DECODER_FILE)
+        );
+        assert_eq!(wanted_entry("base.en-tokens.txt"), Some(TOKENS_FILE));
+        // Everything else in the tarball is skipped (full-precision
+        // variants, test wavs, READMEs).
+        assert_eq!(wanted_entry("base.en-encoder.onnx"), None);
+        assert_eq!(wanted_entry("base.en-decoder.onnx"), None);
+        assert_eq!(wanted_entry("tokens.txt"), None);
         assert_eq!(wanted_entry("README.md"), None);
         assert_eq!(wanted_entry("1.wav"), None);
         assert_eq!(wanted_entry(""), None);
@@ -695,13 +759,13 @@ mod tests {
     fn download_progress_payload_shape() {
         let p = DownloadProgressPayload {
             kind: "nila://models-downloading",
-            file: "model.int8.onnx",
+            file: "whisper-encoder.int8.onnx",
             downloaded_bytes: 42,
             total_bytes: 100,
         };
         let v = serde_json::to_value(&p).unwrap();
         assert_eq!(v["type"], "nila://models-downloading");
-        assert_eq!(v["file"], "model.int8.onnx");
+        assert_eq!(v["file"], "whisper-encoder.int8.onnx");
         assert_eq!(v["downloaded_bytes"], 42);
         assert_eq!(v["total_bytes"], 100);
     }
@@ -710,15 +774,22 @@ mod tests {
     fn verify_rejects_truncated_model() {
         let tmp = std::env::temp_dir().join("nila-models-test-verify");
         std::fs::create_dir_all(&tmp).unwrap();
-        let model = tmp.join(MODEL_FILE);
+        let encoder = tmp.join(ENCODER_FILE);
+        let decoder = tmp.join(DECODER_FILE);
         let tokens = tmp.join(TOKENS_FILE);
         let vad = tmp.join(VAD_FILE);
-        // All three files exist, but the model is a stub.
-        std::fs::write(&model, b"too small").unwrap();
+        // All four files exist, but the encoder is a stub.
+        std::fs::write(&encoder, b"too small").unwrap();
+        std::fs::write(&decoder, vec![0u8; 101_000_000]).unwrap();
         std::fs::write(&tokens, b"a 1\n").unwrap();
         std::fs::write(&vad, vec![0u8; 650_000]).unwrap();
 
-        let paths = ModelPaths { model, tokens, vad };
+        let paths = ModelPaths {
+            encoder,
+            decoder,
+            tokens,
+            vad,
+        };
         let err = verify_paths(&paths).unwrap_err();
         assert!(err.contains("only 9 bytes"), "unexpected: {err}");
 
@@ -729,15 +800,18 @@ mod tests {
     fn verify_rejects_missing_and_empty_tokens() {
         let tmp = std::env::temp_dir().join("nila-models-test-verify2");
         std::fs::create_dir_all(&tmp).unwrap();
-        let model = tmp.join(MODEL_FILE);
+        let encoder = tmp.join(ENCODER_FILE);
+        let decoder = tmp.join(DECODER_FILE);
         let tokens = tmp.join(TOKENS_FILE);
         let vad = tmp.join(VAD_FILE);
-        std::fs::write(&model, vec![0u8; 41_000_000]).unwrap();
+        std::fs::write(&encoder, vec![0u8; 21_000_000]).unwrap();
+        std::fs::write(&decoder, vec![0u8; 101_000_000]).unwrap();
         std::fs::write(&tokens, b"").unwrap();
         std::fs::write(&vad, vec![0u8; 650_000]).unwrap();
 
         let paths = ModelPaths {
-            model: model.clone(),
+            encoder: encoder.clone(),
+            decoder: decoder.clone(),
             tokens: tokens.clone(),
             vad: vad.clone(),
         };
@@ -745,7 +819,12 @@ mod tests {
 
         // Missing file also fails.
         std::fs::remove_file(&vad).unwrap();
-        let paths = ModelPaths { model, tokens, vad };
+        let paths = ModelPaths {
+            encoder,
+            decoder,
+            tokens,
+            vad,
+        };
         assert!(verify_paths(&paths).is_err());
 
         std::fs::remove_dir_all(&tmp).ok();
@@ -755,7 +834,7 @@ mod tests {
     fn stale_parts_are_cleaned() {
         let tmp = std::env::temp_dir().join("nila-models-test-parts");
         std::fs::create_dir_all(&tmp).unwrap();
-        let part = tmp.join(MODEL_FILE).with_extension("part");
+        let part = tmp.join(ENCODER_FILE).with_extension("part");
         std::fs::write(&part, b"interrupted").unwrap();
         clean_stale_parts(&tmp);
         assert!(!part.exists());
