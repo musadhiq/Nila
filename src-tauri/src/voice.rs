@@ -702,6 +702,8 @@ fn capture_command(
     // it was — "mic silent" vs "VAD not triggering" need different fixes.
     let mut windows_total: u64 = 0;
     let mut peak_total: f32 = 0.0;
+    let mut detected_windows: u64 = 0;
+    let mut queued_windows: u64 = 0;
 
     loop {
         if stop.load(Ordering::SeqCst) {
@@ -733,8 +735,19 @@ fn capture_command(
             // Clear() can never fire. We do our own endpointing, so the
             // segment queue is dropped right after.
             let speech = engine.vad.detected();
+            // Second opinion: the segment queue (the pattern from
+            // sherpa-onnx's own Rust example). A queued segment proves
+            // the model heard speech even if detected() is unreliable
+            // in this build.
+            let queued = engine.vad.front().is_some();
             engine.vad.clear();
             windows_total += 1;
+            if speech {
+                detected_windows += 1;
+            }
+            if queued {
+                queued_windows += 1;
+            }
             for s in &chunk {
                 let a = s.abs();
                 if a > peak_total {
@@ -755,7 +768,7 @@ fn capture_command(
                     ));
                 } else if session_start.elapsed().as_secs_f32() >= speech_timeout {
                     eprintln!(
-                        "nila: voice: speech timeout: {windows_total} VAD windows in {:.1}s, peak amplitude {peak_total:.4}",
+                        "nila: voice: speech timeout: {windows_total} VAD windows in {:.1}s, peak {peak_total:.4}, detected {detected_windows}, queued {queued_windows}",
                         session_start.elapsed().as_secs_f32()
                     );
                     return Outcome::SpeechTimeout;
