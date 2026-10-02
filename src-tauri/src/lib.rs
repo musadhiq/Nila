@@ -12,6 +12,7 @@
 
 pub mod commands;
 pub mod db;
+pub mod jev;
 pub mod models;
 pub mod platform;
 pub mod scheduler;
@@ -297,6 +298,9 @@ pub fn run() {
             // Scheduler generation counter (wakes the driver on changes).
             app.manage(scheduler::SchedulerGen::new());
 
+            // Jev action layer: conversation context, secure token store.
+            app.manage(jev::JevState::new());
+
             // Startup sequence: load → validate → recover → compute the
             // first deadline → resume. The driver recomputes on every
             // wake, but doing it once here makes a failed resume visible
@@ -382,6 +386,11 @@ pub fn run() {
             commands::stt_models_status,
             commands::download_stt_models,
             commands::delete_stt_models,
+            jev::jev_get_status,
+            jev::jev_set_token,
+            jev::jev_remove_token,
+            jev::jev_test_connection,
+            jev::process_voice_command,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nila");
