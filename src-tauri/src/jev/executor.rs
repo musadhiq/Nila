@@ -781,7 +781,8 @@ impl ActionExecutor {
             ValidatedAction::Conversation { .. }
             | ValidatedAction::UiNewReminder { .. }
             | ValidatedAction::UiShowReminders
-            | ValidatedAction::UiOpenSettings => {
+            | ValidatedAction::UiOpenSettings
+            | ValidatedAction::UiHelp => {
                 ActionResult::err("unknownCommand", obj(&[]))
             }
         }
