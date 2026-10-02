@@ -94,8 +94,9 @@ export default function App() {
   /**
    * Voice-session state, driven by the Rust voice worker's events
    * (voice:started → voice:transcript_partial* → voice:transcript_final
-   * → voice:processing → voice:ended). While active, the wake pill grows
-   * a transcript bubble; the pill stays on screen until voice:ended.
+   * → voice:processing → voice:ended). While active, the wake pill shows
+   * live partials as subtext inside the pill, then a transcript bubble;
+   * the pill stays on screen until voice:ended.
    * Partials are UI-only and never reach the future Jev layer — only the
    * finalized voice_command payload does.
    */
@@ -1255,9 +1256,10 @@ export default function App() {
         />
       )}
       {/* Wake-word listening pill: only while the dock is hidden — the
-       * dock owns the window whenever a reminder is on screen. During a
-       * voice session the pill grows a transcript bubble (live partials,
-       * then the frozen final, or a gentle error line). */}
+       * dock owns the window whenever a reminder is on screen. While the
+       * user speaks, the live STT partial renders as subtext inside the
+       * pill; the bubble underneath is reserved for the frozen final
+       * while processing, Nila's response, or a gentle error line. */}
       {view === "companion" &&
         (wakeListening || voicePhase !== "idle") &&
         dock.phase === "hidden" && (
@@ -1269,7 +1271,12 @@ export default function App() {
             }
             alt={getStrings(settings.language).wake.nilaAlt}
             reducedMotion={settings.animation !== "full" || prefersReducedMotion}
-            transcript={voiceText}
+            subtext={
+              voicePhase === "listening" || voicePhase === "recording"
+                ? voiceText
+                : undefined
+            }
+            transcript={voicePhase === "processing" ? voiceText : undefined}
             error={
               voiceErrorCode
                 ? voiceErrorLabel(
