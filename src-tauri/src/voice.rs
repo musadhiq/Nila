@@ -729,18 +729,24 @@ fn capture_command(
         while pending.len() >= VAD_WINDOW {
             let chunk: Vec<f32> = pending.drain(..VAD_WINDOW).collect();
             engine.vad.accept_waveform(&chunk);
-            // Read the per-window detection BEFORE clearing: on some
-            // sherpa-onnx builds IsDetected() reflects the endpointing /
-            // segment state that Clear() resets, so reading it after
-            // Clear() can never fire. We do our own endpointing, so the
-            // segment queue is dropped right after.
+            // Read the per-window detection BEFORE touching the segment
+            // queue (see below).
             let speech = engine.vad.detected();
             // Second opinion: the segment queue (the pattern from
             // sherpa-onnx's own Rust example). A queued segment proves
             // the model heard speech even if detected() is unreliable
             // in this build.
             let queued = engine.vad.front().is_some();
-            engine.vad.clear();
+            // Drain completed segments — we do our own endpointing.
+            // NOTE: do NOT use clear() here. On this sherpa-onnx build
+            // Clear() resets the VAD's endpointing state, so calling it
+            // every 32 ms window prevents min_speech_duration from ever
+            // being reached: detection can never fire and no segment
+            // can ever complete. pop() only drops consumed segments and
+            // is what the official example does.
+            while engine.vad.front().is_some() {
+                engine.vad.pop();
+            }
             windows_total += 1;
             if speech {
                 detected_windows += 1;
