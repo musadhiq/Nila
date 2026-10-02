@@ -42,6 +42,7 @@ import {
   type VoiceFinalPayload,
   type VoicePartialPayload,
   type VoicePhase,
+  type VoiceRepeatPayload,
 } from "./lib/voice";
 import {
   JEV_EVENTS,
@@ -719,6 +720,19 @@ export default function App() {
         await listenEvent<VoiceErrorPayload>(VOICE_EVENTS.error, (p) => {
           pipeline.handleVoiceError();
           setVoice("error", "", p.code);
+        }),
+      );
+      unlistens.push(
+        await listenEvent<VoiceRepeatPayload>(VOICE_EVENTS.repeat, () => {
+          // Nila couldn't make out the words and asks the user to
+          // repeat. The session stays alive — the pill keeps listening
+          // and the prompt shows as subtext until the retry's live
+          // partials replace it.
+          if (!voiceActiveRef.current) return;
+          setVoice(
+            "listening",
+            getStrings(settingsRef.current.language).voice.repeatPrompt,
+          );
         }),
       );
       unlistens.push(
