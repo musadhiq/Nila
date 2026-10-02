@@ -34,8 +34,40 @@ pub enum Intent {
     SystemInfo,
     /// The user cancelled the interaction ("cancel", "never mind").
     Cancel,
+    // --- Conversational intents: no system effect, ConversationHandler
+    // replies with a short response (kept TTS-friendly).
+    Greeting,
+    HowAreYou,
+    WhatIsYourName,
+    WhoAreYou,
+    Help,
+    Thanks,
+    Goodbye,
+    /// "what time is it?" — answered from the system clock, never remote.
+    CurrentTime,
+    /// "what is today's date?" — answered from the system clock.
+    CurrentDate,
+    // --- UI-action intents: the frontend opens existing UI.
+    /// "set a reminder" with no usable details → open New Reminder dialog.
+    NewReminder,
+    /// "show my reminders" → open the reminder list.
+    ShowReminders,
+    /// "open settings" → Settings navigation.
+    OpenSettings,
     /// Anything Jev doesn't understand. Never executes.
     Unknown,
+}
+
+/// How a validated intent is handled. The pipeline routes on this —
+/// the frontend never interprets raw Jev text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseType {
+    /// Nila says something; no system effect, no UI change.
+    Conversation,
+    /// The frontend opens existing UI (dialog/page/navigation).
+    UiAction,
+    /// The system-action executor performs an approved desktop action.
+    SystemAction,
 }
 
 impl Intent {
@@ -45,6 +77,24 @@ impl Intent {
     pub fn needs_confirmation(self) -> bool {
         let _ = self;
         false
+    }
+
+    /// Which handler owns this intent after validation.
+    pub fn response_type(self) -> ResponseType {
+        use ResponseType::*;
+        match self {
+            Intent::Greeting
+            | Intent::HowAreYou
+            | Intent::WhatIsYourName
+            | Intent::WhoAreYou
+            | Intent::Help
+            | Intent::Thanks
+            | Intent::Goodbye
+            | Intent::CurrentTime
+            | Intent::CurrentDate => Conversation,
+            Intent::NewReminder | Intent::ShowReminders | Intent::OpenSettings => UiAction,
+            _ => SystemAction,
+        }
     }
 
     pub fn as_str(self) -> &'static str {
@@ -60,6 +110,18 @@ impl Intent {
             Intent::CancelReminder => "cancel_reminder",
             Intent::SystemInfo => "system_info",
             Intent::Cancel => "cancel",
+            Intent::Greeting => "greeting",
+            Intent::HowAreYou => "how_are_you",
+            Intent::WhatIsYourName => "what_is_your_name",
+            Intent::WhoAreYou => "who_are_you",
+            Intent::Help => "help",
+            Intent::Thanks => "thanks",
+            Intent::Goodbye => "goodbye",
+            Intent::CurrentTime => "current_time",
+            Intent::CurrentDate => "current_date",
+            Intent::NewReminder => "new_reminder",
+            Intent::ShowReminders => "show_reminders",
+            Intent::OpenSettings => "open_settings",
             Intent::Unknown => "unknown",
         }
     }
@@ -117,6 +179,14 @@ pub enum ValidatedAction {
     CancelReminder,
     SystemInfo { metric: SystemMetric },
     Cancel,
+    // --- Conversational: no system effect. The ConversationHandler
+    // turns the response key into Nila's reply (frontend i18n).
+    Conversation { response_key: &'static str },
+    // --- UI actions: the frontend opens existing UI. Prefill is
+    // best-effort — the user always reviews before saving.
+    UiNewReminder { title: Option<String> },
+    UiShowReminders,
+    UiOpenSettings,
     Unknown,
 }
 
@@ -234,6 +304,49 @@ pub fn validate(result: &JevResult) -> ValidatedAction {
                 Ok(ValidatedAction::SystemInfo { metric })
             }
             Intent::Cancel => Ok(ValidatedAction::Cancel),
+            // Conversational intents: the response key names a frontend
+            // i18n template; nothing executes.
+            Intent::Greeting => Ok(ValidatedAction::Conversation {
+                response_key: "convGreeting",
+            }),
+            Intent::HowAreYou => Ok(ValidatedAction::Conversation {
+                response_key: "convHowAreYou",
+            }),
+            Intent::WhatIsYourName => Ok(ValidatedAction::Conversation {
+                response_key: "convWhatIsYourName",
+            }),
+            Intent::WhoAreYou => Ok(ValidatedAction::Conversation {
+                response_key: "convWhoAreYou",
+            }),
+            Intent::Help => Ok(ValidatedAction::Conversation {
+                response_key: "convHelp",
+            }),
+            Intent::Thanks => Ok(ValidatedAction::Conversation {
+                response_key: "convThanks",
+            }),
+            Intent::Goodbye => Ok(ValidatedAction::Conversation {
+                response_key: "convGoodbye",
+            }),
+            // Time/date are answered from the system clock by the
+            // ConversationHandler; the key is fixed here.
+            Intent::CurrentTime => Ok(ValidatedAction::Conversation {
+                response_key: "convCurrentTime",
+            }),
+            Intent::CurrentDate => Ok(ValidatedAction::Conversation {
+                response_key: "convCurrentDate",
+            }),
+            // UI actions: title prefill is optional and inert.
+            Intent::NewReminder => {
+                let title = p
+                    .title
+                    .as_deref()
+                    .map(|t| clean_text(t, MAX_TITLE_LEN))
+                    .transpose()?
+                    .filter(|t| !t.is_empty());
+                Ok(ValidatedAction::UiNewReminder { title })
+            }
+            Intent::ShowReminders => Ok(ValidatedAction::UiShowReminders),
+            Intent::OpenSettings => Ok(ValidatedAction::UiOpenSettings),
             Intent::Unknown => Ok(ValidatedAction::Unknown),
         }
     })();
@@ -338,6 +451,61 @@ mod tests {
         assert!(matches!(validate(&r), ValidatedAction::Unknown));
         r.parameters.datetime = Some("2030-05-01T19:00:00+05:30".into());
         assert!(matches!(validate(&r), ValidatedAction::SetReminder { .. }));
+    }
+
+    #[test]
+    fn conversational_intents_validate_to_conversation() {
+        for (intent, key) in [
+            (Intent::Greeting, "convGreeting"),
+            (Intent::HowAreYou, "convHowAreYou"),
+            (Intent::WhatIsYourName, "convWhatIsYourName"),
+            (Intent::WhoAreYou, "convWhoAreYou"),
+            (Intent::Help, "convHelp"),
+            (Intent::Thanks, "convThanks"),
+            (Intent::Goodbye, "convGoodbye"),
+            (Intent::CurrentTime, "convCurrentTime"),
+            (Intent::CurrentDate, "convCurrentDate"),
+        ] {
+            match validate(&result(intent)) {
+                ValidatedAction::Conversation { response_key } => {
+                    assert_eq!(response_key, key)
+                }
+                other => panic!("{intent:?} -> unexpected {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn ui_intents_validate_to_ui_actions() {
+        // NewReminder without a title: still a valid UI action.
+        assert!(matches!(
+            validate(&result(Intent::NewReminder)),
+            ValidatedAction::UiNewReminder { title: None }
+        ));
+        // With a title prefill.
+        let mut r = result(Intent::NewReminder);
+        r.parameters.title = Some("drink water".into());
+        match validate(&r) {
+            ValidatedAction::UiNewReminder { title } => {
+                assert_eq!(title.as_deref(), Some("drink water"))
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        // Overlong/hostile prefill degrades to Unknown, never executes.
+        let mut r = result(Intent::NewReminder);
+        r.parameters.title = Some("x".repeat(200));
+        assert!(matches!(
+            validate(&r),
+            ValidatedAction::Unknown
+        ));
+        assert!(matches!(
+            validate(&result(Intent::ShowReminders)),
+            ValidatedAction::UiShowReminders
+        ));
+        assert!(matches!(
+            validate(&result(Intent::OpenSettings)),
+            ValidatedAction::UiOpenSettings
+        ));
     }
 
     #[test]
