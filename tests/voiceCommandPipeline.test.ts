@@ -12,10 +12,10 @@ import { STRINGS } from "../src/lib/i18n.ts";
 /** Records what the pipeline asked the host to do. */
 function makeHost() {
   const renders: { phase: PipelinePhase; text: string }[] = [];
-  const answers: string[] = [];
+  const answers: { message: string; intent: string }[] = [];
   const host: PipelineHost = {
     render: (phase, text) => renders.push({ phase, text }),
-    answer: (message) => answers.push(message),
+    answer: (message, intent) => answers.push({ message, intent }),
     strings: () => STRINGS.en,
   };
   return { host, renders, answers };
@@ -87,7 +87,7 @@ describe("VoiceCommandPipeline", () => {
     assert.equal(sent, false);
     assert.equal(p.isActive(), false);
     assert.equal(answers.length, 1);
-    assert.ok(answers[0].length > 0);
+    assert.ok(answers[0].message.length > 0);
     p.dispose();
   });
 
@@ -120,7 +120,8 @@ describe("VoiceCommandPipeline", () => {
 
     p.handleResult(resultPayload());
     assert.equal(answers.length, 1);
-    assert.equal(answers[0], "Opening Firefox.");
+    assert.equal(answers[0].message, "Opening Firefox.");
+    assert.equal(answers[0].intent, "open_application");
     assert.equal(p.isActive(), false); // back to idle after the answer
     p.dispose();
   });
@@ -139,7 +140,8 @@ describe("VoiceCommandPipeline", () => {
       }),
     );
     assert.equal(host.answers.length, 1);
-    assert.equal(host.answers[0], STRINGS.en.jev.responses.unknownCommand);
+    assert.equal(host.answers[0].message, STRINGS.en.jev.responses.unknownCommand);
+    assert.equal(host.answers[0].intent, "unknown");
     assert.equal(p.isActive(), false);
     assert.equal(answers.length, 0);
     p.dispose();
@@ -161,7 +163,8 @@ describe("VoiceCommandPipeline", () => {
       const err: JevError = { code: c.code, response_key: c.key };
       p.handleError(err);
       assert.equal(host.answers.length, 1, c.code);
-      assert.equal(host.answers[0], (STRINGS.en.jev.responses as Record<string, string>)[c.key], c.code);
+      assert.equal(host.answers[0].message, (STRINGS.en.jev.responses as Record<string, string>)[c.key], c.code);
+      assert.equal(host.answers[0].intent, "error");
       assert.equal(p.isActive(), false, c.code);
       p.dispose();
     }

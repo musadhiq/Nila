@@ -62,7 +62,6 @@ describe("jev i18n coverage", () => {
       "convHowAreYou",
       "convWhatIsYourName",
       "convWhoAreYou",
-      "convHelp",
       "convThanks",
       "convGoodbye",
       "convCurrentTime",

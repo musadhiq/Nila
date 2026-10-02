@@ -1015,6 +1015,71 @@ html, body {
   background: #f3e3da;
   color: #7c3f27;
 }
+/* ---- Conversation dismiss controls (Okay Nila + ×). ---- */
+.wake-bubble {
+  position: relative;
+}
+.wake-bubble-text {
+  display: block;
+  padding-right: 22px;
+}
+.wake-dismiss-x {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #8a847c;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  border-radius: 6px;
+  padding: 0;
+}
+.wake-dismiss-x:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #1d1a16;
+}
+.wake-dismiss-btn {
+  display: inline-block;
+  margin-top: 8px;
+  border: 1px solid #d8d2c8;
+  background: #ffffff;
+  color: #1d1a16;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 6px 16px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.wake-dismiss-btn:hover {
+  background: #efece6;
+}
+/* ---- Commands page (voice command list). ---- */
+.commands-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.commands-item {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1d1a16;
+  background: #faf9f7;
+  border: 1px solid #e8e2d8;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.commands-quote {
+  color: #a09a8e;
+}
 /* ---- Reduced motion: fade in, no pulse. ---- */
 @media (prefers-reduced-motion: reduce) {
   .wake-pill { animation: wake-fade-in 140ms ease-out both; }
