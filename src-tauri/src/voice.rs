@@ -724,9 +724,13 @@ fn capture_command(
         while pending.len() >= VAD_WINDOW {
             let chunk: Vec<f32> = pending.drain(..VAD_WINDOW).collect();
             engine.vad.accept_waveform(&chunk);
-            // We do our own endpointing; drop the VAD's segment queue.
-            engine.vad.clear();
+            // Read the per-window detection BEFORE clearing: on some
+            // sherpa-onnx builds IsDetected() reflects the endpointing /
+            // segment state that Clear() resets, so reading it after
+            // Clear() can never fire. We do our own endpointing, so the
+            // segment queue is dropped right after.
             let speech = engine.vad.detected();
+            engine.vad.clear();
             windows_total += 1;
             for s in &chunk {
                 let a = s.abs();
