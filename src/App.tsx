@@ -642,7 +642,7 @@ export default function App() {
     };
     /**
      * Jev results → Nila's spoken response in the wake pill's bubble.
-     * The response lingers briefly so it can be read, then the pill
+     * The response lingers long enough to read (5s), then the pill
      * dismisses exactly as it would have on voice:ended.
      */
     const showJevResponse = (message: string) => {
@@ -651,7 +651,7 @@ export default function App() {
       window.setTimeout(() => {
         setVoice("idle");
         setWakeListening(false);
-      }, 2600);
+      }, 5000);
     };
     /**
      * VoiceCommandPipeline — the STT → Jev integration. It owns the
