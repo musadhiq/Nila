@@ -31,7 +31,7 @@ import {
   toReminder,
   type ReminderDto,
 } from "./lib/reminders";
-import { invokeCommand, isTauri, listenEvent } from "./lib/tauri";
+import { emitEvent, invokeCommand, isTauri, listenEvent } from "./lib/tauri";
 import {
   MODEL_EVENTS,
   VOICE_EVENTS,
@@ -112,6 +112,35 @@ export default function App() {
    * voice session.
    */
   const voiceActiveRef = useRef(false);
+  /**
+   * Conversation mode: after one wake word, Nila stays present and the
+   * user can keep talking without repeating the wake phrase. Each answer
+   * emits nila://conversation-turn, which the voice worker treats like a
+   * wake event to start another VAD-bounded listening session. Set false
+   * on goodbye, error, or explicit dismissal.
+   */
+  const conversationModeRef = useRef(false);
+  /** True while a conversation turn is pending the previous session's
+   * voice:ended — the backend rejects overlapping sessions, so the
+   * re-arm must wait for the handoff. */
+  const pendingRearmRef = useRef(false);
+  /** Tracks whether the current voice session has ended (voice:ended
+   * arrived). Set false on voice:started. */
+  const sessionEndedRef = useRef(true);
+  const CONVERSATION_REARM_DELAY_MS = 900;
+  /**
+   * Dismiss the conversation: end conversation mode, clear the response,
+   * and hide the wake surface. Called by the Okay Nila button and ×.
+   */
+  const dismissConversation = useCallback(() => {
+    conversationModeRef.current = false;
+    pendingRearmRef.current = false;
+    voiceActiveRef.current = false;
+    setVoicePhase("idle");
+    setVoiceText("");
+    setVoiceErrorCode(null);
+    setWakeListening(false);
+  }, []);
   /** First-run setup flow: the panel opens on the welcome page with a
    *  finish button. Cleared once the user completes setup. */
   const [setupMode, setSetupMode] = useState(false);
@@ -645,17 +674,51 @@ export default function App() {
       setVoiceErrorCode(code);
     };
     /**
-     * Jev results → Nila's spoken response in the wake pill's bubble.
-     * The response lingers long enough to read (5s), then the pill
-     * dismisses exactly as it would have on voice:ended.
+     * Start a follow-up listening turn without the wake phrase. The small
+     * delay keeps the re-arm clear of the backend's wake debounce.
      */
-    const showJevResponse = (message: string) => {
-      if (!voiceActiveRef.current) return;
-      setVoice("processing", message);
+    const rearmConversation = () => {
+      if (!conversationModeRef.current) return;
+      pendingRearmRef.current = false;
       window.setTimeout(() => {
-        setVoice("idle");
-        setWakeListening(false);
-      }, 5000);
+        if (conversationModeRef.current) {
+          emitEvent("nila://conversation-turn");
+        }
+      }, CONVERSATION_REARM_DELAY_MS);
+    };
+    /**
+     * Jev results → Nila's spoken response in the wake pill's bubble.
+     * After one wake word, conversation mode keeps Nila present: the
+     * response stays visible and the mic re-arms for a follow-up turn
+     * without the wake phrase. Goodbye, UI actions (the panel takes
+     * over), and errors end the conversation and dismiss as before.
+     */
+    const showJevResponse = (message: string, intent: string) => {
+      if (!voiceActiveRef.current) return;
+      const terminal =
+        intent === "goodbye" ||
+        intent === "error" ||
+        intent === "new_reminder" ||
+        intent === "show_reminders" ||
+        intent === "open_settings";
+      setVoice("processing", message);
+      if (terminal) {
+        conversationModeRef.current = false;
+        pendingRearmRef.current = false;
+        window.setTimeout(() => {
+          setVoice("idle");
+          setWakeListening(false);
+        }, 5000);
+        return;
+      }
+      // Conversation mode: stay visible. If the session already ended,
+      // re-arm now; otherwise the voice:ended handler re-arms.
+      conversationModeRef.current = true;
+      if (sessionEndedRef.current) {
+        rearmConversation();
+      } else {
+        pendingRearmRef.current = true;
+      }
     };
     /**
      * VoiceCommandPipeline — the STT → Jev integration. It owns the
@@ -691,6 +754,7 @@ export default function App() {
       unlistens.push(
         await listenEvent(VOICE_EVENTS.started, () => {
           if (hidden()) return;
+          sessionEndedRef.current = false;
           setVoice("listening");
         }),
       );
@@ -740,10 +804,17 @@ export default function App() {
       );
       unlistens.push(
         await listenEvent(VOICE_EVENTS.ended, () => {
+          sessionEndedRef.current = true;
           // A Jev command may still be running (voice:ended fires ~800ms
           // after the final transcript); its completion event owns the
           // surface until Nila's response has been shown.
           if (pipeline.isActive()) return;
+          // Conversation mode: Nila's answer already requested a
+          // follow-up turn — re-arm the mic instead of hiding.
+          if (conversationModeRef.current && pendingRearmRef.current) {
+            rearmConversation();
+            return;
+          }
           setVoice("idle");
           setWakeListening(false);
         }),
@@ -789,6 +860,13 @@ export default function App() {
               break;
             case "open_settings":
               openPanel("settings", { page: "general" });
+              break;
+            case "open_help":
+              // The commands list takes over the surface; end any
+              // conversation so a stale re-arm can't reopen the mic.
+              conversationModeRef.current = false;
+              pendingRearmRef.current = false;
+              openPanel("settings", { page: "commands" });
               break;
           }
         }),
@@ -1325,6 +1403,9 @@ export default function App() {
                   )
                 : null
             }
+            dismissible={voicePhase === "processing" && !voiceErrorCode}
+            onDismiss={dismissConversation}
+            dismissLabel={getStrings(settings.language).wake.okayNila}
           />
         )}
       {import.meta.env.DEV && nilaDebug && view === "companion" && (
