@@ -7,9 +7,10 @@
  * the notification dock. The dock wins while a reminder is on screen;
  * this pill only renders while the dock is hidden.
  *
- * During a voice session the pill grows a transcript bubble underneath:
- * live partial text while the user speaks, the frozen final text while
- * processing, or a gentle error line when nothing was heard.
+ * While the user speaks, the live STT partial renders as a subtext line
+ * inside the pill, under the label. The bubble underneath is reserved
+ * for the frozen final text while processing, Nila's response, or a
+ * gentle error line when nothing was heard.
  */
 
 import { expressionUrl } from "../dock/expressions";
@@ -21,14 +22,17 @@ interface WakePillProps {
   alt: string;
   /** Disable the pulse animation. */
   reducedMotion: boolean;
-  /** Live or final transcript; the bubble renders when non-empty. */
+  /** Live partial transcript; renders as subtext inside the pill when non-empty. */
+  subtext?: string;
+  /** Frozen final transcript or Nila's response; the bubble renders when non-empty. */
   transcript?: string;
   /** Localized error line; the bubble renders in an error tone. */
   error?: string | null;
 }
 
-export function WakePill({ label, alt, reducedMotion, transcript, error }: WakePillProps) {
+export function WakePill({ label, alt, reducedMotion, subtext, transcript, error }: WakePillProps) {
   const bubbleText = error ?? (transcript && transcript.trim().length > 0 ? transcript : null);
+  const sub = subtext && subtext.trim().length > 0 ? subtext : null;
   return (
     <div className="wake-root" role="status" aria-live="polite">
       <div className="wake-pill">
@@ -38,7 +42,10 @@ export function WakePill({ label, alt, reducedMotion, transcript, error }: WakeP
           alt={alt}
           draggable={false}
         />
-        <span className="wake-label">{label}</span>
+        <span className="wake-textcol">
+          <span className="wake-label">{label}</span>
+          {sub ? <span className="wake-subtext">{sub}</span> : null}
+        </span>
         <span
           className={reducedMotion ? "wake-dot is-still" : "wake-dot"}
           aria-hidden="true"
