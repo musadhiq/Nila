@@ -585,7 +585,6 @@ mod tests {
             Intent::HowAreYou,
             Intent::WhatIsYourName,
             Intent::WhoAreYou,
-            Intent::Help,
             Intent::Thanks,
             Intent::Goodbye,
             Intent::CurrentTime,
@@ -594,6 +593,7 @@ mod tests {
             assert_eq!(intent.response_type(), ResponseType::Conversation);
         }
         for intent in [
+            Intent::Help,
             Intent::NewReminder,
             Intent::ShowReminders,
             Intent::OpenSettings,
