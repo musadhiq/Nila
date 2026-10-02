@@ -66,7 +66,7 @@ export interface JevError {
  */
 export interface JevUiActionPayload {
   type: "jev:ui_action";
-  action: "open_new_reminder" | "open_reminders" | "open_settings";
+  action: "open_new_reminder" | "open_reminders" | "open_settings" | "open_help";
   prefill?: { title?: string };
 }
 

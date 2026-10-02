@@ -75,8 +75,12 @@ export interface PipelineDeps {
 export interface PipelineHost {
   /** Render a pipeline phase through the existing voice UI. */
   render(phase: PipelinePhase, text: string): void;
-  /** Nila's answer is ready: present it, then return to idle. */
-  answer(message: string): void;
+  /**
+   * Nila's answer is ready: present it. The intent is provided so the
+   * host can decide conversation flow (e.g. "goodbye" ends the
+   * conversation instead of re-arming for another turn).
+   */
+  answer(message: string, intent: string): void;
   /** Current localized strings. */
   strings(): Dict;
 }
@@ -176,7 +180,7 @@ export class VoiceCommandPipeline {
       payload.response_params,
       this.host.strings(),
     );
-    this.finish(message);
+    this.finish(message, payload.intent);
   }
 
 /**
@@ -195,7 +199,7 @@ export class VoiceCommandPipeline {
   handleError(payload: JevError): void {
     if (!this.isActive()) return;
     const message = jevResponse(payload.response_key, undefined, this.host.strings());
-    this.finish(message);
+    this.finish(message, "error");
   }
 
   /** `voice:error` — the STT session died; abandon any pending command. */
@@ -216,11 +220,13 @@ export class VoiceCommandPipeline {
     this.host.render(phase, this.displayText);
   }
 
-  private finish(message: string): void {
+  private finish(message: string, intent = ""): void {
     this.clearSafetyTimer();
     this.setPhase("response", message);
-    this.host.answer(message);
-    // The answer is terminal: the host presents it, then dismisses.
+    this.host.answer(message, intent);
+    // The answer is terminal for this turn: the host owns what happens
+    // next (another conversation turn, or dismiss). The pipeline itself
+    // returns to idle.
     this.phase = "idle";
     this.displayText = "";
   }

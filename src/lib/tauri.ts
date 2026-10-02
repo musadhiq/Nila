@@ -3,7 +3,7 @@
 // the Rust backend is unavailable.
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -22,4 +22,10 @@ export async function listenEvent<T>(
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
   return listen<T>(event, (e) => handler(e.payload));
+}
+
+/** Emit a frontend event; no-op outside Tauri. */
+export function emitEvent(event: string, payload?: unknown): void {
+  if (!isTauri()) return;
+  void emit(event, payload);
 }
