@@ -429,9 +429,17 @@ fn wait_for_mic(stop: &Arc<AtomicBool>, enabled: &Arc<AtomicBool>) {
 /// and wakes within ~100 ms of being re-enabled.
 fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, enabled: &Arc<AtomicBool>) {
     let mut state = WakeState::Idle;
+    // First pass: once we've determined the worker's fate (listening or
+    // parked-disabled), Nila is initialized — flip the tray to ready.
+    let mut tray_ready = false;
     while !stop.load(Ordering::SeqCst) {
         if !enabled.load(Ordering::SeqCst) {
             transition(&mut state, WakeState::Idle);
+            if !tray_ready {
+                // Wake-word disabled: nothing to wait for, Nila is ready.
+                crate::set_tray_ready(app);
+                tray_ready = true;
+            }
             sleep_until(stop, enabled, false, Duration::from_secs(1));
             continue;
         }
@@ -468,6 +476,10 @@ fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, enabled: &Arc<AtomicBool
                     }
                     Ok(mut listener) => {
                         transition(&mut state, WakeState::ListeningForWake);
+                        // Mic verified and detector running: Nila is ready.
+                        // Flip the tray from loading to the normal icon.
+                        crate::set_tray_ready(app);
+                        tray_ready = true;
                         detection_loop(app, &mut listener, stop, enabled, &mut state);
                         // The listener died (mic unplugged, stream ended, ...),
                         // or the worker was disabled: drop the listener (mic

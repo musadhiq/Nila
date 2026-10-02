@@ -46,6 +46,7 @@ struct TrayStrings {
     autostart: &'static str,
     quit: &'static str,
     tooltip: &'static str,
+    tooltip_starting: &'static str,
 }
 
 fn tray_strings(lang: &str) -> TrayStrings {
@@ -59,6 +60,7 @@ fn tray_strings(lang: &str) -> TrayStrings {
             autostart: "Startup-il Nila on aakkuka",
             quit: "Nila quit cheyyuka",
             tooltip: "Nila — reminder companion",
+            tooltip_starting: "Nila starting aakunnu…",
         },
         _ => TrayStrings {
             show: "Show Nila",
@@ -69,6 +71,7 @@ fn tray_strings(lang: &str) -> TrayStrings {
             autostart: "Launch Nila on startup",
             quit: "Quit Nila",
             tooltip: "Nila — reminder companion",
+            tooltip_starting: "Nila is starting…",
         },
     }
 }
@@ -202,11 +205,8 @@ pub fn refresh_tray_menu(app: &tauri::AppHandle) {
 /// Build the menu-bar tray icon.
 ///
 /// Nila lives in the tray by default: the floating character window only
-/// appears when a reminder is due (or when opened from this menu).
-fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let lang = current_language(app);
-    let menu = tray_menu(app, &lang)?;
-
+/// Decode the tray icon PNG into a Tauri image.
+fn tray_icon() -> tauri::image::Image {
     // tauri::image::Image takes raw RGBA pixels — decode the PNG first.
     // The tray uses the Nila wordmark logo (wide aspect suits the top bar).
     let icon_png = include_bytes!("../../character/nila-logo.png");
@@ -214,11 +214,55 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .expect("failed to decode tray icon PNG")
         .to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
-    let icon = tauri::image::Image::new_owned(rgba.into_raw(), w, h);
+    tauri::image::Image::new_owned(rgba.into_raw(), w, h)
+}
+
+/// A dimmed (grayscale, 60% brightness) version of the tray icon, shown
+/// while Nila is initializing (mic check, model load). No extra binary
+/// asset needed — derived programmatically from the normal icon.
+fn tray_icon_loading() -> tauri::image::Image {
+    let icon_png = include_bytes!("../../character/nila-logo.png");
+    let mut rgba = image::load_from_memory(icon_png)
+        .expect("failed to decode tray icon PNG")
+        .to_rgba8();
+    for px in rgba.chunks_exact_mut(4) {
+        let gray =
+            (px[0] as u32 * 30 + px[1] as u32 * 59 + px[2] as u32 * 11) / 100;
+        let dimmed = (gray * 60 / 100) as u8;
+        px[0] = dimmed;
+        px[1] = dimmed;
+        px[2] = dimmed;
+        // Alpha channel untouched — transparency preserved.
+    }
+    let (w, h) = (rgba.width(), rgba.height());
+    tauri::image::Image::new_owned(rgba.into_raw(), w, h)
+}
+
+/// Switch the tray from the loading state to the ready state: the full
+/// Nila icon and the normal tooltip. Idempotent — safe to call on every
+/// listener rebuild.
+pub fn set_tray_ready(app: &tauri::AppHandle) {
+    let lang = current_language(app);
+    if let Some(tray) = app.tray_by_id("nila-tray") {
+        let _ = tray.set_icon(Some(tray_icon()));
+        let _ = tray.set_tooltip(Some(tray_strings(&lang).tooltip));
+        eprintln!("nila: tray: ready");
+    }
+    // The frontend can also react (e.g. dismiss a loading veil if the
+    // window happens to be open).
+    let _ = app.emit("nila://ready", ());
+}
+
+/// appears when a reminder is due (or when opened from this menu).
+fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let lang = current_language(app);
+    let menu = tray_menu(app, &lang)?;
 
     TrayIconBuilder::with_id("nila-tray")
-        .icon(icon)
-        .tooltip(tray_strings(&lang).tooltip)
+        // Loading state until the wake-word listener reports ready
+        // (mic verified, detector running) via set_tray_ready().
+        .icon(tray_icon_loading())
+        .tooltip(tray_strings(&lang).tooltip_starting)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
