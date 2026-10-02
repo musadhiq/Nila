@@ -192,6 +192,12 @@ pub struct VoiceState {
 /// Start the voice worker on its own OS thread. The thread lives for the
 /// whole application lifetime; see [`request_stop`].
 ///
+/// Frontend event: request another conversation turn without requiring
+/// the wake word. Emitted by the UI after Nila answers, to keep a
+/// multi-turn conversation going. The voice worker treats it exactly
+/// like a wake-word detection (starts a listening session).
+pub const EVENT_CONVERSATION_TURN: &str = "nila://conversation-turn";
+
 /// The worker subscribes to the wake-word module's
 /// `nila://wake-detected` event. The wake-word implementation itself is
 /// untouched — this worker only flips its existing settings flag to park
@@ -202,8 +208,15 @@ pub fn spawn(app: &AppHandle) {
     // The wake-word module is untouched: we subscribe to its detection
     // event and forward it to the worker thread.
     let (wake_tx, wake_rx) = mpsc::channel::<()>();
+    let wake_tx_wake = wake_tx.clone();
     let _ = app.listen(wakeword::EVENT_WAKE_DETECTED, move |_| {
-        let _ = wake_tx.send(());
+        let _ = wake_tx_wake.send(());
+    });
+    // Conversation turns: the UI requests the next listening session
+    // directly, without the wake word, to sustain a conversation.
+    let wake_tx_conversation = wake_tx.clone();
+    let _ = app.listen(EVENT_CONVERSATION_TURN, move |_| {
+        let _ = wake_tx_conversation.send(());
     });
     // The STT models are a manual, settings-driven download (see
     // models.rs) — nothing fetches them automatically, so Nila works
