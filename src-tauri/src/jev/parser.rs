@@ -50,6 +50,9 @@ fn tidy(s: &str) -> String {
     if let Some(rest) = s.strip_suffix(" please") {
         s = rest.trim().to_string();
     }
+    // Trailing punctuation ("How are you?", "Set a reminder.") must not
+    // break exact-match intents.
+    s = s.trim_end_matches(['?', '!', '.']).trim().to_string();
     s
 }
 
@@ -78,22 +81,75 @@ fn parse_transcript(transcript: &str) -> JevResult {
         return unknown();
     }
 
-    // "cancel that reminder" / "cancel the reminder" — before bare "cancel".
+    // "cancel that reminder" — a follow-up referring to the just-created
+    // one: resolve through the reminder service (context-based).
     if text.starts_with("cancel that reminder")
         || text.starts_with("cancel the reminder")
-        || text.starts_with("cancel my reminder")
         || text.starts_with("delete that reminder")
     {
         return jev(Intent::CancelReminder);
+    }
+    // "cancel my reminder" / "delete a reminder" — ambiguous, no specific
+    // referent: open the reminder list so the user picks. Never delete
+    // on an ambiguous match.
+    if text.starts_with("cancel my reminder")
+        || text.starts_with("cancel a reminder")
+        || text.starts_with("delete my reminder")
+        || text.starts_with("delete a reminder")
+        || text.starts_with("remove my reminder")
+        || text.starts_with("remove a reminder")
+    {
+        return jev(Intent::ShowReminders);
     }
     // Bare interaction cancel.
     if matches!(text.as_str(), "cancel" | "never mind" | "nevermind" | "stop") {
         return jev(Intent::Cancel);
     }
 
-    // "remind me to call mom at 7 pm"
+    // Conversational intents — short and exact, checked before the
+    // looser matchers below so "hello" never becomes a file search.
+    if let Some(intent) = parse_conversational(&text) {
+        return jev(intent);
+    }
+
+    // "open settings" / "go to settings" — before generic "open X".
+    if matches!(
+        text.as_str(),
+        "open settings" | "go to settings" | "show settings" | "settings"
+    ) {
+        return jev(Intent::OpenSettings);
+    }
+
+    // "show my reminders" / "list my reminders" / "what reminders do i have"
+    if (text.starts_with("show ") || text.starts_with("list "))
+        && text.contains("reminder")
+        || matches!(text.as_str(), "what reminders do i have" | "my reminders")
+    {
+        return jev(Intent::ShowReminders);
+    }
+
+    // "set a reminder" / "create a reminder" / "new reminder" — no
+    // details; the dialog opens instead of creating anything.
+    if matches!(
+        text.as_str(),
+        "set a reminder"
+            | "create a reminder"
+            | "new reminder"
+            | "add a reminder"
+            | "create new reminder"
+            | "set reminder"
+    ) {
+        return jev(Intent::NewReminder);
+    }
+
+    // "remind me to call mom at 7 pm" — complete or prefill fallback.
     if let Some(rest) = text.strip_prefix("remind me to ") {
         return parse_reminder(rest);
+    }
+
+    // Bare "remind me" / "remind me about X" — nothing actionable.
+    if text == "remind me" || text.starts_with("remind me about ") {
+        return jev(Intent::NewReminder);
     }
 
     // "close firefox" / "quit firefox"
@@ -218,6 +274,96 @@ fn parse_transcript(transcript: &str) -> JevResult {
     unknown()
 }
 
+/// Short conversational intents. Exact or prefix matches only — these
+/// must never swallow longer commands ("help me find my file" is not
+/// the Help intent).
+fn parse_conversational(text: &str) -> Option<Intent> {
+    // Greetings.
+    if matches!(
+        text,
+        "hi" | "hello"
+            | "hey"
+            | "hi nila"
+            | "hello nila"
+            | "hey nila"
+            | "good morning"
+            | "good afternoon"
+            | "good evening"
+    ) {
+        return Some(Intent::Greeting);
+    }
+    if text.starts_with("how are you") {
+        return Some(Intent::HowAreYou);
+    }
+    // Identity.
+    if matches!(
+        text,
+        "what is your name" | "what's your name" | "your name" | "who is nila"
+    ) {
+        return Some(Intent::WhatIsYourName);
+    }
+    if text == "who are you" {
+        return Some(Intent::WhoAreYou);
+    }
+    // Help.
+    if matches!(
+        text,
+        "help"
+            | "help me"
+            | "what can you do"
+            | "what can nila do"
+            | "what can you do for me"
+            | "what commands do you support"
+    ) {
+        return Some(Intent::Help);
+    }
+    // Thanks.
+    if matches!(
+        text,
+        "thanks" | "thank you" | "thanks nila" | "thank you nila" | "thank you very much"
+    ) {
+        return Some(Intent::Thanks);
+    }
+    // Goodbye.
+    if matches!(
+        text,
+        "bye" | "goodbye"
+            | "good night"
+            | "bye nila"
+            | "goodbye nila"
+            | "see you"
+            | "see you later"
+    ) {
+        return Some(Intent::Goodbye);
+    }
+    // Time — answered from the system clock, never remote.
+    if matches!(
+        text,
+        "what time is it"
+            | "what's the time"
+            | "what is the time"
+            | "tell me the time"
+            | "current time"
+            | "the time"
+    ) {
+        return Some(Intent::CurrentTime);
+    }
+    // Date.
+    if matches!(
+        text,
+        "what date is it"
+            | "what is today's date"
+            | "what's today's date"
+            | "what is the date"
+            | "what's the date"
+            | "today's date"
+            | "current date"
+    ) {
+        return Some(Intent::CurrentDate);
+    }
+    None
+}
+
 fn parse_reminder(rest: &str) -> JevResult {
     // Split "call mom at 7 pm" / "check in in 10 minutes" on the LAST
     // separator so titles containing "at"/"in" survive.
@@ -227,17 +373,27 @@ fn parse_reminder(rest: &str) -> JevResult {
         .or_else(|| rest.rsplit_once(" at ").map(|(t, tm)| (t, tm.to_string())))
         .unwrap_or((rest, String::new()));
     let title = title.trim().trim_end_matches(" please").trim().to_string();
-    if title.is_empty() || time_part.trim().is_empty() {
+    if title.is_empty() {
         return unknown();
     }
+    // Complete command ("call mom at 7 pm") → create directly through
+    // the existing reminder service. Title but no usable time
+    // ("drink water") → open the dialog with the title prefilled.
+    // Never create a reminder from incomplete information.
     let now = Local::now();
-    let Some(at) = parse_reminder_time(&time_part, now) else {
-        return unknown();
-    };
-    let mut r = jev(Intent::SetReminder);
-    r.parameters.title = Some(title);
-    r.parameters.datetime = Some(at.to_rfc3339());
-    r
+    match parse_reminder_time(&time_part, now) {
+        Some(at) => {
+            let mut r = jev(Intent::SetReminder);
+            r.parameters.title = Some(title);
+            r.parameters.datetime = Some(at.to_rfc3339());
+            r
+        }
+        None => {
+            let mut r = jev(Intent::NewReminder);
+            r.parameters.title = Some(title);
+            r
+        }
+    }
 }
 
 /// Parse "7 pm", "7:30 pm", "19:00", "tomorrow at 9", "in 10 minutes",
@@ -393,6 +549,159 @@ mod tests {
             validate(&r),
             crate::jev::schema::ValidatedAction::SetReminder { .. }
         ));
+    }
+
+    #[test]
+    fn conversational_intents() {
+        for (text, intent) in [
+            ("Hi Nila", Intent::Greeting),
+            ("Hello", Intent::Greeting),
+            ("Hey Nila", Intent::Greeting),
+            ("Good morning", Intent::Greeting),
+            ("How are you?", Intent::HowAreYou),
+            ("How are you doing?", Intent::HowAreYou),
+            ("What is your name?", Intent::WhatIsYourName),
+            ("What's your name?", Intent::WhatIsYourName),
+            ("Who are you?", Intent::WhoAreYou),
+            ("What can you do?", Intent::Help),
+            ("Help me", Intent::Help),
+            ("What can Nila do?", Intent::Help),
+            ("What commands do you support?", Intent::Help),
+            ("Thanks", Intent::Thanks),
+            ("Thank you", Intent::Thanks),
+            ("Bye", Intent::Goodbye),
+            ("Good night", Intent::Goodbye),
+            ("Goodbye Nila", Intent::Goodbye),
+        ] {
+            assert_eq!(intent_of(text), intent, "{text}");
+        }
+    }
+
+    #[test]
+    fn conversational_intents_are_conversation_type() {
+        use crate::jev::schema::ResponseType;
+        for intent in [
+            Intent::Greeting,
+            Intent::HowAreYou,
+            Intent::WhatIsYourName,
+            Intent::WhoAreYou,
+            Intent::Help,
+            Intent::Thanks,
+            Intent::Goodbye,
+            Intent::CurrentTime,
+            Intent::CurrentDate,
+        ] {
+            assert_eq!(intent.response_type(), ResponseType::Conversation);
+        }
+        for intent in [
+            Intent::NewReminder,
+            Intent::ShowReminders,
+            Intent::OpenSettings,
+        ] {
+            assert_eq!(intent.response_type(), ResponseType::UiAction);
+        }
+        for intent in [
+            Intent::OpenApplication,
+            Intent::SetReminder,
+            Intent::SystemInfo,
+        ] {
+            assert_eq!(intent.response_type(), ResponseType::SystemAction);
+        }
+    }
+
+    #[test]
+    fn time_and_date_intents() {
+        assert_eq!(intent_of("What time is it?"), Intent::CurrentTime);
+        assert_eq!(intent_of("What's the time?"), Intent::CurrentTime);
+        assert_eq!(intent_of("What is today's date?"), Intent::CurrentDate);
+        assert_eq!(intent_of("What date is it?"), Intent::CurrentDate);
+    }
+
+    #[test]
+    fn reminder_ui_intents() {
+        // Bare "set a reminder" → open the dialog, never auto-create.
+        for text in [
+            "Set a reminder",
+            "Create a reminder",
+            "New reminder",
+            "Add a reminder",
+            "Remind me",
+        ] {
+            let r = parse_transcript(text);
+            assert_eq!(r.intent, Intent::NewReminder, "{text}");
+            assert!(r.parameters.title.is_none(), "{text}");
+            // Validates to a UI action, not a system action.
+            assert!(matches!(
+                validate(&r),
+                crate::jev::schema::ValidatedAction::UiNewReminder { title: None }
+            ));
+        }
+        // "remind me to drink water" (no time) → dialog with prefill.
+        let r = parse_transcript("Remind me to drink water");
+        assert_eq!(r.intent, Intent::NewReminder);
+        assert_eq!(r.parameters.title.as_deref(), Some("drink water"));
+        match validate(&r) {
+            crate::jev::schema::ValidatedAction::UiNewReminder { title } => {
+                assert_eq!(title.as_deref(), Some("drink water"))
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // Complete command still creates directly.
+        let r = parse_transcript("Remind me to call John at 7 PM");
+        assert_eq!(r.intent, Intent::SetReminder);
+        assert!(matches!(
+            validate(&r),
+            crate::jev::schema::ValidatedAction::SetReminder { .. }
+        ));
+    }
+
+    #[test]
+    fn show_reminders_intent() {
+        for text in [
+            "Show my reminders",
+            "List my reminders",
+            "What reminders do I have?",
+        ] {
+            assert_eq!(intent_of(text), Intent::ShowReminders, "{text}");
+        }
+    }
+
+    #[test]
+    fn open_settings_intent() {
+        for text in ["Open settings", "Go to settings", "Show settings"] {
+            let r = parse_transcript(text);
+            assert_eq!(r.intent, Intent::OpenSettings, "{text}");
+            assert!(matches!(
+                validate(&r),
+                crate::jev::schema::ValidatedAction::UiOpenSettings
+            ));
+        }
+    }
+
+    #[test]
+    fn ambiguous_commands_do_not_trigger_actions() {
+        // "help me find my file" is not the Help intent (exact match only).
+        assert_ne!(intent_of("Help me find my file"), Intent::Help);
+        // "open settings app" — "settings" alone is the settings intent,
+        // but with more words it falls through to normal handling.
+        assert_ne!(intent_of("Open settings app"), Intent::OpenSettings);
+        // Greeting with extra words doesn't false-positive.
+        assert_ne!(intent_of("Hello world program"), Intent::Greeting);
+    }
+
+    #[test]
+    fn cancel_reminder_disambiguation() {
+        // Specific referent ("that") → resolve through the service.
+        assert_eq!(intent_of("Cancel that reminder"), Intent::CancelReminder);
+        assert_eq!(intent_of("Delete that reminder"), Intent::CancelReminder);
+        // Ambiguous → open the reminder list; never delete on a guess.
+        for text in [
+            "Cancel my reminder",
+            "Delete a reminder",
+            "Remove my reminder",
+        ] {
+            assert_eq!(intent_of(text), Intent::ShowReminders, "{text}");
+        }
     }
 
     #[test]
