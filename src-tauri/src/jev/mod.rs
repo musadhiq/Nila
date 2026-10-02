@@ -19,10 +19,12 @@
 
 pub mod api;
 pub mod context;
+pub mod conversation;
 pub mod credentials;
 pub mod executor;
 pub mod parser;
 pub mod schema;
+pub mod ui_action;
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -32,10 +34,12 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use self::api::JevApiClient;
 use self::context::ConversationContext;
+use self::conversation::ConversationHandler;
 use self::credentials::{KeyringStore, SecureStore};
-use self::executor::{ActionExecutor, ActionStatus};
+use self::executor::{ActionExecutor, ActionResult, ActionStatus};
 use self::parser::LocalParser;
-use self::schema::{validate, Intent, JevResult};
+use self::schema::{validate, Intent, JevResult, ResponseType};
+use self::ui_action::UIActionHandler;
 
 // ---------------------------------------------------------------------------
 // Provider selection
@@ -208,13 +212,34 @@ fn run_pipeline(app: &AppHandle, text: &str) {
     // 3. Strict validation: untrusted Jev output → ValidatedAction.
     let action = validate(&jev_result);
 
-    // 4. Execute on this worker thread (bounded: search has its own
-    //    deadline, the API has its own timeout).
-    let result = {
-        let mut ctx = state.ctx.lock().expect("jev ctx poisoned");
-        ActionExecutor::execute(app, &mut ctx, action)
-    };
+    // 4. Intent router: conversation / UI action / system action.
+    //    The frontend never interprets raw Jev text — it only reacts
+    //    to the structured events each handler emits.
+    match jev_result.intent.response_type() {
+        ResponseType::Conversation => {
+            let result = ConversationHandler::respond(&action);
+            emit_action_result(app, &jev_result, &result);
+        }
+        ResponseType::UiAction => {
+            // The frontend's jev:ui_action listener opens the existing
+            // UI and completes the voice pipeline; no jev:result is
+            // emitted (a UI opening needs no spoken response).
+            UIActionHandler::handle(app, &action);
+        }
+        ResponseType::SystemAction => {
+            // 5. Execute on this worker thread (bounded: search has its
+            //    own deadline, the API has its own timeout).
+            let result = {
+                let mut ctx = state.ctx.lock().expect("jev ctx poisoned");
+                ActionExecutor::execute(app, &mut ctx, action)
+            };
+            emit_action_result(app, &jev_result, &result);
+        }
+    }
+}
 
+/// Emit the standard `jev:result` for a completed handler.
+fn emit_action_result(app: &AppHandle, jev_result: &JevResult, result: &ActionResult) {
     let _ = app.emit(
         events::RESULT,
         ActionCompletedPayload {
@@ -224,8 +249,8 @@ fn run_pipeline(app: &AppHandle, text: &str) {
                 ActionStatus::Error => "error",
             },
             response_key: result.response_key.to_string(),
-            response_params: result.response_params,
-            data: result.data,
+            response_params: result.response_params.clone(),
+            data: result.data.clone(),
         },
     );
 }

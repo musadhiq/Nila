@@ -775,6 +775,15 @@ impl ActionExecutor {
             ValidatedAction::SystemInfo { metric } => SystemExecutor::info(metric),
             ValidatedAction::Cancel => ActionResult::ok("okayCancelled", obj(&[])),
             ValidatedAction::Unknown => ActionResult::err("unknownCommand", obj(&[])),
+            // Conversation and UI actions are routed before the
+            // executor; reaching here means a routing bug. Never
+            // execute — degrade to unknown.
+            ValidatedAction::Conversation { .. }
+            | ValidatedAction::UiNewReminder { .. }
+            | ValidatedAction::UiShowReminders
+            | ValidatedAction::UiOpenSettings => {
+                ActionResult::err("unknownCommand", obj(&[]))
+            }
         }
     }
 }
