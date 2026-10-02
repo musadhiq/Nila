@@ -312,8 +312,8 @@ fn load_engine(model: &Path, tokens: &Path, vad_model: &Path) -> Result<Engine, 
     config.model_config.provider = Some("cpu".to_string());
     config.decoding_method = Some("greedy_search".to_string());
     eprintln!("nila: voice: loading Conformer-CTC model (this takes a moment)...");
-    let recognizer =
-        OfflineRecognizer::create(&config).map_err(|e| format!("failed to create STT recognizer: {e}"))?;
+    let recognizer = OfflineRecognizer::create(&config)
+        .ok_or_else(|| "failed to create STT recognizer".to_string())?;
     eprintln!("nila: voice: STT engine ready");
     Ok(Engine { recognizer, vad })
 }
@@ -354,7 +354,7 @@ fn diag(message: &str) {
     }
 }
 
-fn emit(app: &AppHandle, event: &str, payload: impl serde::Serialize) {
+fn emit(app: &AppHandle, event: &str, payload: impl serde::Serialize + Clone) {
     if let Err(e) = app.emit(event, payload) {
         eprintln!("nila: voice: failed to emit {event}: {e}");
     }
