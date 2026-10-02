@@ -32,6 +32,7 @@ const en = {
   wake: {
     listening: "Listening…",
     nilaAlt: "Nila listening",
+    okayNila: "Okay Nila",
   },
   voice: {
     processing: "Working on it…",
@@ -109,8 +110,6 @@ const en = {
       convHowAreYou: "I'm doing well. What can I help you with?",
       convWhatIsYourName: "I'm Nila.",
       convWhoAreYou: "I'm Nila, your desktop assistant.",
-      convHelp:
-        "I can help with reminders, finding and opening files, launching apps, and basic system info. Just ask.",
       convThanks: "You're welcome!",
       convGoodbye: "Goodbye!",
       convCurrentTime: "It's {time}.",
@@ -130,6 +129,7 @@ const en = {
     appearance: "Appearance",
     accessibility: "Accessibility",
     jev: "AI / Jev",
+    commands: "Commands",
     about: "About",
   },
   page: {
@@ -148,6 +148,32 @@ const en = {
     jev: {
       title: "AI / Jev",
       subtitle: "Voice commands, powered by Jev.",
+    },
+    commands: {
+      title: "Voice Commands",
+      subtitle: "Say “Hi Nila”, then one of these.",
+      reminders: "Reminders",
+      appsFiles: "Apps & Files",
+      system: "System",
+      chat: "Chatting",
+      examples: {
+        remindMe: "Remind me to drink water at 5 PM",
+        newReminder: "Set a reminder",
+        showReminders: "Show my reminders",
+        cancelReminder: "Cancel that reminder",
+        openApp: "Open Firefox",
+        closeApp: "Close Firefox",
+        findFile: "Find my project report",
+        openFolder: "Open the Documents folder",
+        createFolder: "Create a folder called Photos",
+        systemInfo: "How much RAM is free?",
+        battery: "What's the battery level?",
+        time: "What time is it?",
+        date: "What's today's date?",
+        help: "What can you do?",
+        thanks: "Thank you",
+        goodbye: "Goodbye",
+      },
     },
     reminders: {
       title: "Reminders",
@@ -512,6 +538,7 @@ const manglish: Dict = {
   wake: {
     listening: "Kelkkunnu…",
     nilaAlt: "Kelkkunna Nila",
+    okayNila: "Okay Nila",
   },
   voice: {
     processing: "Cheythondirikkunnu…",
@@ -589,8 +616,6 @@ const manglish: Dict = {
       convHowAreYou: "Njan sukhamayirikkunnu. Enthina help cheyyendathu?",
       convWhatIsYourName: "Njan Nila aanu.",
       convWhoAreYou: "Njan Nila aanu, ninte desktop assistant.",
-      convHelp:
-        "Njan reminders, files kandupidikkuka/thurakkuka, apps open cheyyuka, system info — ivakku help cheyyam. Chodicholu.",
       convThanks: "Welcome!",
       convGoodbye: "Bye!",
       convCurrentTime: "{time} aayi.",
@@ -610,6 +635,7 @@ const manglish: Dict = {
     appearance: "Appearance",
     accessibility: "Accessibility",
     jev: "AI / Jev",
+    commands: "Commands",
     about: "About",
   },
   page: {
@@ -628,6 +654,32 @@ const manglish: Dict = {
     jev: {
       title: "AI / Jev",
       subtitle: "Voice commands — Jev power cheyyunnu.",
+    },
+    commands: {
+      title: "Voice Commands",
+      subtitle: "“Hi Nila” ennu paranjittu ithil onnu parayu.",
+      reminders: "Reminders",
+      appsFiles: "Apps & Files",
+      system: "System",
+      chat: "Samsaaram",
+      examples: {
+        remindMe: "5 PM-nu vellam kudikkan ormmippikku",
+        newReminder: "Oru reminder set cheyyu",
+        showReminders: "Ente reminders kaanikku",
+        cancelReminder: "Aa reminder cancel cheyyu",
+        openApp: "Firefox open cheyyu",
+        closeApp: "Firefox close cheyyu",
+        findFile: "Ente project report find cheyyu",
+        openFolder: "Documents folder open cheyyu",
+        createFolder: "Photos ennu peru oru folder undaakku",
+        systemInfo: "Ethra RAM free undu?",
+        battery: "Battery level ethra?",
+        time: "Samayam ethra aayi?",
+        date: "Innu ethraa thaathi?",
+        help: "Ninakku enthu cheyyan patum?",
+        thanks: "Nanni",
+        goodbye: "Goodbye",
+      },
     },
     reminders: {
       title: "Reminders",
