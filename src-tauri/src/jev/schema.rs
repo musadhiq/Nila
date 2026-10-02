@@ -87,12 +87,11 @@ impl Intent {
             | Intent::HowAreYou
             | Intent::WhatIsYourName
             | Intent::WhoAreYou
-            | Intent::Help
             | Intent::Thanks
             | Intent::Goodbye
             | Intent::CurrentTime
             | Intent::CurrentDate => Conversation,
-            Intent::NewReminder | Intent::ShowReminders | Intent::OpenSettings => UiAction,
+            Intent::Help | Intent::NewReminder | Intent::ShowReminders | Intent::OpenSettings => UiAction,
             _ => SystemAction,
         }
     }
@@ -187,6 +186,7 @@ pub enum ValidatedAction {
     UiNewReminder { title: Option<String> },
     UiShowReminders,
     UiOpenSettings,
+    UiHelp,
     Unknown,
 }
 
@@ -318,9 +318,7 @@ pub fn validate(result: &JevResult) -> ValidatedAction {
             Intent::WhoAreYou => Ok(ValidatedAction::Conversation {
                 response_key: "convWhoAreYou",
             }),
-            Intent::Help => Ok(ValidatedAction::Conversation {
-                response_key: "convHelp",
-            }),
+            Intent::Help => Ok(ValidatedAction::UiHelp),
             Intent::Thanks => Ok(ValidatedAction::Conversation {
                 response_key: "convThanks",
             }),
@@ -460,7 +458,6 @@ mod tests {
             (Intent::HowAreYou, "convHowAreYou"),
             (Intent::WhatIsYourName, "convWhatIsYourName"),
             (Intent::WhoAreYou, "convWhoAreYou"),
-            (Intent::Help, "convHelp"),
             (Intent::Thanks, "convThanks"),
             (Intent::Goodbye, "convGoodbye"),
             (Intent::CurrentTime, "convCurrentTime"),
@@ -505,6 +502,10 @@ mod tests {
         assert!(matches!(
             validate(&result(Intent::OpenSettings)),
             ValidatedAction::UiOpenSettings
+        ));
+        assert!(matches!(
+            validate(&result(Intent::Help)),
+            ValidatedAction::UiHelp
         ));
     }
 

@@ -47,6 +47,11 @@ impl UIActionHandler {
                 action: "open_settings",
                 prefill: None,
             },
+            ValidatedAction::UiHelp => UiActionPayload {
+                kind: "jev:ui_action",
+                action: "open_help",
+                prefill: None,
+            },
             // Not a UI action: emit nothing. The pipeline treats a
             // missing ui_action as a no-op rather than opening UI.
             _ => {
