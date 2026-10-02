@@ -9,10 +9,11 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use micro_wakeword::{Error as WakeError, Listener};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -119,8 +120,9 @@ pub fn request_stop(app: &AppHandle) {
 /// to a `.tflite` / `.json` file.
 const ENV_MODEL: &str = "NILA_WAKE_MODEL";
 
-/// The model selected by default. Other models require an explicit env override.
-const MODEL_STEMS: &[&str] = &["nila"];
+/// Model stems in preference order. `nila` is the future custom model;
+/// `okay_nabu` is the temporary test model (see `models/`).
+const MODEL_STEMS: &[&str] = &["nila", "okay_nabu"];
 
 /// Suppress repeat detections for this long after an accepted one, on top
 /// of the model's own sliding-window smoothing.
@@ -133,6 +135,19 @@ const LISTEN_WINDOW: Duration = Duration::from_secs(6);
 /// Pause before rebuilding the listener after a failure (mic unplugged,
 /// model not downloaded yet, ...).
 const RETRY_DELAY: Duration = Duration::from_secs(5);
+
+/// How long to sample the microphone when verifying it's delivering
+/// real audio (not digital silence from a not-yet-ready audio server).
+const MIC_CHECK_DURATION: Duration = Duration::from_millis(1500);
+
+/// RMS below this means the stream is delivering digital silence — a
+/// live microphone always has a noise floor above it. Used to detect
+/// the autostart race where PipeWire/PulseAudio isn't ready yet.
+const MIC_SILENCE_RMS: f32 = 1e-5;
+
+/// Max time to wait for the microphone to come live at startup before
+/// giving up and building the listener anyway (better deaf than dead).
+const MIC_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// How the detector should be configured for a resolved model file.
 enum ModelSource {
@@ -281,6 +296,130 @@ fn emit_error(app: &AppHandle, message: impl Into<String>) {
     .ok();
 }
 
+/// Check whether the microphone is delivering real audio.
+///
+/// Opens a temporary CPAL input stream, samples ~1.5s, and measures
+/// the RMS level. A live microphone always has a noise floor; pure
+/// digital silence means the audio server (PipeWire/PulseAudio) isn't
+/// ready yet or the source is suspended — the classic autostart race
+/// where Nila launches before the audio stack settles.
+///
+/// Returns `true` if the mic seems live, `false` if silent or on any
+/// error (errors are treated as "not ready", not as fatal).
+fn mic_is_live() -> bool {
+    let host = cpal::default_host();
+    let device = match host.default_input_device() {
+        Some(d) => d,
+        None => {
+            eprintln!("nila: wake-word: mic check: no default input device");
+            return false;
+        }
+    };
+    let config = match device.default_input_config() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("nila: wake-word: mic check: no input config: {e}");
+            return false;
+        }
+    };
+
+    let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
+    let samples_cb = samples.clone();
+    let stream = match config.sample_format() {
+        cpal::SampleFormat::F32 => device.build_input_stream(
+            &config.into(),
+            move |data: &[f32], _| {
+                samples_cb.lock().unwrap().extend_from_slice(data);
+            },
+            |e| eprintln!("nila: wake-word: mic check stream error: {e}"),
+            None,
+        ),
+        cpal::SampleFormat::I16 => device.build_input_stream(
+            &config.into(),
+            move |data: &[i16], _| {
+                let mut s = samples_cb.lock().unwrap();
+                s.extend(data.iter().map(|v| *v as f32 / 32768.0));
+            },
+            |e| eprintln!("nila: wake-word: mic check stream error: {e}"),
+            None,
+        ),
+        cpal::SampleFormat::U16 => device.build_input_stream(
+            &config.into(),
+            move |data: &[u16], _| {
+                let mut s = samples_cb.lock().unwrap();
+                s.extend(data.iter().map(|v| (*v as f32 - 32768.0) / 32768.0));
+            },
+            |e| eprintln!("nila: wake-word: mic check stream error: {e}"),
+            None,
+        ),
+        other => {
+            eprintln!("nila: wake-word: mic check: unsupported format {other:?}");
+            return false;
+        }
+    };
+    let stream = match stream {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("nila: wake-word: mic check: stream build failed: {e}");
+            return false;
+        }
+    };
+    if let Err(e) = stream.play() {
+        eprintln!("nila: wake-word: mic check: play failed: {e}");
+        return false;
+    }
+    thread::sleep(MIC_CHECK_DURATION);
+    // Stream drops here, releasing the device before the real listener opens.
+
+    let samples = samples.lock().unwrap();
+    if samples.is_empty() {
+        eprintln!("nila: wake-word: mic check: no samples captured");
+        return false;
+    }
+    let sum_sq: f32 = samples.iter().map(|v| v * v).sum();
+    let rms = (sum_sq / samples.len() as f32).sqrt();
+    eprintln!(
+        "nila: wake-word: mic check: RMS {:.6} over {} samples",
+        rms,
+        samples.len()
+    );
+    rms > MIC_SILENCE_RMS
+}
+
+/// Wait until the microphone is delivering real audio, or time out.
+/// Handles the autostart race: at login, PipeWire/PulseAudio may need
+/// seconds to bring the input source up. Without this, the wake-word
+/// listener opens a stream on a dead source and stays deaf forever —
+/// it only rebuilds on errors, and digital silence isn't an error.
+fn wait_for_mic(stop: &Arc<AtomicBool>, enabled: &Arc<AtomicBool>) {
+    let start = std::time::Instant::now();
+    let mut attempt = 0u32;
+    loop {
+        if stop.load(Ordering::SeqCst) || !enabled.load(Ordering::SeqCst) {
+            return;
+        }
+        attempt += 1;
+        if mic_is_live() {
+            if attempt > 1 {
+                eprintln!("nila: wake-word: microphone is live after {attempt} checks");
+            }
+            return;
+        }
+        if start.elapsed() >= MIC_WAIT_TIMEOUT {
+            eprintln!(
+                "nila: wake-word: mic still silent after {:?}; starting listener anyway",
+                MIC_WAIT_TIMEOUT
+            );
+            return;
+        }
+        eprintln!(
+            "nila: wake-word: mic silent (attempt {attempt}); retrying in 5s \
+             — audio server may still be starting"
+        );
+        sleep_until(stop, enabled, true, Duration::from_secs(5));
+    }
+}
+
 /// Outer loop: resolve a model, build a listener, run it until it dies,
 /// then rebuild (a replugged mic or a newly downloaded model is picked up
 /// without restarting the app).
@@ -312,20 +451,31 @@ fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, enabled: &Arc<AtomicBool
                 );
                 sleep_until(stop, enabled, true, RETRY_DELAY);
             }
-            Some(source) => match build_listener(&source) {
-                Err(e) => {
-                    emit_error(app, format!("wake-word listener failed to start: {e}"));
-                    sleep_until(stop, enabled, true, RETRY_DELAY);
+            Some(source) => {
+                // Verify the mic is delivering real audio before opening
+                // the detector. At autostart the audio server may not be
+                // ready yet — without this the listener opens on digital
+                // silence and stays deaf (silence isn't an error, so the
+                // rebuild-on-error path never fires).
+                wait_for_mic(stop, enabled);
+                if !enabled.load(Ordering::SeqCst) || stop.load(Ordering::SeqCst) {
+                    continue;
                 }
-                Ok(mut listener) => {
-                    transition(&mut state, WakeState::ListeningForWake);
-                    detection_loop(app, &mut listener, stop, enabled, &mut state);
-                    // The listener died (mic unplugged, stream ended, ...),
-                    // or the worker was disabled: drop the listener (mic
-                    // released) and loop around — rebuild if still enabled.
-                    sleep_until(stop, enabled, true, RETRY_DELAY);
+                match build_listener(&source) {
+                    Err(e) => {
+                        emit_error(app, format!("wake-word listener failed to start: {e}"));
+                        sleep_until(stop, enabled, true, RETRY_DELAY);
+                    }
+                    Ok(mut listener) => {
+                        transition(&mut state, WakeState::ListeningForWake);
+                        detection_loop(app, &mut listener, stop, enabled, &mut state);
+                        // The listener died (mic unplugged, stream ended, ...),
+                        // or the worker was disabled: drop the listener (mic
+                        // released) and loop around — rebuild if still enabled.
+                        sleep_until(stop, enabled, true, RETRY_DELAY);
+                    }
                 }
-            },
+            }
         }
     }
     eprintln!("nila: wake-word: listener stopped");
@@ -391,7 +541,7 @@ mod tests {
 
     #[test]
     fn json_path_selects_config_source() {
-        let src = source_for_path(Path::new("/x/nila.json")).unwrap();
+        let src = source_for_path(Path::new("/x/okay_nabu.json")).unwrap();
         assert!(matches!(src, ModelSource::Config(_)));
     }
 
@@ -408,9 +558,9 @@ mod tests {
     }
 
     #[test]
-    fn default_stems_select_only_nila() {
+    fn default_stems_prefer_nila_over_test_model() {
         std::env::remove_var(ENV_MODEL);
-        assert_eq!(stem_candidates(), vec!["nila"]);
+        assert_eq!(stem_candidates(), vec!["nila", "okay_nabu"]);
     }
 
     #[test]
