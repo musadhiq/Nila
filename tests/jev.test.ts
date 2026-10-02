@@ -17,6 +17,7 @@ describe("jev event contract", () => {
     assert.equal(JEV_EVENTS.confirmationRequired, "jev:confirmation_required");
     assert.equal(JEV_EVENTS.result, "jev:result");
     assert.equal(JEV_EVENTS.error, "jev:error");
+    assert.equal(JEV_EVENTS.uiAction, "jev:ui_action");
   });
 });
 
@@ -57,6 +58,15 @@ describe("jev i18n coverage", () => {
       "okayCancelled",
       "unknownCommand",
       "emptyTranscript",
+      "convGreeting",
+      "convHowAreYou",
+      "convWhatIsYourName",
+      "convWhoAreYou",
+      "convHelp",
+      "convThanks",
+      "convGoodbye",
+      "convCurrentTime",
+      "convCurrentDate",
       "jevNotConfigured",
       "jevInvalidToken",
       "jevNetworkError",

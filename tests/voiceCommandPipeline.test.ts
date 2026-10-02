@@ -219,4 +219,25 @@ describe("VoiceCommandPipeline", () => {
     assert.equal(host.answers.length, 0);
     p.dispose();
   });
+
+  it("a UI action completes the pipeline silently (no spoken response)", async () => {
+    const host = makeHost();
+    const p = new VoiceCommandPipeline(host.host, okDeps());
+    await p.handleFinalTranscript("set a reminder");
+    assert.equal(p.isActive(), true);
+    p.handleUiAction();
+    assert.equal(p.isActive(), false);
+    // No answer was spoken — the opening UI is the response.
+    assert.equal(host.answers.length, 0);
+    p.dispose();
+  });
+
+  it("ignores a UI action when no command is active", async () => {
+    const host = makeHost();
+    const p = new VoiceCommandPipeline(host.host, okDeps());
+    p.handleUiAction();
+    assert.equal(p.isActive(), false);
+    assert.equal(host.answers.length, 0);
+    p.dispose();
+  });
 });

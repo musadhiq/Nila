@@ -47,6 +47,8 @@ interface Props {
   initialPage?: PageId;
   /** Open the reminder editor immediately (tray "New Reminder"). */
   autoNewReminder?: boolean;
+  /** Voice-prefilled title for the new-reminder editor. */
+  prefillTitle?: string;
   /** First-run flow: the welcome page shows its finish button. */
   setupMode?: boolean;
   /** Called when the user finishes the first-run setup. */
@@ -73,6 +75,7 @@ export function SettingsPanel({
   onMinimize,
   initialPage,
   autoNewReminder,
+  prefillTitle,
   setupMode,
   onSetupComplete,
   onDataChanged,
@@ -195,6 +198,7 @@ export function SettingsPanel({
             lang={lang}
             reminders={reminders}
             autoNew={autoNewReminder}
+            prefillTitle={prefillTitle}
             openEditorSignal={editorSignal}
             onToggle={onToggleReminder}
             onDelete={onDeleteReminder}
