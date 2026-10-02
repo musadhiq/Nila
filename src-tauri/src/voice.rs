@@ -708,6 +708,7 @@ fn run_session(
             // `samples` (the only large buffer, ≤ max_duration of audio)
             // is dropped here with the Outcome.
         }
+        }
     }
     diag(&format!(
         "session total: {} ms",
