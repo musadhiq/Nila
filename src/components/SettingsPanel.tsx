@@ -14,6 +14,7 @@ import { SettingsLayout, type PageId } from "./settings/SettingsLayout";
 import { WelcomePage } from "./settings/pages/WelcomePage";
 import { GeneralPage } from "./settings/pages/GeneralPage";
 import { JevPage } from "./settings/pages/JevPage";
+import { CommandsPage } from "./settings/pages/CommandsPage";
 import { RemindersPage } from "./settings/pages/RemindersPage";
 import { NilaPage } from "./settings/pages/NilaPage";
 import { AppearancePage } from "./settings/pages/AppearancePage";
@@ -192,6 +193,7 @@ export function SettingsPanel({
           />
         )}
         {page === "jev" && <JevPage t={t} settings={settings} update={update} />}
+        {page === "commands" && <CommandsPage t={t} settings={settings} update={update} />}
         {page === "reminders" && (
           <RemindersPage
             t={t}

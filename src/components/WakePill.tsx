@@ -28,11 +28,18 @@ interface WakePillProps {
   transcript?: string;
   /** Localized error line; the bubble renders in an error tone. */
   error?: string | null;
+  /** Show dismiss controls (Okay Nila button + ×) in the bubble. */
+  dismissible?: boolean;
+  /** Called when the user dismisses via Okay Nila or ×. */
+  onDismiss?: () => void;
+  /** Localized label for the Okay Nila button. */
+  dismissLabel?: string;
 }
 
-export function WakePill({ label, alt, reducedMotion, subtext, transcript, error }: WakePillProps) {
+export function WakePill({ label, alt, reducedMotion, subtext, transcript, error, dismissible, onDismiss, dismissLabel }: WakePillProps) {
   const bubbleText = error ?? (transcript && transcript.trim().length > 0 ? transcript : null);
   const sub = subtext && subtext.trim().length > 0 ? subtext : null;
+  const showDismiss = dismissible && onDismiss && bubbleText && !error;
   return (
     <div className="wake-root" role="status" aria-live="polite">
       <div className="wake-pill">
@@ -52,7 +59,28 @@ export function WakePill({ label, alt, reducedMotion, subtext, transcript, error
         />
       </div>
       {bubbleText ? (
-        <div className={error ? "wake-bubble is-error" : "wake-bubble"}>{bubbleText}</div>
+        <div className={error ? "wake-bubble is-error" : "wake-bubble"}>
+          {showDismiss ? (
+            <button
+              type="button"
+              className="wake-dismiss-x"
+              onClick={onDismiss}
+              aria-label={dismissLabel ?? "Dismiss"}
+            >
+              ×
+            </button>
+          ) : null}
+          <span className="wake-bubble-text">{bubbleText}</span>
+          {showDismiss ? (
+            <button
+              type="button"
+              className="wake-dismiss-btn"
+              onClick={onDismiss}
+            >
+              {dismissLabel ?? "Okay Nila"}
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
