@@ -119,9 +119,8 @@ pub fn request_stop(app: &AppHandle) {
 /// to a `.tflite` / `.json` file.
 const ENV_MODEL: &str = "NILA_WAKE_MODEL";
 
-/// Model stems in preference order. `nila` is the future custom model;
-/// `okay_nabu` is the temporary test model (see `models/`).
-const MODEL_STEMS: &[&str] = &["nila", "okay_nabu"];
+/// The model selected by default. Other models require an explicit env override.
+const MODEL_STEMS: &[&str] = &["nila"];
 
 /// Suppress repeat detections for this long after an accepted one, on top
 /// of the model's own sliding-window smoothing.
@@ -392,7 +391,7 @@ mod tests {
 
     #[test]
     fn json_path_selects_config_source() {
-        let src = source_for_path(Path::new("/x/okay_nabu.json")).unwrap();
+        let src = source_for_path(Path::new("/x/nila.json")).unwrap();
         assert!(matches!(src, ModelSource::Config(_)));
     }
 
@@ -409,9 +408,9 @@ mod tests {
     }
 
     #[test]
-    fn default_stems_prefer_nila_over_test_model() {
+    fn default_stems_select_only_nila() {
         std::env::remove_var(ENV_MODEL);
-        assert_eq!(stem_candidates(), vec!["nila", "okay_nabu"]);
+        assert_eq!(stem_candidates(), vec!["nila"]);
     }
 
     #[test]

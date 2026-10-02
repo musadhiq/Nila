@@ -1,15 +1,12 @@
 # Nila wake-word models
 
-This directory holds the microWakeWord models Nila listens for. The Rust
-backend (`src-tauri/src/wakeword.rs`) resolves the model at startup, in
-this order:
+This directory holds Nila's microWakeWord model. The Rust backend
+(`src-tauri/src/wakeword.rs`) uses `nila.json` (and its paired
+`nila.tflite`) by default. The model listens for "Hi Nila".
 
-1. `$NILA_WAKE_MODEL` — a stem (`nila`) or a direct path to a `.tflite`
-   / `.json` file. Useful for testing a new model without moving files.
-2. `models/nila.tflite` (+ optional `models/nila.json`) — the future
-   custom "Hi Nila" model. Drop the pair here; no code change needed.
-3. `models/okay_nabu.tflite` (+ `models/okay_nabu.json`) — the temporary
-   test model (says "Okay Nabu").
+`$NILA_WAKE_MODEL` can explicitly override the default with a model stem
+or a direct path to a `.tflite` / `.json` file. This is intended for
+local testing; other models in this directory are not selected automatically.
 
 For each stem the backend prefers a model **JSON config** (threshold and
 sliding window come from the model author) and falls back to a bare
@@ -19,29 +16,6 @@ Each location is searched in: `./models`, `../models` (relative to the
 working directory — covers `tauri dev`), next to the executable, and the
 Tauri bundled resources (`$RESOURCE/models` — the `bundle.resources`
 entry in `tauri.conf.json` ships this directory with the .deb/.AppImage).
-
-## Temporary test model
-
-The model files are **not** committed here (binaries). Download the
-temporary "Okay Nabu" test model from the official ESPHome
-microWakeWord model repository:
-
-```sh
-./models/download-test-model.sh
-```
-
-That fetches `okay_nabu.tflite` + `okay_nabu.json` (cutoff 0.97, window 5 —
-verified against the published manifest). Then run `npm run tauri dev`,
-say "Okay Nabu", and Nila should show her listening pill.
-
-## Replacing it with the custom "Hi Nila" model
-
-Train a microWakeWord model (e.g. with the
-[microWakeWord training colab](https://github.com/kahrendt/microWakeWord)),
-then drop the artifacts in here as `nila.tflite` + `nila.json`. The
-backend picks `nila.*` over `okay_nabu.*` automatically — no code change,
-no rebuild of the pipeline. Delete or keep the test model; it is only
-used when no `nila.*` model is present.
 
 ## Privacy
 
