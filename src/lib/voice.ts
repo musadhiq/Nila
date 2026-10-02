@@ -48,7 +48,7 @@ export type ModelEventName = (typeof MODEL_EVENTS)[keyof typeof MODEL_EVENTS];
 
 export interface ModelsDownloadingPayload {
   type: "nila://models-downloading";
-  /** Which file is being fetched ("model.int8.onnx" or "silero_vad.onnx"). */
+  /** Which file is being fetched ("whisper-encoder.int8.onnx", "whisper-decoder.int8.onnx", "tokens.txt" or "silero_vad.onnx"). */
   file: string;
   downloaded_bytes: number;
   /** 0 when the server didn't report a length. */

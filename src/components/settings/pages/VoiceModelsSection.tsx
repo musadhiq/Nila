@@ -1,7 +1,7 @@
 /**
  * Voice-models download section — rendered only when the wake word is
  * enabled (see GeneralPage). The STT models are a manual, one-time
- * download (~80 MB) into the app-data dir; Nila works fine without
+ * download (~210 MB) into the app-data dir; Nila works fine without
  * them, so this is strictly opt-in and nothing downloads on its own.
  *
  * States: not installed / downloading / installed (+ size) / error.
