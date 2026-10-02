@@ -41,7 +41,7 @@ use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use sherpa_onnx::{
-    LinearResampler, OfflineNemoEncDecCtcModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
+    LinearResampler, OfflineRecognizer, OfflineRecognizerConfig, OfflineWhisperModelConfig,
     SileroVadModelConfig, VadModelConfig, VoiceActivityDetector,
 };
 use tauri::{AppHandle, Emitter, Listener, Manager};
@@ -219,8 +219,10 @@ const DEFAULT_MAX_DURATION_SECS: f32 = 20.0;
 /// Live-partial cadence: fast enough to feel real-time, slow enough
 /// that the repeated full-buffer re-decodes don't burn the CPU. Only
 /// re-decodes when at least `MIN_PARTIAL_NEW_SECS` of new audio arrived
-/// since the last decode (coalescing).
-const DEFAULT_PARTIAL_INTERVAL: Duration = Duration::from_millis(400);
+/// since the last decode (coalescing). Whisper's encoder-decoder is
+/// slower than the old CTC model, so partials run at ~1.2s cadence —
+/// still live in the pill, just less chatty.
+const DEFAULT_PARTIAL_INTERVAL: Duration = Duration::from_millis(1200);
 /// Minimum new audio (seconds) that must have arrived before another
 /// partial decode is attempted.
 const MIN_PARTIAL_NEW_SECS: f32 = 0.4;
@@ -283,7 +285,12 @@ struct Engine {
     vad: VoiceActivityDetector,
 }
 
-fn load_engine(model: &Path, tokens: &Path, vad_model: &Path) -> Result<Engine, String> {
+fn load_engine(
+    encoder: &Path,
+    decoder: &Path,
+    tokens: &Path,
+    vad_model: &Path,
+) -> Result<Engine, String> {
     // VAD first (small, fast) so a VAD failure is reported cheaply.
     let mut silero = SileroVadModelConfig::default();
     silero.model = Some(vad_model.to_string_lossy().into_owned());
@@ -306,15 +313,22 @@ fn load_engine(model: &Path, tokens: &Path, vad_model: &Path) -> Result<Engine, 
     let mut config = OfflineRecognizerConfig::default();
     config.feat_config.sample_rate = SAMPLE_RATE;
     config.feat_config.feature_dim = 80;
-    config.model_config.nemo_ctc = OfflineNemoEncDecCtcModelConfig {
-        model: Some(model.to_string_lossy().into_owned()),
+    // Whisper base.en (English-only): far better on Indian English
+    // accents than the previous Conformer-CTC small model. The int8
+    // encoder/decoder keep it CPU-friendly.
+    config.model_config.whisper = OfflineWhisperModelConfig {
+        encoder: Some(encoder.to_string_lossy().into_owned()),
+        decoder: Some(decoder.to_string_lossy().into_owned()),
+        language: Some("en".to_string()),
+        task: Some("transcribe".to_string()),
+        ..Default::default()
     };
     config.model_config.tokens = Some(tokens.to_string_lossy().into_owned());
     config.model_config.num_threads = 2;
     config.model_config.debug = false;
     config.model_config.provider = Some("cpu".to_string());
     config.decoding_method = Some("greedy_search".to_string());
-    eprintln!("nila: voice: loading Conformer-CTC model (this takes a moment)...");
+    eprintln!("nila: voice: loading Whisper base.en model (this takes a moment)...");
     let recognizer = OfflineRecognizer::create(&config)
         .ok_or_else(|| "failed to create STT recognizer".to_string())?;
     eprintln!("nila: voice: STT engine ready");
@@ -469,7 +483,7 @@ fn ensure_engine(app: &AppHandle) -> Result<Engine, (&'static str, String)> {
         }
     })?;
     let t0 = Instant::now();
-    let engine = load_engine(&paths.model, &paths.tokens, &paths.vad)
+    let engine = load_engine(&paths.encoder, &paths.decoder, &paths.tokens, &paths.vad)
         .map_err(|e| ("model_error", format!("STT engine failed to load: {e}")))?;
     diag(&format!(
         "STT engine load: {} ms",
@@ -845,7 +859,7 @@ fn capture_command(
     }
 }
 
-/// Decode 16 kHz mono samples with the offline Conformer-CTC model.
+/// Decode 16 kHz mono samples with the offline Whisper model.
 /// A fresh stream per call: the model is full-context, so partials are
 /// just re-decodes of the growing buffer (sherpa's simulated-streaming
 /// pattern). Never touches disk.
