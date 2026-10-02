@@ -25,6 +25,7 @@ export const VOICE_EVENTS = {
   processing: "voice:processing",
   response: "voice:response",
   error: "voice:error",
+  repeat: "voice:repeat",
   ended: "voice:ended",
 } as const;
 
@@ -93,6 +94,16 @@ export interface VoiceErrorPayload {
   type: "voice:error";
   code: VoiceErrorCode;
   message: string;
+}
+
+/**
+ * Emitted when the transcript came back empty and Nila asks the user to
+ * repeat. The session stays alive; the UI keeps the pill open and shows
+ * the localized prompt until the retry's partials arrive.
+ */
+export interface VoiceRepeatPayload {
+  type: "voice:repeat";
+  attempt: number;
 }
 
 export interface VoiceEndedPayload {
