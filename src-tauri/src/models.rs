@@ -35,7 +35,7 @@
 //! `NILA_STT_VAD_MODEL`); explicit env paths always win and skip the
 //! download entirely. `delete()` never touches env-pointed files.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -501,21 +501,22 @@ fn download_file(
         std::fs::File::create(&part).map_err(|e| format!("create {}: {e}", part.display()))?;
     let mut downloaded: u64 = 0;
     let mut last_emit = Instant::now();
+    // `blocking::Response` implements `std::io::Read`: stream the body
+    // in chunks so progress stays live on large model files.
+    let mut buf = [0u8; 32 * 1024];
     loop {
-        match resp
-            .chunk()
-            .map_err(|e| format!("download {label}: {e}"))?
-        {
-            Some(bytes) => {
-                file.write_all(&bytes)
-                    .map_err(|e| format!("write {}: {e}", part.display()))?;
-                downloaded += bytes.len() as u64;
-                if last_emit.elapsed() >= Duration::from_millis(500) {
-                    last_emit = Instant::now();
-                    emit_progress(app, label, downloaded, total);
-                }
-            }
-            None => break,
+        let n = resp
+            .read(&mut buf)
+            .map_err(|e| format!("download {label}: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n])
+            .map_err(|e| format!("write {}: {e}", part.display()))?;
+        downloaded += n as u64;
+        if last_emit.elapsed() >= Duration::from_millis(500) {
+            last_emit = Instant::now();
+            emit_progress(app, label, downloaded, total);
         }
     }
     emit_progress(app, label, downloaded, total);
@@ -637,7 +638,7 @@ fn emit_progress(app: &AppHandle, file: &'static str, downloaded_bytes: u64, tot
     );
 }
 
-fn emit(app: &AppHandle, event: &str, payload: impl serde::Serialize) {
+fn emit(app: &AppHandle, event: &str, payload: impl serde::Serialize + Clone) {
     if let Err(e) = app.emit(event, payload) {
         eprintln!("nila: models: failed to emit {event}: {e}");
     }
