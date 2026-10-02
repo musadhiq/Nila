@@ -48,6 +48,7 @@ import {
   JEV_EVENTS,
   type JevError,
   type JevResultPayload,
+  type JevUiActionPayload,
 } from "./lib/jev";
 import { VoiceCommandPipeline } from "./lib/voiceCommandPipeline";
 import { playReminderChime } from "./lib/sound";
@@ -121,6 +122,8 @@ export default function App() {
   const [panelPage, setPanelPage] = useState<PageId | null>(null);
   /** ... and opens the reminder editor immediately. */
   const [panelAutoNew, setPanelAutoNew] = useState(false);
+  /** Voice-prefilled reminder title ("remind me to drink water"). */
+  const [panelPrefillTitle, setPanelPrefillTitle] = useState<string | null>(null);
   /** True while the settings panel uses native OS window decorations
    *  (titlebar + resize handles). The custom titlebar hides then. */
   const [decorated, setDecorated] = useState(false);
@@ -769,6 +772,28 @@ export default function App() {
         }),
       );
       unlistens.push(
+        await listenEvent<JevUiActionPayload>(JEV_EVENTS.uiAction, (p) => {
+          // Voice-triggered UI navigation. The opening UI is the
+          // response — the pipeline returns to idle silently.
+          pipeline.handleUiAction();
+          switch (p.action) {
+            case "open_new_reminder":
+              openPanel("settings", {
+                page: "reminders",
+                autoNew: true,
+                prefillTitle: p.prefill?.title || undefined,
+              });
+              break;
+            case "open_reminders":
+              openPanel("settings", { page: "reminders" });
+              break;
+            case "open_settings":
+              openPanel("settings", { page: "general" });
+              break;
+          }
+        }),
+      );
+      unlistens.push(
         await listenEvent<ModelsDownloadingPayload>(
           MODEL_EVENTS.downloading,
           (p) => {
@@ -821,13 +846,14 @@ export default function App() {
    */
   const openPanel = (
     mode: "settings" | "setup",
-    opts?: { page?: PageId; autoNew?: boolean },
+    opts?: { page?: PageId; autoNew?: boolean; prefillTitle?: string },
   ) => {
     const setup = mode === "setup";
     void refreshSettings();
     setSetupMode(setup);
     setPanelPage(opts?.page ?? null);
     setPanelAutoNew(opts?.autoNew ?? false);
+    setPanelPrefillTitle(opts?.prefillTitle ?? null);
     setView("settings");
     // Remount so the panel starts on the right page.
     setPanelKey((k) => k + 1);
@@ -1327,6 +1353,7 @@ export default function App() {
             nativeTitlebar={decorated}
             initialPage={setupMode ? "welcome" : (panelPage ?? undefined)}
             autoNewReminder={panelAutoNew}
+            prefillTitle={panelPrefillTitle ?? undefined}
             setupMode={setupMode}
             // Onboarding finished: persist off setup mode and hand the
             // window back to the tray — the main Nila experience.
