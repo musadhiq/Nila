@@ -43,6 +43,12 @@ import {
   type VoicePartialPayload,
   type VoicePhase,
 } from "./lib/voice";
+import {
+  JEV_EVENTS,
+  type JevError,
+  type JevResultPayload,
+} from "./lib/jev";
+import { VoiceCommandPipeline } from "./lib/voiceCommandPipeline";
 import { playReminderChime } from "./lib/sound";
 import type { MonitorRect } from "./lib/windowPlacement";
 import type { DueReminder } from "./components/ReminderOverlay";
@@ -633,6 +639,36 @@ export default function App() {
       setVoiceText(text);
       setVoiceErrorCode(code);
     };
+    /**
+     * Jev results → Nila's spoken response in the wake pill's bubble.
+     * The response lingers briefly so it can be read, then the pill
+     * dismisses exactly as it would have on voice:ended.
+     */
+    const showJevResponse = (message: string) => {
+      if (!voiceActiveRef.current) return;
+      setVoice("processing", message);
+      window.setTimeout(() => {
+        setVoice("idle");
+        setWakeListening(false);
+      }, 2600);
+    };
+    /**
+     * VoiceCommandPipeline — the STT → Jev integration. It owns the
+     * final-transcript handoff (validate → Jev service → response) and
+     * the processing/executing/response lifecycle; the pill UI above is
+     * untouched. Partials never reach it: only the
+     * `voice:transcript_final` listener below calls into it.
+     */
+    const pipeline = new VoiceCommandPipeline({
+      render: (phase, text) => {
+        // The existing pill only distinguishes listening vs working —
+        // pipeline processing/executing/response all keep its
+        // "Working on it…" look.
+        setVoice(phase === "idle" ? "idle" : "processing", text);
+      },
+      answer: showJevResponse,
+      strings: () => getStrings(settingsRef.current.language),
+    });
     (async () => {
       const hidden = () => settingsRef.current.character_visibility === "hidden";
       unlistens.push(
@@ -661,9 +697,10 @@ export default function App() {
       );
       unlistens.push(
         await listenEvent<VoiceFinalPayload>(VOICE_EVENTS.final, (p) => {
-          // Freeze the final text; this voice_command payload is the
-          // future Jev layer's input contract.
-          setVoice("processing", p.text);
+          // The pipeline validates the text and forwards it to the Jev
+          // service. Partial transcripts never reach this listener, so
+          // Jev only ever sees the final transcript.
+          void pipeline.handleFinalTranscript(p.text);
         }),
       );
       unlistens.push(
@@ -679,13 +716,41 @@ export default function App() {
       );
       unlistens.push(
         await listenEvent<VoiceErrorPayload>(VOICE_EVENTS.error, (p) => {
+          pipeline.handleVoiceError();
           setVoice("error", "", p.code);
         }),
       );
       unlistens.push(
         await listenEvent(VOICE_EVENTS.ended, () => {
+          // A Jev command may still be running (voice:ended fires ~800ms
+          // after the final transcript); its completion event owns the
+          // surface until Nila's response has been shown.
+          if (pipeline.isActive()) return;
           setVoice("idle");
           setWakeListening(false);
+        }),
+      );
+      // Jev lifecycle → pipeline phases. The pipeline turns the
+      // machine-readable payloads into Nila's EN/Manglish response and
+      // drives the pill; stale events (no active command) are ignored.
+      unlistens.push(
+        await listenEvent(JEV_EVENTS.processing, () => {
+          pipeline.handleJevProcessing();
+        }),
+      );
+      unlistens.push(
+        await listenEvent<{ intent: string }>(JEV_EVENTS.actionDetected, (p) => {
+          pipeline.handleActionDetected(p.intent);
+        }),
+      );
+      unlistens.push(
+        await listenEvent<JevResultPayload>(JEV_EVENTS.result, (p) => {
+          pipeline.handleResult(p);
+        }),
+      );
+      unlistens.push(
+        await listenEvent<JevError>(JEV_EVENTS.error, (p) => {
+          pipeline.handleError(p);
         }),
       );
       unlistens.push(
@@ -713,6 +778,7 @@ export default function App() {
     })();
     return () => {
       cancelled = true;
+      pipeline.dispose();
       for (const off of unlistens) off();
     };
   }, []);
