@@ -29,6 +29,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
+use tauri::Manager;
 
 use super::context::{ConversationContext, SearchHit};
 use super::schema::{SystemMetric, ValidatedAction};
@@ -178,7 +179,7 @@ fn find_app(spoken: &str) -> Option<(&'static AppEntry, PathBuf)> {
     let entry = APP_REGISTRY
         .iter()
         .find(|e| e.names.iter().any(|n| *n == spoken))?;
-    let bin = entry.binaries.iter().find_map(resolve_in_path)?;
+    let bin = entry.binaries.iter().find_map(|name| resolve_in_path(name))?;
     Some((entry, bin))
 }
 
@@ -528,7 +529,7 @@ impl FolderExecutor {
 /// (file).
 pub(crate) fn is_known_folder(query: &str) -> bool {
     let q = query.trim().to_lowercase();
-    let q = q.strip_suffix(" folder").unwrap_or(q);
+    let q = q.strip_suffix(" folder").unwrap_or(&q);
     matches!(
         q,
         "downloads"

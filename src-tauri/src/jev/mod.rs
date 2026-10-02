@@ -35,7 +35,7 @@ use self::context::ConversationContext;
 use self::credentials::{KeyringStore, SecureStore};
 use self::executor::{ActionExecutor, ActionStatus};
 use self::parser::LocalParser;
-use self::schema::{validate, Intent, JevResult, ValidatedAction};
+use self::schema::{validate, Intent, JevResult};
 
 // ---------------------------------------------------------------------------
 // Provider selection
@@ -71,17 +71,17 @@ pub mod events {
     pub const ERROR: &str = "jev:error";
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct ProcessingPayload<'a> {
     transcript: &'a str,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct ActionDetectedPayload<'a> {
     intent: &'a str,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct ConfirmationPayload<'a> {
     intent: &'a str,
 }
@@ -95,7 +95,7 @@ pub struct ActionCompletedPayload {
     pub data: Option<serde_json::Value>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct ErrorPayload<'a> {
     code: &'a str,
     response_key: &'a str,
@@ -333,7 +333,7 @@ pub fn jev_get_status(app: AppHandle) -> Result<JevStatus, String> {
         .is_some();
     let last_test = state.last_test.lock().map_err(|e| e.to_string())?;
     // "connected" = a token is stored and no failed test is on record.
-    let connected = configured && last_test != Some(false);
+    let connected = configured && *last_test != Some(false);
     Ok(JevStatus {
         configured,
         connected,
@@ -417,6 +417,7 @@ pub fn process_voice_command(app: AppHandle, text: String) -> Result<(), String>
 mod tests {
     use super::credentials::MemoryStore;
     use super::*;
+    use crate::jev::schema::ValidatedAction;
 
     fn state_with_token(token: Option<&str>) -> JevState {
         let s = JevState::with_store(Box::new(MemoryStore::default()));
