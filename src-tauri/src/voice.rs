@@ -694,6 +694,11 @@ fn capture_command(
     let mut first_partial_done = false;
     // Coalescing gate: don't spend a full-buffer re-decode on a trickle.
     let min_partial_new = (SAMPLE_RATE as f32 * MIN_PARTIAL_NEW_SECS) as usize;
+    // Timeout forensics: if we hit SpeechTimeout, the one-line report
+    // below says whether any audio reached the VAD at all and how loud
+    // it was — "mic silent" vs "VAD not triggering" need different fixes.
+    let mut windows_total: u64 = 0;
+    let mut peak_total: f32 = 0.0;
 
     loop {
         if stop.load(Ordering::SeqCst) {
@@ -722,6 +727,13 @@ fn capture_command(
             // We do our own endpointing; drop the VAD's segment queue.
             engine.vad.clear();
             let speech = engine.vad.detected();
+            windows_total += 1;
+            for s in &chunk {
+                let a = s.abs();
+                if a > peak_total {
+                    peak_total = a;
+                }
+            }
             if *phase == Phase::ListeningForSpeech {
                 if speech {
                     transition(phase, Phase::RecordingCommand);
@@ -735,6 +747,10 @@ fn capture_command(
                         wake_at.elapsed().as_millis()
                     ));
                 } else if session_start.elapsed().as_secs_f32() >= speech_timeout {
+                    eprintln!(
+                        "nila: voice: speech timeout: {windows_total} VAD windows in {:.1}s, peak amplitude {peak_total:.4}",
+                        session_start.elapsed().as_secs_f32()
+                    );
                     return Outcome::SpeechTimeout;
                 }
             } else {
