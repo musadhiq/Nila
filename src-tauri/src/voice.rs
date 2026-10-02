@@ -65,6 +65,11 @@ pub const EVENT_VOICE_PROCESSING: &str = "voice:processing";
 /// NOTE: `voice:response` is reserved for the future Jev layer and is
 /// not emitted by this worker.
 pub const EVENT_VOICE_ERROR: &str = "voice:error";
+/// Emitted when the transcript came back empty and Nila is giving the
+/// user another chance: "I didn't catch that — could you say it again?"
+/// The session stays alive and re-arms the mic; the UI should keep the
+/// pill open and show the prompt.
+pub const EVENT_VOICE_REPEAT: &str = "voice:repeat";
 /// Frontend event: the voice session fully ended and the wake-word
 /// listener is back in charge. The UI should hide the voice surface.
 pub const EVENT_VOICE_ENDED: &str = "voice:ended";
@@ -107,6 +112,15 @@ pub struct ErrorPayload {
     pub kind: &'static str,
     pub code: &'static str,
     pub message: String,
+}
+
+/// Payload for [`EVENT_VOICE_REPEAT`]. The UI localizes the prompt
+/// itself; `attempt` is the attempt that just failed (1-based).
+#[derive(Clone, serde::Serialize)]
+pub struct RepeatPayload {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub attempt: u32,
 }
 
 /// Payload for [`EVENT_VOICE_ENDED`].
@@ -157,6 +171,9 @@ fn can_transition(from: Phase, to: Phase) -> bool {
             | (RecordingCommand, Error)
             | (ProcessingStt, CommandReady)
             | (ProcessingStt, Error)
+            // Empty transcript with attempts left: Nila asks the user to
+            // repeat and the session re-arms instead of failing.
+            | (ProcessingStt, ListeningForSpeech)
             | (CommandReady, WakeListening)
             | (Error, WakeListening)
             // run_forever re-asserts the idle state every loop.
@@ -214,8 +231,18 @@ const ENV_MAX_DURATION: &str = "NILA_VOICE_MAX_DURATION";
 const ENV_PARTIAL_INTERVAL_MS: &str = "NILA_VOICE_PARTIAL_MS";
 
 const DEFAULT_SPEECH_TIMEOUT_SECS: f32 = 8.0;
-const DEFAULT_SILENCE_TIMEOUT_SECS: f32 = 1.2;
+/// Silence that ends a recording. Generous on purpose: the user may
+/// pause mid-sentence to think, and cutting them off feels broken.
+/// Nila waits for the user to actually finish.
+const DEFAULT_SILENCE_TIMEOUT_SECS: f32 = 2.2;
 const DEFAULT_MAX_DURATION_SECS: f32 = 20.0;
+/// How many times Nila listens per wake when she can't make out the
+/// words. After the last attempt she reports `empty_transcript` instead
+/// of asking again — no infinite "could you repeat that?" loops.
+const MAX_LISTEN_ATTEMPTS: u32 = 2;
+/// Beat between the "please repeat" prompt and the mic re-arming, so
+/// the prompt lands in the UI before listening resumes.
+const REPEAT_BEAT: Duration = Duration::from_millis(600);
 /// Live-partial cadence: fast enough to feel real-time, slow enough
 /// that the repeated full-buffer re-decodes don't burn the CPU. Only
 /// re-decodes when at least `MIN_PARTIAL_NEW_SECS` of new audio arrived
@@ -569,68 +596,100 @@ fn run_session(
     }
     let eng = engine.as_ref().expect("engine loaded above");
 
-    let audio = match open_audio() {
-        Ok(audio) => {
-            diag(&format!(
-                "wake->mic-open latency: {} ms",
-                wake_at.elapsed().as_millis()
-            ));
-            audio
+    // Listen attempts: if Nila hears speech but can't make out the
+    // words, she asks the user to repeat instead of failing outright.
+    // The mic is re-opened per attempt so each capture starts with a
+    // clean channel.
+    for attempt in 1..=MAX_LISTEN_ATTEMPTS {
+        if stop.load(Ordering::SeqCst) {
+            break;
         }
-        Err(e) => {
-            transition(phase, Phase::Error);
-            emit_error(app, "mic_error", format!("microphone unavailable: {e}"));
-            // The UI must always see the session end, even when the mic
-            // never opened — otherwise the pill sticks on "listening".
-            emit(app, EVENT_VOICE_ENDED, EndedPayload { kind: "voice:ended" });
-            restore_wake_listener(app, wake_was_enabled);
-            return;
-        }
-    };
-    let outcome = capture_command(
-        app,
-        eng,
-        &audio,
-        stop,
-        phase,
-        wake_at,
-        speech_timeout,
-        silence_timeout,
-        max_duration,
-        partial_interval,
-    );
-    // The stream is dropped here: capture stops, mic released.
-    let dropped = audio.dropped_chunks.load(Ordering::Relaxed);
-    drop(audio);
-    if dropped > 0 {
-        eprintln!("nila: voice: dropped {dropped} audio chunks (queue full during decode)");
-    }
-
-    match outcome {
-        Outcome::Stopped => { /* app is exiting; nothing to emit */ }
-        Outcome::SpeechTimeout => {
-            transition(phase, Phase::Error);
-            emit_error(app, "speech_timeout", "no speech heard after the wake word");
-        }
-        Outcome::MicError => {
-            transition(phase, Phase::Error);
-            emit_error(app, "mic_error", "microphone stream ended unexpectedly");
-        }
-        Outcome::Done { samples } => {
-            // Finalize, then walk PROCESSING_STT -> (Jev handoff) -> idle.
-            transition(phase, Phase::ProcessingStt);
-            let t0 = Instant::now();
-            let text = decode_text(&eng.recognizer, &samples);
-            diag(&format!(
-                "final decode: {} ms ({} samples)",
-                t0.elapsed().as_millis(),
-                samples.len()
-            ));
-            let text = text.trim().to_string();
-            if text.is_empty() {
+        let audio = match open_audio() {
+            Ok(audio) => {
+                diag(&format!(
+                    "wake->mic-open latency: {} ms (attempt {attempt})",
+                    wake_at.elapsed().as_millis()
+                ));
+                audio
+            }
+            Err(e) => {
                 transition(phase, Phase::Error);
-                emit_error(app, "empty_transcript", "couldn't make out any words");
-            } else {
+                emit_error(app, "mic_error", format!("microphone unavailable: {e}"));
+                // The UI must always see the session end, even when the mic
+                // never opened — otherwise the pill sticks on "listening".
+                emit(app, EVENT_VOICE_ENDED, EndedPayload { kind: "voice:ended" });
+                restore_wake_listener(app, wake_was_enabled);
+                return;
+            }
+        };
+        // The pill is already in the listening state from the repeat
+        // prompt; no need to re-announce. The retry's partials will
+        // update it, or the timeout/error path ends the session.
+        let outcome = capture_command(
+            app,
+            eng,
+            &audio,
+            stop,
+            phase,
+            wake_at,
+            speech_timeout,
+            silence_timeout,
+            max_duration,
+            partial_interval,
+        );
+        // The stream is dropped here: capture stops, mic released.
+        let dropped = audio.dropped_chunks.load(Ordering::Relaxed);
+        drop(audio);
+        if dropped > 0 {
+            eprintln!("nila: voice: dropped {dropped} audio chunks (queue full during decode)");
+        }
+
+        match outcome {
+            Outcome::Stopped => { break; /* app is exiting; nothing to emit */ }
+            Outcome::SpeechTimeout => {
+                transition(phase, Phase::Error);
+                emit_error(app, "speech_timeout", "no speech heard after the wake word");
+                break;
+            }
+            Outcome::MicError => {
+                transition(phase, Phase::Error);
+                emit_error(app, "mic_error", "microphone stream ended unexpectedly");
+                break;
+            }
+            Outcome::Done { samples } => {
+                // Finalize, then walk PROCESSING_STT -> (Jev handoff) -> idle.
+                transition(phase, Phase::ProcessingStt);
+                let t0 = Instant::now();
+                let text = decode_text(&eng.recognizer, &samples);
+                diag(&format!(
+                    "final decode: {} ms ({} samples)",
+                    t0.elapsed().as_millis(),
+                    samples.len()
+                ));
+                let text = text.trim().to_string();
+                if text.is_empty() && attempt < MAX_LISTEN_ATTEMPTS {
+                    // Heard something but couldn't make out words — give
+                    // the user another chance instead of failing.
+                    eprintln!(
+                        "nila: voice: empty transcript (attempt {attempt}/{MAX_LISTEN_ATTEMPTS}); asking user to repeat"
+                    );
+                    emit(
+                        app,
+                        EVENT_VOICE_REPEAT,
+                        RepeatPayload {
+                            kind: "voice:repeat",
+                            attempt,
+                        },
+                    );
+                    transition(phase, Phase::ListeningForSpeech);
+                    thread::sleep(REPEAT_BEAT);
+                    continue;
+                }
+                if text.is_empty() {
+                    transition(phase, Phase::Error);
+                    emit_error(app, "empty_transcript", "couldn't make out any words");
+                    break;
+                } else {
                 eprintln!("nila: voice: final transcript: {text}");
                 emit(
                     app,
@@ -644,6 +703,7 @@ fn run_session(
                 // Let the UI freeze the final text before we disappear.
                 transition(phase, Phase::CommandReady);
                 thread::sleep(FINAL_BEAT);
+                break;
             }
             // `samples` (the only large buffer, ≤ max_duration of audio)
             // is dropped here with the Outcome.
