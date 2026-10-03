@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/nila-banner.png" alt="Nila — little desktop companion" width="100%" />
+  <img src="assets/nila-banner.webp" alt="Nila — little desktop companion" width="100%" />
 </p>
 
 # നില (Nila)
