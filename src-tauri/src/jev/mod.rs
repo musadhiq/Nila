@@ -8,7 +8,6 @@
 //!   → JevResult (local parser, or Jev API when a token is configured)
 //!   → jev:action_detected
 //!   → schema validation (untrusted input → ValidatedAction)
-//!   → optional confirmation (no V1 intent needs it)
 //!   → ActionExecutor (allowlisted, shell-free) on a worker thread
 //!   → jev:result {response_key, response_params}
 //!   → Nila's response layer (frontend i18n) renders the message
@@ -38,7 +37,7 @@ use self::conversation::ConversationHandler;
 use self::credentials::{KeyringStore, SecureStore};
 use self::executor::{ActionExecutor, ActionResult, ActionStatus};
 use self::parser::LocalParser;
-use self::schema::{validate, Intent, JevResult, ResponseType};
+use self::schema::{validate, Intent, JevParams, JevResult, ResponseType};
 use self::ui_action::UIActionHandler;
 
 // ---------------------------------------------------------------------------
@@ -70,7 +69,6 @@ const NOT_CONFIGURED_COOLDOWN: Duration = Duration::from_secs(5 * 60);
 pub mod events {
     pub const PROCESSING: &str = "jev:processing";
     pub const ACTION_DETECTED: &str = "jev:action_detected";
-    pub const CONFIRMATION_REQUIRED: &str = "jev:confirmation_required";
     pub const RESULT: &str = "jev:result";
     pub const ERROR: &str = "jev:error";
 }
@@ -82,11 +80,6 @@ struct ProcessingPayload<'a> {
 
 #[derive(Serialize, Clone)]
 struct ActionDetectedPayload<'a> {
-    intent: &'a str,
-}
-
-#[derive(Serialize, Clone)]
-struct ConfirmationPayload<'a> {
     intent: &'a str,
 }
 
@@ -197,20 +190,15 @@ fn run_pipeline(app: &AppHandle, text: &str) {
         },
     );
 
-    // 2. Confirmation gate (prepared for future sensitive actions; no
-    //    V1 intent sets the flag — a set flag halts execution safely).
-    if jev_result.requires_confirmation {
-        let _ = app.emit(
-            events::CONFIRMATION_REQUIRED,
-            ConfirmationPayload {
-                intent: jev_result.intent.as_str(),
-            },
-        );
-        return;
-    }
+    // 2-3. Strict validation, then the intent router.
+    execute_validated(app, state, &jev_result);
+}
 
+/// Validate a [`JevResult`] and route it to the conversation, UI, or
+/// system-action handler.
+fn execute_validated(app: &AppHandle, state: &JevState, jev_result: &JevResult) {
     // 3. Strict validation: untrusted Jev output → ValidatedAction.
-    let action = validate(&jev_result);
+    let action = validate(jev_result);
 
     // 4. Intent router: conversation / UI action / system action.
     //    The frontend never interprets raw Jev text — it only reacts
@@ -218,7 +206,7 @@ fn run_pipeline(app: &AppHandle, text: &str) {
     match jev_result.intent.response_type() {
         ResponseType::Conversation => {
             let result = ConversationHandler::respond(&action);
-            emit_action_result(app, &jev_result, &result);
+            emit_action_result(app, jev_result, &result);
         }
         ResponseType::UiAction => {
             // The frontend's jev:ui_action listener opens the existing
@@ -233,7 +221,7 @@ fn run_pipeline(app: &AppHandle, text: &str) {
                 let mut ctx = state.ctx.lock().expect("jev ctx poisoned");
                 ActionExecutor::execute(app, &mut ctx, action)
             };
-            emit_action_result(app, &jev_result, &result);
+            emit_action_result(app, jev_result, &result);
         }
     }
 }
@@ -325,7 +313,289 @@ fn unknown_result() -> JevResult {
     JevResult {
         intent: Intent::Unknown,
         parameters: schema::JevParams::default(),
-        requires_confirmation: false,
+        message: Some("I don't know how to do that yet.".to_string()),
+    }
+}
+
+fn emit_error(app: &AppHandle, code: &str, response_key: &str) {
+    let _ = app.emit(events::ERROR, ErrorPayload { code, response_key });
+}
+
+// ---------------------------------------------------------------------------
+// Tauri commands — Settings → AI / Jev
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct JevStatus {
+    pub configured: bool,
+    pub connected: bool,
+}
+
+/// `jev_get_status` — the ONLY status the frontend ever sees.
+/// The raw token is never returned.
+#[tauri::command]
+pub fn jev_get_status(app: AppHandle) -> Result<JevStatus, String> {
+    let state = app
+        .try_state::<JevState>()
+        .ok_or("jev unavailable".to_string())?;
+    let configured = state
+        .store
+        .get()
+        .map_err(|e| format!("credential store: {e}"))?
+        .is_some();
+    let last_test = state.last_test.lock().map_err(|e| e.to_string())?;
+    // "connected" = a token is stored and no failed test is on record.
+    let connected = configured && *last_test != Some(false);
+    Ok(JevStatus {
+        configured,
+        connected,
+    })
+}
+
+/// `jev_set_token` — store the token in the OS keychain. The value is
+/// never logged and never persisted anywhere else.
+#[tauri::command]
+pub fn jev_set_token(app: AppHandle, token: String) -> Result<(), String> {
+    if token.trim().is_empty() {
+        return Err("token is empty".to_string());
+    }
+    if token.len() > 4096 {
+        return Err("token is too long".to_string());
+    }
+    let state = app
+        .try_state::<JevState>()
+        .ok_or("jev unavailable".to_string())?;
+    state.store.set(token.trim())?;
+    // A new token invalidates the previous test outcome.
+    *state.last_test.lock().map_err(|e| e.to_string())? = None;
+    Ok(())
+}
+
+/// `jev_remove_token` — delete the token from the OS keychain.
+#[tauri::command]
+pub fn jev_remove_token(app: AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<JevState>()
+        .ok_or("jev unavailable".to_string())?;
+    state.store.delete()?;
+    *state.last_test.lock().map_err(|e| e.to_string())? = None;
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct TestConnectionReport {
+    /// "connected" | "invalid_token" | "network_error" |
+    /// "service_unavailable" | "not_configured"
+    pub status: &'static str,
+}
+
+/// `jev_test_connection` — lightweight authenticated probe. Reports a
+/// status enum; never exposes the token.
+#[tauri::command]
+pub fn jev_test_connection(app: AppHandle) -> Result<TestConnectionReport, String> {
+    let state = app
+        .try_state::<JevState>()
+        .ok_or("jev unavailable".to_string())?;
+    let token = state
+        .store
+        .get()
+        .map_err(|e| format!("credential store: {e}"))?;
+    let Some(token) = token else {
+        return Ok(TestConnectionReport {
+            status: "not_configured",
+        });
+    };
+    let client = state.api_client()?;
+    let status = match client.test_connection(&token) {
+        Ok(()) => "connected",
+        Err(api::ApiError::InvalidToken) => "invalid_token",
+        Err(api::ApiError::Network) | Err(api::ApiError::Timeout) => "network_error",
+        Err(api::ApiError::ServiceUnavailable) => "service_unavailable",
+        Err(api::ApiError::BadResponse) => "service_unavailable",
+    };
+    *state.last_test.lock().map_err(|e| e.to_string())? = Some(status == "connected");
+    Ok(TestConnectionReport { status })
+}
+
+/// `process_voice_command` — called by the frontend with the FINAL
+/// transcript only. Fire-and-forget: results arrive as `jev:*` events.
+#[tauri::command]
+pub fn process_voice_command(app: AppHandle, text: String) -> Result<(), String> {
+    spawn_jev_pipeline(app, text);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// The pipeline
+// ---------------------------------------------------------------------------
+
+/// Entry point from `voice:transcript_final`. Spawns a worker thread and
+/// returns immediately — never blocks the Tauri/UI thread.
+pub fn spawn_jev_pipeline(app: AppHandle, text: String) {
+    std::thread::spawn(move || {
+        run_pipeline(&app, text.trim());
+    });
+}
+
+fn run_pipeline(app: &AppHandle, text: &str) {
+    let _ = app.emit(
+        events::PROCESSING,
+        ProcessingPayload { transcript: text },
+    );
+
+    let Some(state) = app.try_state::<JevState>() else {
+        emit_error(app, "internal", "jevInternalError");
+        return;
+    };
+
+    if text.is_empty() {
+        emit_error(app, "empty_transcript", "emptyTranscript");
+        return;
+    }
+
+    // Expire stale follow-up context before it can leak in.
+    {
+        let mut ctx = state.ctx.lock().expect("jev ctx poisoned");
+        ctx.expire_if_stale();
+    }
+
+    // 1. Jev produces a structured result (local parser or API).
+    let jev_result = produce_jev_result(app, &state, text);
+    let Some(jev_result) = jev_result else {
+        // produce_jev_result already emitted the error.
+        return;
+    };
+
+    let _ = app.emit(
+        events::ACTION_DETECTED,
+        ActionDetectedPayload {
+            intent: jev_result.intent.as_str(),
+        },
+    );
+
+    // 2-3. Strict validation, then the intent router.
+    execute_validated(app, state, &jev_result);
+}
+
+/// Validate a [`JevResult`] and route it to the conversation, UI, or
+/// system-action handler.
+fn execute_validated(app: &AppHandle, state: &JevState, jev_result: &JevResult) {
+    // 3. Strict validation: untrusted Jev output → ValidatedAction.
+    let action = validate(jev_result);
+
+    // 4. Intent router: conversation / UI action / system action.
+    //    The frontend never interprets raw Jev text — it only reacts
+    //    to the structured events each handler emits.
+    match jev_result.intent.response_type() {
+        ResponseType::Conversation => {
+            let result = ConversationHandler::respond(&action);
+            emit_action_result(app, jev_result, &result);
+        }
+        ResponseType::UiAction => {
+            // The frontend's jev:ui_action listener opens the existing
+            // UI and completes the voice pipeline; no jev:result is
+            // emitted (a UI opening needs no spoken response).
+            UIActionHandler::handle(app, &action);
+        }
+        ResponseType::SystemAction => {
+            // 5. Execute on this worker thread (bounded: search has its
+            //    own deadline, the API has its own timeout).
+            let result = {
+                let mut ctx = state.ctx.lock().expect("jev ctx poisoned");
+                ActionExecutor::execute(app, &mut ctx, action)
+            };
+            emit_action_result(app, jev_result, &result);
+        }
+    }
+}
+
+/// Emit the standard `jev:result` for a completed handler.
+fn emit_action_result(app: &AppHandle, jev_result: &JevResult, result: &ActionResult) {
+    let _ = app.emit(
+        events::RESULT,
+        ActionCompletedPayload {
+            intent: jev_result.intent.as_str().to_string(),
+            status: match result.status {
+                ActionStatus::Success => "success",
+                ActionStatus::Error => "error",
+            },
+            response_key: result.response_key.to_string(),
+            response_params: result.response_params.clone(),
+            data: result.data.clone(),
+        },
+    );
+}
+
+/// Returns None when the pipeline must stop (the error was emitted).
+fn produce_jev_result(
+    app: &AppHandle,
+    state: &JevState,
+    text: &str,
+) -> Option<JevResult> {
+    // The token is read here and lives only in this scope. It is never
+    // logged, never put in an event payload, never returned anywhere.
+    let token = match state.store.get() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("nila: jev: credential read failed: {e}");
+            None
+        }
+    };
+
+    match (JEV_MODE, token) {
+        (_, Some(tok)) => {
+            // A token is configured: the Jev API parses.
+            let client = match state.api_client() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("nila: jev: api client: {e}");
+                    emit_error(app, "internal", "jevInternalError");
+                    return None;
+                }
+            };
+            match client.parse(&tok, text) {
+                Ok(r) => Some(r),
+                Err(api::ApiError::InvalidToken) => {
+                    emit_error(app, "invalid_token", "jevInvalidToken");
+                    None
+                }
+                Err(api::ApiError::Network) | Err(api::ApiError::Timeout) => {
+                    emit_error(app, "network_error", "jevNetworkError");
+                    None
+                }
+                Err(api::ApiError::ServiceUnavailable) => {
+                    emit_error(app, "service_unavailable", "jevServiceUnavailable");
+                    None
+                }
+                Err(api::ApiError::BadResponse) => {
+                    // The API returned something outside the schema:
+                    // degrade to unknown, never execute.
+                    Some(unknown_result())
+                }
+            }
+        }
+        (JevMode::ApiOnly, None) => {
+            // Rate-limited "not configured" notice.
+            let mut last = state
+                .not_configured_notice
+                .lock()
+                .expect("jev notice poisoned");
+            let now = Instant::now();
+            let due = last.map(|t| now.duration_since(t) >= NOT_CONFIGURED_COOLDOWN).unwrap_or(true);
+            if due {
+                *last = Some(now);
+                emit_error(app, "not_configured", "jevNotConfigured");
+            }
+            None
+        }
+        (JevMode::Hybrid, None) => Some(LocalParser.parse(text)),
+    }
+}
+
+fn unknown_result() -> JevResult {
+    JevResult {
+        intent: Intent::Unknown,
+        parameters: schema::JevParams::default(),
         message: Some("I don't know how to do that yet.".to_string()),
     }
 }

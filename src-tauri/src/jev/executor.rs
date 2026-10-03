@@ -57,7 +57,7 @@ pub struct ActionResult {
 }
 
 impl ActionResult {
-    fn ok(key: &'static str, params: serde_json::Value) -> Self {
+    pub(crate) fn ok(key: &'static str, params: serde_json::Value) -> Self {
         ActionResult {
             status: ActionStatus::Success,
             response_key: key,
@@ -66,7 +66,7 @@ impl ActionResult {
         }
     }
 
-    fn err(key: &'static str, params: serde_json::Value) -> Self {
+    pub(crate) fn err(key: &'static str, params: serde_json::Value) -> Self {
         ActionResult {
             status: ActionStatus::Error,
             response_key: key,
