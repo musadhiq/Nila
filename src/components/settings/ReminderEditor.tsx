@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Dict } from "../../lib/i18n";
 import type { Reminder, ReminderKind, Schedule } from "../../lib/types";
-import { isPastIso, onceToIso } from "../../lib/reminders";
+import { isPastIso, onceToIso, oneHourFromNow } from "../../lib/reminders";
 import { Segmented, TextField } from "./ui";
 import { IconTrash } from "./icons";
 
@@ -390,6 +390,6 @@ function localToday(): string {
  * so the most common case needs no picker fiddling at all.
  */
 function defaultOnce(): { date: string; time: string } {
-  const iso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const iso = oneHourFromNow().toISOString();
   return { date: toLocalDate(iso), time: toLocalTime(iso) };
 }

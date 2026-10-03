@@ -15,7 +15,7 @@
  */
 
 import { invokeCommand } from "./tauri.ts";
-import type { Dict } from "./i18n";
+import { fill, type Dict } from "./i18n.ts";
 
 export const JEV_EVENTS = {
   processing: "jev:processing",
@@ -123,10 +123,11 @@ export function jevResponse(
   }
   if (!template) template = responses.unknownCommand;
 
-  return template.replace(/\{(\w+)\}/g, (_, name: string) => {
-    const v = params?.[name];
-    return v === undefined || v === null ? `{${name}}` : String(v);
-  });
+  const vars: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(params ?? {})) {
+    if (v !== undefined && v !== null) vars[k] = v as string | number;
+  }
+  return fill(template, vars);
 }
 
 /** Human label for a test-connection status. */

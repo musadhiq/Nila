@@ -10,6 +10,7 @@ import {
   type Language,
 } from "../../../lib/i18n";
 import type { Reminder, ReminderKind } from "../../../lib/types";
+import { oneHourFromNow } from "../../../lib/reminders";
 import { invokeCommand } from "../../../lib/tauri";
 import { SettingsRow, SettingsSection, Switch } from "../ui";
 import { IconChevronRight, IconPlus, IconReminders } from "../icons";
@@ -38,7 +39,7 @@ interface StartupReport {
  * saving. Defaults to a one-time reminder one hour out.
  */
 function newReminderPrefill(title: string): Reminder {
-  const at = new Date(Date.now() + 60 * 60 * 1000);
+  const at = oneHourFromNow();
   return {
     id: "",
     title,

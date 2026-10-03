@@ -87,6 +87,11 @@ export function isPastIso(iso: string, nowMs: number = Date.now()): boolean {
   return Number.isNaN(at) || at <= nowMs;
 }
 
+/** Friendly default for a new one-time reminder: one hour from now. */
+export function oneHourFromNow(nowMs: number = Date.now()): Date {
+  return new Date(nowMs + 60 * 60 * 1000);
+}
+
 export function mergeSettings(raw: Record<string, string>): AppSettings {
   const s: AppSettings = { ...DEFAULT_SETTINGS };
   if (raw.quiet_start) s.quiet_start = raw.quiet_start;
