@@ -203,14 +203,19 @@ pub fn refresh_tray_menu(app: &tauri::AppHandle) {
 /// Build the menu-bar tray icon.
 ///
 /// Nila lives in the tray by default: the floating character window only
-/// Decode the tray icon PNG into a Tauri image.
-fn tray_icon() -> tauri::image::Image {
-    // tauri::image::Image takes raw RGBA pixels — decode the PNG first.
-    // The tray uses the Nila wordmark logo (wide aspect suits the top bar).
+/// Decode the tray icon PNG into raw RGBA pixels (Tauri's Image takes
+/// raw pixels, so the PNG is decoded first). The tray uses the Nila
+/// wordmark logo (wide aspect suits the top bar).
+fn tray_icon_rgba() -> image::RgbaImage {
     let icon_png = include_bytes!("../../character/nila-logo.png");
-    let rgba = image::load_from_memory(icon_png)
+    image::load_from_memory(icon_png)
         .expect("failed to decode tray icon PNG")
-        .to_rgba8();
+        .to_rgba8()
+}
+
+/// The normal tray icon.
+fn tray_icon() -> tauri::image::Image {
+    let rgba = tray_icon_rgba();
     let (w, h) = (rgba.width(), rgba.height());
     tauri::image::Image::new_owned(rgba.into_raw(), w, h)
 }
@@ -219,10 +224,7 @@ fn tray_icon() -> tauri::image::Image {
 /// while Nila is initializing (mic check, model load). No extra binary
 /// asset needed — derived programmatically from the normal icon.
 fn tray_icon_loading() -> tauri::image::Image {
-    let icon_png = include_bytes!("../../character/nila-logo.png");
-    let mut rgba = image::load_from_memory(icon_png)
-        .expect("failed to decode tray icon PNG")
-        .to_rgba8();
+    let mut rgba = tray_icon_rgba();
     for px in rgba.chunks_exact_mut(4) {
         let gray =
             (px[0] as u32 * 30 + px[1] as u32 * 59 + px[2] as u32 * 11) / 100;

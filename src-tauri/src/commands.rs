@@ -108,6 +108,19 @@ pub fn list_reminders(db: State<'_, db::DbState>) -> Result<Vec<Reminder>, Strin
     db::list_reminders(&conn).map_err(|e| e.to_string())
 }
 
+/// Build a validated `Reminder` from user input, minting a unique id.
+/// `id_salt` disambiguates ids minted in a tight loop (backup import).
+fn reminder_from_input(input: ReminderInput, id_salt: i64) -> Reminder {
+    Reminder {
+        id: format!("r-{}", chrono::Utc::now().timestamp_millis() + id_salt),
+        title: input.title.trim().to_string(),
+        message: input.message.trim().to_string(),
+        kind: input.kind,
+        schedule: input.schedule,
+        enabled: input.enabled,
+    }
+}
+
 #[tauri::command]
 pub fn create_reminder(
     app: AppHandle,
@@ -115,14 +128,7 @@ pub fn create_reminder(
     input: ReminderInput,
 ) -> Result<Reminder, String> {
     validate_input(&input)?;
-    let reminder = Reminder {
-        id: format!("r-{}", chrono::Utc::now().timestamp_millis()),
-        title: input.title.trim().to_string(),
-        message: input.message.trim().to_string(),
-        kind: input.kind,
-        schedule: input.schedule,
-        enabled: input.enabled,
-    };
+    let reminder = reminder_from_input(input, 0);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::upsert_reminder(&conn, &reminder).map_err(|e| e.to_string())?;
     scheduler::notify_data_changed(&app);
@@ -339,14 +345,7 @@ pub fn import_data(
         let input: ReminderInput =
             serde_json::from_value(item.clone()).map_err(|_| "Invalid reminder in backup.".to_string())?;
         validate_input(&input)?;
-        let reminder = Reminder {
-            id: format!("r-{}", chrono::Utc::now().timestamp_millis() + count as i64),
-            title: input.title.trim().to_string(),
-            message: input.message.trim().to_string(),
-            kind: input.kind,
-            schedule: input.schedule,
-            enabled: input.enabled,
-        };
+        let reminder = reminder_from_input(input, count as i64);
         db::upsert_reminder(&conn, &reminder).map_err(|e| e.to_string())?;
         count += 1;
     }
