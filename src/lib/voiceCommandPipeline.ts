@@ -48,7 +48,7 @@ import {
   type JevResultPayload,
   type JevStatus,
 } from "./jev.ts";
-import type { Dict } from "./i18n";
+import type { Dict } from "./i18n.ts";
 
 export type PipelinePhase = "idle" | "processing" | "executing" | "response";
 
