@@ -231,8 +231,6 @@ export default function App() {
   }, [wakeListening, voicePhase, view]);
   // Window lifecycle: Nila lives in the menu-bar tray. The floating window
   // only appears when a reminder is due, or when opened from the tray.
-  // `manualOpen` tracks a user-opened window so reminder dismissal doesn't
-  // hide a window the user asked to see.
   const pausedRef = useRef(false);
   pausedRef.current = paused;
   // Fresh settings inside event handlers (the REMINDER_DUE listener is
@@ -785,6 +783,10 @@ export default function App() {
       unlistens.push(
         await listenEvent<VoiceErrorPayload>(VOICE_EVENTS.error, (p) => {
           pipeline.handleVoiceError();
+          // The session died: conversation mode ends here, matching the
+          // documented design (set false on goodbye, error, or dismissal).
+          conversationModeRef.current = false;
+          pendingRearmRef.current = false;
           setVoice("error", "", p.code);
         }),
       );
