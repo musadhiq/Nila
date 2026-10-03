@@ -29,3 +29,16 @@ export function emitEvent(event: string, payload?: unknown): void {
   if (!isTauri()) return;
   void emit(event, payload);
 }
+
+/**
+ * Open an http(s) URL in the user's browser. Inside Tauri this goes
+ * through the backend `open_url` command (xdg-open on Linux); under
+ * plain `vite dev` it falls back to window.open.
+ */
+export async function openExternal(url: string): Promise<void> {
+  if (isTauri()) {
+    await invokeCommand("open_url", { url });
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}

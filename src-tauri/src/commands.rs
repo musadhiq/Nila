@@ -420,3 +420,19 @@ pub fn download_stt_models(app: AppHandle) -> Result<SttDownloadResult, String> 
 pub fn delete_stt_models(app: AppHandle) -> Result<bool, String> {
     crate::models::ModelManager::new(&app).delete()
 }
+
+/// Open an http(s) URL in the user's default browser (xdg-open on
+/// Linux). Only http(s) URLs are accepted; anything else is rejected
+/// so this command can never be used to launch local files or schemes.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    let url = url.trim();
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("only http(s) URLs may be opened".into());
+    }
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map_err(|e| format!("failed to open URL: {e}"))?;
+    Ok(())
+}

@@ -435,6 +435,7 @@ pub fn run() {
             jev::jev_remove_token,
             jev::jev_test_connection,
             jev::process_voice_command,
+            commands::open_url,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nila");
