@@ -26,8 +26,9 @@ pub const EVENT_WAKE_IDLE: &str = "nila://wake-idle";
 /// ...). It keeps retrying on its own. Payload: [`WakeErrorPayload`].
 pub const EVENT_WAKE_ERROR: &str = "nila://wake-error";
 
-/// Wake-word state machine (V1: no speech-to-text yet, so the command
-/// window is a visual hold that ends on its own).
+/// Wake-word state machine. After a detection the worker holds a short
+/// command window (a visual hold) while the voice worker runs the
+/// speech-to-text session, then returns to listening.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WakeState {
     /// Worker starting / between listener rebuilds.

@@ -4,7 +4,6 @@
 //   db             — SQLite schema, migrations, queries
 //   scheduler      — event-driven reminder scheduling
 //   system_monitor — battery / CPU / memory / disk health reminders
-//   platform       — OS providers (notifications, startup, sleep/wake, display)
 //   commands       — Tauri IPC command handlers
 //   wakeword       — microphone wake-word listener (micro-wakeword)
 //   voice          — post-wake voice-command pipeline (sherpa-onnx STT)
@@ -14,7 +13,6 @@ pub mod commands;
 pub mod db;
 pub mod jev;
 pub mod models;
-pub mod platform;
 pub mod scheduler;
 pub mod system_monitor;
 pub mod voice;
@@ -307,7 +305,6 @@ pub fn run() {
     let db_path = default_db_path();
 
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -422,7 +419,6 @@ pub fn run() {
             commands::pause_all,
             commands::resume_all,
             commands::test_reminder,
-            commands::next_reminder,
             commands::startup_report,
             commands::record_reminder_action,
             commands::export_data,
