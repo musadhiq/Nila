@@ -233,7 +233,9 @@ export class VoiceCommandPipeline {
 
   private fail(responseKey: string): void {
     const message = jevResponse(responseKey, undefined, this.host.strings());
-    this.finish(message);
+    // Errors are terminal: the host dismisses the conversation instead of
+    // re-arming another listening turn on a failed command.
+    this.finish(message, "error");
   }
 
   private reset(): void {

@@ -102,6 +102,8 @@ describe("VoiceCommandPipeline", () => {
     const d = await p.handleFinalTranscript("open firefox");
     assert.deepEqual(d, { kind: "unavailable" });
     assert.equal(answers.length, 1);
+    // Errors are terminal: the host dismisses instead of re-arming.
+    assert.equal(answers[0].intent, "error");
     p.dispose();
   });
 
