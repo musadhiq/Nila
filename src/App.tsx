@@ -52,8 +52,7 @@ import {
 } from "./lib/jev";
 import { VoiceCommandPipeline } from "./lib/voiceCommandPipeline";
 import { playReminderChime } from "./lib/sound";
-import type { MonitorRect } from "./lib/windowPlacement";
-import type { DueReminder } from "./components/ReminderOverlay";
+import type { MonitorRect, DueReminder } from "./lib/types";
 import { WakePill } from "./components/WakePill";
 import { NotificationDock } from "./dock/NotificationDock";
 import { DockNilaFigure } from "./dock/DockNila";
