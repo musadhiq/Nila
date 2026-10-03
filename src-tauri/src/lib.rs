@@ -200,12 +200,10 @@ pub fn refresh_tray_menu(app: &tauri::AppHandle) {
     }
 }
 
-/// Build the menu-bar tray icon.
-///
-/// Nila lives in the tray by default: the floating character window only
-/// Decode the tray icon PNG into raw RGBA pixels (Tauri's Image takes
+/// Decode the tray icon PNG into raw RGBA pixels (Tauri's `Image` takes
 /// raw pixels, so the PNG is decoded first). The tray uses the Nila
-/// wordmark logo (wide aspect suits the top bar).
+/// wordmark logo (wide aspect suits the top bar). Shared by the normal
+/// and loading (dimmed) icon variants.
 fn tray_icon_rgba() -> image::RgbaImage {
     let icon_png = include_bytes!("../../character/nila-logo.png");
     image::load_from_memory(icon_png)
