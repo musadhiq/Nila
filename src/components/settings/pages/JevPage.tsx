@@ -119,124 +119,126 @@ export function JevPage({ t }: PageProps) {
     phase === "checking" ? "…" : status.connected ? j.connected : j.notConfigured;
 
   return (
-    <SettingsSection title={j.title}>
-      <SettingsRow
-        title={j.title}
-        description={statusLine}
-        control={
-          phase === "missing" ? (
-            <button
-              type="button"
-              className="btn"
-              disabled={!isTauri()}
-              onClick={() => {
-                clearToken();
-                setNotice(null);
-                setPhase("adding");
-              }}
-            >
-              {j.addToken}
-            </button>
-          ) : undefined
-        }
-      />
+    <div className="settings-content-inner">
+      <SettingsSection title={j.title}>
+        <SettingsRow
+          title={j.title}
+          description={statusLine}
+          control={
+            phase === "missing" ? (
+              <button
+                type="button"
+                className="btn"
+                disabled={!isTauri()}
+                onClick={() => {
+                  clearToken();
+                  setNotice(null);
+                  setPhase("adding");
+                }}
+              >
+                {j.addToken}
+              </button>
+            ) : undefined
+          }
+        />
 
-      {phase === "missing" && <p className="status-line">{j.intro}</p>}
+        {phase === "missing" && <p className="status-line">{j.intro}</p>}
 
-      {phase === "adding" && (
-        <>
-          <div className="srow">
-            <span className="srow-text">
-              <label className="srow-title" htmlFor="jev-token">
-                {j.tokenLabel}
-              </label>
-            </span>
-          </div>
-          <input
-            id="jev-token"
-            type="password"
-            className="text-input"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={j.tokenPlaceholder}
-            value={token}
-            disabled={busy}
-            onChange={(e) => setToken(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void onSave();
-              if (e.key === "Escape") {
-                clearToken();
-                setPhase("missing");
-              }
-            }}
-          />
-          <div className="btn-row" style={{ marginTop: 10 }}>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={busy || token.trim().length === 0}
-              onClick={() => void onSave()}
-            >
-              {busy ? j.saving : j.save}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={busy}
-              onClick={() => {
-                clearToken();
-                setPhase("missing");
-              }}
-            >
-              {j.cancel}
-            </button>
-          </div>
-        </>
-      )}
-
-      {phase === "ready" && (
-        <>
-          <SettingsRow
-            title={j.tokenLabel}
-            description={j.maskedToken}
-            control={
-              <span className="btn-row">
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={busy}
-                  onClick={() => void onTest()}
-                >
-                  {busy ? j.testing : j.testConnection}
-                </button>
-                <button
-                  type="button"
-                  className="btn danger-quiet"
-                  disabled={busy}
-                  onClick={() => void onRemove()}
-                >
-                  {busy ? j.removing : j.remove}
-                </button>
+        {phase === "adding" && (
+          <>
+            <div className="srow">
+              <span className="srow-text">
+                <label className="srow-title" htmlFor="jev-token">
+                  {j.tokenLabel}
+                </label>
               </span>
-            }
-          />
-          <p className="status-line">{j.securityNote}</p>
-        </>
-      )}
+            </div>
+            <input
+              id="jev-token"
+              type="password"
+              className="text-input"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={j.tokenPlaceholder}
+              value={token}
+              disabled={busy}
+              onChange={(e) => setToken(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void onSave();
+                if (e.key === "Escape") {
+                  clearToken();
+                  setPhase("missing");
+                }
+              }}
+            />
+            <div className="btn-row" style={{ marginTop: 10 }}>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={busy || token.trim().length === 0}
+                onClick={() => void onSave()}
+              >
+                {busy ? j.saving : j.save}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => {
+                  clearToken();
+                  setPhase("missing");
+                }}
+              >
+                {j.cancel}
+              </button>
+            </div>
+          </>
+        )}
 
-      {testResult && (
-        <p
-          className={`status-line${testResult === "connected" ? " ok" : " err"}`}
-          role="status"
-        >
-          {testStatusLabel(testResult, t)}
-        </p>
-      )}
-      {notice && (
-        <p className={`status-line${notice.ok ? " ok" : " err"}`} role="status">
-          {notice.text}
-        </p>
-      )}
-    </SettingsSection>
+        {phase === "ready" && (
+          <>
+            <SettingsRow
+              title={j.tokenLabel}
+              description={j.maskedToken}
+              control={
+                <span className="btn-row">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy}
+                    onClick={() => void onTest()}
+                  >
+                    {busy ? j.testing : j.testConnection}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn danger-quiet"
+                    disabled={busy}
+                    onClick={() => void onRemove()}
+                  >
+                    {busy ? j.removing : j.remove}
+                  </button>
+                </span>
+              }
+            />
+            <p className="status-line">{j.securityNote}</p>
+          </>
+        )}
+
+        {testResult && (
+          <p
+            className={`status-line${testResult === "connected" ? " ok" : " err"}`}
+            role="status"
+          >
+            {testStatusLabel(testResult, t)}
+          </p>
+        )}
+        {notice && (
+          <p className={`status-line${notice.ok ? " ok" : " err"}`} role="status">
+            {notice.text}
+          </p>
+        )}
+      </SettingsSection>
+    </div>
   );
 }

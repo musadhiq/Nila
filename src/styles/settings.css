@@ -222,12 +222,17 @@
 .settings-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 44px 64px;
+  /* Horizontal breathing room scales with the window: cards relax when
+     the window widens and hug the edges when it narrows. */
+  padding: 20px clamp(24px, 4vw, 56px) 64px;
   animation: page-in 180ms ease;
 }
 
+/* The inner column is fully fluid — every page's cards fill the same
+   content width, which expands and contracts with the main window.
+   (The welcome onboarding keeps its own centered, narrower treatment.) */
 .settings-content-inner {
-  max-width: 640px;
+  width: 100%;
 }
 
 @keyframes page-in {
