@@ -1,4 +1,4 @@
-// Nila native backend library.
+//! Nila native backend library.
 //
 // Modules:
 //   db             — SQLite schema, migrations, queries
@@ -8,8 +8,10 @@
 //   wakeword       — microphone wake-word listener (micro-wakeword)
 //   voice          — post-wake voice-command pipeline (sherpa-onnx STT)
 //   models         — manual download of the STT models into app-data
+//   connectors     — optional external integrations (Google Calendar)
 
 pub mod commands;
+pub mod connectors;
 pub mod db;
 pub mod jev;
 pub mod models;
@@ -342,6 +344,9 @@ pub fn run() {
             // Jev action layer: conversation context, secure token store.
             app.manage(jev::JevState::new());
 
+            // Google Calendar connector lifecycle state.
+            app.manage(connectors::google_calendar::GcalState::new());
+
             // Startup sequence: load → validate → recover → compute the
             // first deadline → resume. The driver recomputes on every
             // wake, but doing it once here makes a failed resume visible
@@ -395,6 +400,11 @@ pub fn run() {
             // Settings (see models.rs); Nila works without them.
             voice::spawn(app.handle());
 
+            // Google Calendar connector: resume the rolling-window
+            // poll only when connected and reminders are enabled.
+            // No network here — the first sync validates the token.
+            connectors::google_calendar::maybe_start(app.handle());
+
             // Menu-bar tray: the character window stays hidden until a
             // reminder is due (or the user opens it from the tray).
             build_tray(app.handle()).expect("failed to build Nila tray icon");
@@ -431,6 +441,13 @@ pub fn run() {
             jev::jev_remove_token,
             jev::jev_test_connection,
             jev::process_voice_command,
+            connectors::google_calendar::gcal_get_status,
+            connectors::google_calendar::gcal_set_client_id,
+            connectors::google_calendar::gcal_start_auth,
+            connectors::google_calendar::gcal_disconnect,
+            connectors::google_calendar::gcal_test_connection,
+            connectors::google_calendar::gcal_settings_changed,
+            connectors::google_calendar::gcal_sync_now,
             commands::open_url,
         ])
         .build(tauri::generate_context!())
@@ -442,6 +459,7 @@ pub fn run() {
         if matches!(event, tauri::RunEvent::Exit) {
             voice::request_stop(app);
             wakeword::request_stop(app);
+            connectors::google_calendar::request_stop(app);
         }
     });
 }

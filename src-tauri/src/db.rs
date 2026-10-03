@@ -90,6 +90,10 @@ pub const VALID_KINDS: &[&str] = &[
     "water", "food", "break", "move", "sleep", "stretch", "exercise", "work", "custom",
     // System health reminders, fired by the system monitor (system_monitor.rs).
     "battery", "cpu", "memory", "disk",
+    // Google Calendar connector: event reminders scheduled from the
+    // rolling-window sync (connectors/google_calendar). The connector
+    // owns every row of this kind and deletes them on disconnect.
+    "calendar",
 ];
 
 pub fn list_reminders(conn: &Connection) -> rusqlite::Result<Vec<Reminder>> {
@@ -128,6 +132,25 @@ pub fn delete_reminder(conn: &Connection, id: &str) -> rusqlite::Result<()> {
     // this id would otherwise inherit the old wake time.
     clear_snooze(conn, id)?;
     Ok(())
+}
+
+/// Delete every reminder of one kind (history/snooze rows cascade).
+/// Used to drop all connector-owned reminders on disconnect/disable.
+pub fn delete_reminders_by_kind(conn: &Connection, kind: &str) -> rusqlite::Result<usize> {
+    let n = conn.execute("DELETE FROM reminders WHERE kind = ?1", params![kind])?;
+    Ok(n)
+}
+
+/// True when a reminder row with this id exists (fired or pending).
+/// The calendar sync uses it to avoid re-arming a late-event nudge
+/// whose row outlived the in-memory cache across a restart.
+pub fn reminder_exists(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM reminders WHERE id = ?1",
+        params![id],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
 }
 
 pub fn get_reminder(conn: &Connection, id: &str) -> rusqlite::Result<Option<Reminder>> {

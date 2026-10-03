@@ -72,7 +72,6 @@ mod tests {
         let r = JevResult {
             intent,
             parameters: JevParams::default(),
-            requires_confirmation: false,
             message: None,
         };
         crate::jev::schema::validate(&r)

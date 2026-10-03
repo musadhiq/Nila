@@ -64,6 +64,16 @@ pub fn update_settings(
     let prev_lang = db::get_setting(&conn, "language")
         .unwrap_or(None)
         .unwrap_or_default();
+    // Google Calendar connector: snapshot the functional settings so
+    // the post-write reaction below only fires on an actual change.
+    const GCAL_KEYS: [&str; 4] = [
+        "gcal_client_id",
+        "gcal_reminders_enabled",
+        "gcal_reminder_minutes",
+        "gcal_allday_reminders_enabled",
+    ];
+    let prev_gcal: [Option<String>; 4] =
+        std::array::from_fn(|i| db::get_setting(&conn, GCAL_KEYS[i]).unwrap_or(None));
     for (k, v) in obj {
         if k.len() > 64 {
             return Err("Setting name too long.".into());
@@ -98,6 +108,20 @@ pub fn update_settings(
     // listening — no restart needed.
     if let Some(v) = obj.get("wake_word_enabled").and_then(|v| v.as_str()) {
         crate::wakeword::set_enabled(&app, v == "true");
+    }
+    // Google Calendar connector: react in the SAME IPC call as the
+    // write. The frontend saves fire-and-forget, so a separate
+    // `gcal_settings_changed` call could otherwise read stale values
+    // (the write and the reaction would be two unordered commands).
+    // Only keys present in this patch with a changed value react.
+    let gcal_changed = GCAL_KEYS
+        .iter()
+        .zip(prev_gcal.iter())
+        .any(|(k, prev)| obj.get(*k).is_some_and(|v| Some(v.as_str().unwrap_or("")) != prev.as_deref()));
+    if gcal_changed {
+        if let Err(e) = crate::connectors::google_calendar::apply_settings_changed(&app) {
+            eprintln!("nila: gcal: settings reaction failed: {e}");
+        }
     }
     Ok(())
 }
