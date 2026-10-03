@@ -87,25 +87,6 @@ export function isPastIso(iso: string, nowMs: number = Date.now()): boolean {
   return Number.isNaN(at) || at <= nowMs;
 }
 
-/** Short Malayalam description of a schedule, for list rows. */
-export function describeSchedule(s: Schedule): string {
-  switch (s.type) {
-    case "once":
-      return `Once · ${s.at}`;
-    case "daily":
-      return `Daily · ${s.time}`;
-    case "weekly": {
-      const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const days = s.days.map((d) => names[d] ?? "").filter(Boolean).join(", ");
-      return `Weekly · ${days || "—"} · ${s.time}`;
-    }
-    case "interval":
-      return `Every ${s.minutes} min`;
-    case "system":
-      return `System · ${s.metric}`;
-  }
-}
-
 export function mergeSettings(raw: Record<string, string>): AppSettings {
   const s: AppSettings = { ...DEFAULT_SETTINGS };
   if (raw.quiet_start) s.quiet_start = raw.quiet_start;

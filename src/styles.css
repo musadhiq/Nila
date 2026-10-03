@@ -1,10 +1,8 @@
 /* Nila companion window styles. Transparent floating window. */
-
 :root {
   font-family: "Noto Sans Malayalam", system-ui, sans-serif;
   color-scheme: light dark;
 }
-
 html, body {
   margin: 0;
   background: transparent;
@@ -12,7 +10,6 @@ html, body {
   user-select: none;
   -webkit-user-select: none;
 }
-
 .companion {
   width: 100vw;
   height: 100vh;
@@ -26,25 +23,11 @@ html, body {
    * padding never blocks the desktop (spec 23). */
   pointer-events: none;
 }
-.companion .char-drag,
-.companion .gear-btn,
-.companion .reminder-bubble,
-.companion .ctx-menu,
-.companion .ctx-backdrop,
-.companion .dock-card,
-/* The settings panel is a real desktop window: everything inside it must
- * stay clickable even though the companion root is click-through. */
-.companion .panel-wrap {
-  pointer-events: auto;
-}
-.companion .char-drag { cursor: pointer; }
-
 .companion:focus-visible {
   outline: 2px solid #6f8ff7;
   outline-offset: -2px;
   border-radius: 12px;
 }
-
 .bubble {
   position: absolute;
   bottom: 78%;
@@ -56,63 +39,43 @@ html, body {
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
   white-space: nowrap;
 }
-
-@media (prefers-color-scheme: dark) {
-  .bubble {
+@media (prefers-color-scheme: dark) {.bubble {
     background: #2c3852;
     color: #f2f5ff;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .nila-bounce, .nila-wave, .nila-breathe, .nila-attention, .nila-sleepy {
+  }}
+@media (prefers-reduced-motion: reduce) {.nila-bounce, .nila-wave, .nila-breathe, .nila-attention, .nila-sleepy {
     animation: none !important;
-  }
-}
-
+  }}
 /* Character animations */
 @keyframes nila-breathe {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.03); }
 }
 .nila-breathe { animation: nila-breathe 3.2s ease-in-out infinite; transform-origin: 50% 90%; }
-
 @keyframes nila-bounce {
   0%, 100% { transform: translateY(0); }
   40% { transform: translateY(-10px); }
   60% { transform: translateY(-4px); }
 }
 .nila-bounce { animation: nila-bounce 0.9s ease-in-out 2; transform-origin: 50% 90%; }
-
 @keyframes nila-wave {
   0%, 100% { transform: rotate(0deg); }
   25% { transform: rotate(-6deg); }
   75% { transform: rotate(6deg); }
 }
 .nila-wave { animation: nila-wave 0.8s ease-in-out 2; transform-origin: 50% 90%; }
-
 @keyframes nila-attention {
   0% { transform: scale(0.85); }
   60% { transform: scale(1.08); }
   100% { transform: scale(1); }
 }
 .nila-attention { animation: nila-attention 0.6s ease-out; transform-origin: 50% 90%; }
-
 @keyframes nila-sleepy {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(3px); }
 }
 .nila-sleepy { animation: nila-sleepy 4s ease-in-out infinite; transform-origin: 50% 90%; }
-
 /* Character drag handle — the floating window is moved by dragging Nila. */
-.char-drag {
-  cursor: grab;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.char-drag:active { cursor: grabbing; }
-
 /* Full-cutout companion: the transparent character floating on the desktop.
  * The wrapper sizes to the image; the drop-shadow filter on the img is
  * alpha-aware and follows Nila's silhouette. */
@@ -140,7 +103,6 @@ html, body {
   filter: blur(5px);
   pointer-events: none;
 }
-
 /* Motion-frame stage: a fixed-size normalized box so frames of different
  * shapes (tall hangs, wide peeks) never resize the window mid-animation.
  * The img inside is aspect-capped and positioned by the flex anchor. */
@@ -162,7 +124,6 @@ html, body {
   pointer-events: none;
   text-align: left;
 }
-
 /* Dev-only Character Lab gallery (spec 24): never rendered in prod. */
 .char-lab {
   position: fixed;
@@ -283,30 +244,7 @@ html, body {
   opacity: 0.55;
 }
 .lab-btn:hover { opacity: 1; }
-
 /* Gear button (opens settings) */
-.gear-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.75);
-  color: #2b3350;
-  cursor: pointer;
-  opacity: 0.55;
-  transition: opacity 0.15s;
-}
-.gear-btn:hover, .gear-btn:focus-visible { opacity: 1; }
-@media (prefers-color-scheme: dark) {
-  .gear-btn { background: rgba(44, 56, 82, 0.85); color: #f2f5ff; }
-}
-
 /* Reminder overlay */
 .overlay {
   position: absolute;
@@ -330,62 +268,14 @@ html, body {
   max-width: 100%;
   text-align: left;
 }
-@media (prefers-color-scheme: dark) {
-  .overlay-card {
+@media (prefers-color-scheme: dark) {.overlay-card {
     --bubble-bg: #2c3852;
     --bubble-fg: #f2f5ff;
-  }
-}
+  }}
 /* Bubble entrance: gentle fade + rise, staggered after Nila (spec 15). */
-@keyframes bubble-fade-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
-  to { opacity: 1; transform: none; }
-}
-.bubble-enter { animation: bubble-fade-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
-@media (prefers-reduced-motion: reduce) {
-  .bubble-enter { animation: bubble-fade-in 0.12s ease-out; }
-}
 /* Chat-bubble tail pointing toward Nila. The side class comes from the
  * collision-aware layout. --tail-frac (0..1) positions the tail along the
  * facing edge so it tracks Nila's head; defaults to center. */
-.reminder-bubble {
-  --tail-frac: 0.5;
-}
-.reminder-bubble .overlay-card::after {
-  content: "";
-  position: absolute;
-  width: 0;
-  height: 0;
-  border: 9px solid transparent;
-}
-.side-left .reminder-bubble .overlay-card::after {
-  left: 100%;
-  top: calc(var(--tail-frac) * 100%);
-  transform: translateY(-50%);
-  border-left-color: var(--bubble-bg);
-  border-right: 0;
-}
-.side-right .reminder-bubble .overlay-card::after {
-  right: 100%;
-  top: calc(var(--tail-frac) * 100%);
-  transform: translateY(-50%);
-  border-right-color: var(--bubble-bg);
-  border-left: 0;
-}
-.side-above .reminder-bubble .overlay-card::after {
-  top: 100%;
-  left: calc(var(--tail-frac) * 100%);
-  transform: translateX(-50%);
-  border-top-color: var(--bubble-bg);
-  border-bottom: 0;
-}
-.side-below .reminder-bubble .overlay-card::after {
-  bottom: 100%;
-  left: calc(var(--tail-frac) * 100%);
-  transform: translateX(-50%);
-  border-bottom-color: var(--bubble-bg);
-  border-top: 0;
-}
 .overlay-title {
   font-weight: 700;
   font-size: 12px;
@@ -403,7 +293,6 @@ html, body {
   min-width: 0;
 }
 .overlay-actions { display: flex; gap: 6px; justify-content: flex-start; margin-top: 6px; flex-wrap: wrap; }
-
 /* ============================================================
  * Notification dock (V1 surface): a chat-bubble card at the
  * top-center of the screen, hanging just below the system top bar.
@@ -535,7 +424,6 @@ html, body {
 .dock-pill:active:not(:disabled) { transform: scale(0.97); }
 .dock-pill:disabled { opacity: 0.4; cursor: default; }
 .dock-pill:focus-visible { outline: 2px solid #3f7fbf; outline-offset: 2px; }
-
 /* ---- Dock motion: transform + opacity only (no layout animation). ---- */
 @keyframes dock-in {
   from { opacity: 0; transform: translateY(-40px); }
@@ -564,17 +452,14 @@ html, body {
 .dock-wrap:not(.is-entering):not(.is-hidden) .dock-pills {
   animation: dock-rise 280ms 120ms ease-out both;
 }
-
 /* ---- Reduced motion: fade only, no slide. ---- */
-@media (prefers-reduced-motion: reduce) {
-  .dock-wrap.is-entering { animation: dock-fade-in 140ms ease-out both; }
-  .dock-wrap.is-collapsing { animation: dock-fade-out 120ms ease-in both; }
-  .dock-wrap:not(.is-entering):not(.is-hidden) .dock-title-row,
+@media (prefers-reduced-motion: reduce) {.dock-wrap.is-entering { animation: dock-fade-in 140ms ease-out both; }
+.dock-wrap.is-collapsing { animation: dock-fade-out 120ms ease-in both; }
+.dock-wrap:not(.is-entering):not(.is-hidden) .dock-title-row,
   .dock-wrap:not(.is-entering):not(.is-hidden) .dock-message,
   .dock-wrap:not(.is-entering):not(.is-hidden) .dock-pills {
     animation: dock-fade-in 140ms ease-out both;
-  }
-}
+  }}
 .dock-root.reduce-motion .dock-wrap.is-entering { animation: dock-fade-in 140ms ease-out both; }
 .dock-root.reduce-motion .dock-wrap.is-collapsing { animation: dock-fade-out 120ms ease-in both; }
 .dock-root.reduce-motion .dock-wrap:not(.is-entering):not(.is-hidden) .dock-title-row,
@@ -584,7 +469,6 @@ html, body {
 }
 @keyframes dock-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dock-fade-out { from { opacity: 1; } to { opacity: 0; } }
-
 /* ---- Dock Nila life: gentle idle motion, blink beats, expression
  * crossfades, and one-shot contextual reactions. Transform + opacity
  * only — the card layout is untouched. Everything here is disabled
@@ -594,7 +478,6 @@ html, body {
  * .dock-nila-fig (img wrapper) carries the infinite idle breathe and
  * the JS-driven blink dip; the current expression img carries the
  * one-shot reaction (cheer/droop/huff) and the crossfade. */
-
 /* Subtle idle: a slow breath, barely-there lift. */
 @keyframes dock-nila-breathe {
   0%, 100% { transform: translateY(0) scale(1); }
@@ -605,7 +488,6 @@ html, body {
   animation: dock-nila-breathe 4.2s ease-in-out infinite;
   transform-origin: 50% 85%;
 }
-
 /* Blink beat: a real lid-frame overlay, hard-cut like a natural blink.
  * The overlay swaps in the current expression's half/closed frames for
  * ~200ms on an irregular 3–7s interval. Absolutely positioned so it
@@ -617,7 +499,6 @@ html, body {
   height: 100%;
   object-fit: cover;
 }
-
 /* Expression crossfade: old and new expressions overlap briefly. */
 .dock-nila-xfade { position: relative; }
 .dock-nila-xfade img {
@@ -638,7 +519,6 @@ html, body {
 }
 @keyframes dock-nila-fadein { from { opacity: 0; } to { opacity: 1; } }
 .dock-nila-xfade img.is-new { animation: dock-nila-fadein 220ms ease-out; }
-
 /* One-shot contextual reactions (transform only, run once). */
 @keyframes dock-nila-cheer {
   0% { transform: translateY(0); }
@@ -658,7 +538,6 @@ html, body {
   75% { transform: rotate(2.5deg); }
 }
 .dock-nila-huff { animation: dock-nila-huff 420ms ease-in-out; transform-origin: 50% 90%; }
-
 /* Entrance: Nila arrives a breath after the card starts sliding in. */
 @keyframes dock-nila-in {
   from { opacity: 0; transform: translateY(-14px) scale(0.94); }
@@ -667,15 +546,12 @@ html, body {
 .dock-wrap.is-entering .dock-nila {
   animation: dock-nila-in 380ms 70ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-
 /* ---- Reduced motion: no idle, no blink, no one-shots, instant swaps. ---- */
-@media (prefers-reduced-motion: reduce) {
-  .dock-nila-fig { animation: none; }
-  .dock-nila-xfade img.is-new { animation: none; }
-  .dock-nila-xfade img.is-prev { display: none; }
-  .dock-nila-cheer, .dock-nila-droop, .dock-nila-huff { animation: none; }
-  .dock-wrap.is-entering .dock-nila { animation: dock-fade-in 140ms ease-out both; }
-}
+@media (prefers-reduced-motion: reduce) {.dock-nila-fig { animation: none; }
+.dock-nila-xfade img.is-new { animation: none; }
+.dock-nila-xfade img.is-prev { display: none; }
+.dock-nila-cheer, .dock-nila-droop, .dock-nila-huff { animation: none; }
+.dock-wrap.is-entering .dock-nila { animation: dock-fade-in 140ms ease-out both; }}
 .dock-root.reduce-motion .dock-nila-fig { animation: none; }
 .dock-root.reduce-motion .dock-nila-xfade img.is-new { animation: none; }
 .dock-root.reduce-motion .dock-nila-xfade img.is-prev { display: none; }
@@ -683,77 +559,14 @@ html, body {
 .dock-root.reduce-motion .dock-nila-droop,
 .dock-root.reduce-motion .dock-nila-huff { animation: none; }
 .dock-root.reduce-motion .dock-wrap.is-entering .dock-nila { animation: dock-fade-in 140ms ease-out both; }
-
 /* Pill buttons for the chat-bubble feel. */
 .overlay-card .btn { border-radius: 999px; }
-
 /* ---- Presence: the stage Nila lives on (spec 33-57) ---- */
-.nila-stage {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.nila-stage.stage-hidden { opacity: 0; transition: opacity 0.2s; }
-.idle-char { display: flex; align-items: center; justify-content: center; }
-
 /* Entrance animations. Duration comes from settings (inline style). */
-@keyframes nila-enter-fade { from { opacity: 0; } to { opacity: 1; } }
-.nila-enter-fade { animation: nila-enter-fade ease-out; }
-@keyframes nila-enter-pop {
-  0% { opacity: 0; transform: scale(0.7); }
-  100% { opacity: 1; transform: scale(1); }
-}
-.nila-enter-pop { animation: nila-enter-pop cubic-bezier(0.34, 1.56, 0.64, 1); }
-@keyframes nila-enter-bounce {
-  0% { opacity: 0; transform: translateY(40px); }
-  60% { opacity: 1; transform: translateY(-8px); }
-  100% { transform: translateY(0); }
-}
-.nila-enter-bounce { animation: nila-enter-bounce ease-out; }
-@keyframes nila-enter-gentle {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); }
-  to { opacity: 1; transform: none; }
-}
-.nila-enter-gentle { animation: nila-enter-gentle ease-out; }
-
 /* Reminder layout: Nila + bubble, absolutely positioned from the
  * collision-aware layout (spec 5/6/7). The bubble tail tracks Nila via
  * --tail-frac (0..1 along the facing edge). */
-.reminder-stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-.reminder-char {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.reminder-bubble {
-  position: absolute;
-  max-height: 280px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  min-width: 0;
-  transition: opacity 0.22s ease-out;
-}
 /* Legacy flex layout (fallback when no collision layout yet). */
-.reminder-stage.side-left, .reminder-stage.side-right {
-  display: flex; flex-direction: row; align-items: center; justify-content: center;
-  gap: 12px; padding: 8px; box-sizing: border-box;
-}
-.reminder-stage.side-above, .reminder-stage.side-below {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 12px; padding: 8px; box-sizing: border-box;
-}
-.reminder-stage[class*="side-"] .reminder-char,
-.reminder-stage[class*="side-"] .reminder-bubble {
-  position: static;
-}
-.reminder-stage[class*="side-"] .reminder-bubble { width: 300px; max-width: 100%; }
 .overlay.overlay-in-layout {
   position: static;
   inset: auto;
@@ -761,13 +574,6 @@ html, body {
   pointer-events: auto;
 }
 .overlay.overlay-in-layout .overlay-card { max-width: 100%; }
-
-@media (prefers-reduced-motion: reduce) {
-  .nila-enter-pop, .nila-enter-bounce, .nila-enter-gentle {
-    animation: nila-enter-fade 0.15s ease-out !important;
-  }
-}
-
 /* Buttons */
 .btn {
   border: 1px solid #d4dcf2;
@@ -783,17 +589,8 @@ html, body {
 .btn.small { font-size: 12px; padding: 6px 10px; }
 .btn.ghost { background: transparent; }
 .btn:hover { filter: brightness(0.96); }
-@media (prefers-color-scheme: dark) {
-  .btn { background: #3b4a6b; border-color: #4a5b80; color: #f2f5ff; }
-  .btn.primary { background: #6f8ff7; border-color: #6f8ff7; }
-}
-.icon-btn {
-  border: none; background: transparent; cursor: pointer; font-size: 13px; padding: 2px 6px;
-  color: inherit; border-radius: 6px;
-}
-.icon-btn:hover { background: rgba(127, 140, 180, 0.2); }
-.icon-btn.danger:hover { background: rgba(220, 80, 80, 0.18); }
-
+@media (prefers-color-scheme: dark) {.btn { background: #3b4a6b; border-color: #4a5b80; color: #f2f5ff; }
+.btn.primary { background: #6f8ff7; border-color: #6f8ff7; }}
 /* Panels (settings / reminders) */
 .panel-wrap {
   position: absolute;
@@ -804,103 +601,29 @@ html, body {
   border-radius: 12px;
   overflow: hidden;
 }
-@media (prefers-color-scheme: dark) {
-  .panel-wrap { background: rgba(28, 32, 48, 0.97); color: #f2f5ff; }
-}
-.tabs { display: flex; gap: 4px; padding: 10px 10px 0; }
-.tab {
-  flex: 1; border: none; background: transparent; padding: 10px 6px; font-size: 14px;
-  cursor: pointer; color: inherit; font-family: inherit;
-  border-bottom: 2px solid transparent;
-}
-.tab.on { border-bottom-color: #6f8ff7; font-weight: 700; }
+@media (prefers-color-scheme: dark) {.panel-wrap { background: rgba(28, 32, 48, 0.97); color: #f2f5ff; }}
 .panel {
   flex: 1; overflow-y: auto; padding: 14px 16px 18px; font-size: 14px;
   display: flex; flex-direction: column; gap: 12px;
 }
-.panel-header { display: flex; align-items: center; justify-content: space-between; }
-.panel-title { font-weight: 700; font-size: 17px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
-.field-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .panel input[type="time"], .panel input[type="number"], .panel input[type="text"],
 .panel input[type="datetime-local"], .panel select {
   font-family: inherit; font-size: 14px; padding: 8px 10px; border-radius: 10px;
   border: 1px solid #d4dcf2; background: #fff; color: #2b3350; max-width: 100%;
 }
-@media (prefers-color-scheme: dark) {
-  .panel input, .panel select { background: #2c3852; border-color: #4a5b80; color: #f2f5ff; }
-}
-.panel-actions { display: flex; gap: 6px; }
-.panel-section { border-top: 1px solid rgba(127, 140, 180, 0.25); padding-top: 8px; }
-
-.reminder-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.reminder-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  border: 1px solid rgba(127, 140, 180, 0.3); border-radius: 10px; padding: 8px 10px;
-}
-.reminder-main { display: flex; gap: 10px; align-items: center; cursor: pointer; flex: 1; min-width: 0; }
-.reminder-main > span { display: flex; flex-direction: column; min-width: 0; }
-.reminder-title { font-weight: 600; font-size: 14px; }
-.reminder-sub { font-size: 12px; opacity: 0.7; }
+@media (prefers-color-scheme: dark) {.panel input, .panel select { background: #2c3852; border-color: #4a5b80; color: #f2f5ff; }}
 .empty { text-align: center; opacity: 0.5; }
-
-.add-form { display: flex; flex-direction: column; gap: 10px; }
 .day-picker { display: flex; gap: 6px; flex-wrap: wrap; }
 .day {
   border: 1px solid #d4dcf2; background: transparent; color: inherit;
   border-radius: 8px; padding: 6px 8px; font-size: 13px; cursor: pointer; font-family: inherit;
 }
 .day.on { background: #6f8ff7; border-color: #6f8ff7; color: #fff; }
-
 .status-line { font-size: 13px; padding: 8px 10px; border-radius: 8px; }
 .status-line.ok { background: rgba(76, 175, 80, 0.15); color: #2e7d32; }
 .status-line.err { background: rgba(244, 67, 54, 0.12); color: #c62828; }
-
 /* Right-click context menu on Nila */
-.ctx-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
-}
-.ctx-menu {
-  position: fixed;
-  z-index: 9999;
-  background: #ffffff;
-  border: 1px solid #d4dcf2;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 4px;
-  min-width: 140px;
-}
-.ctx-menu button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-family: inherit;
-  color: #2b3350;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.ctx-menu button:hover {
-  background: #f0f3fd;
-}
-@media (prefers-color-scheme: dark) {
-  .ctx-menu {
-    background: #2c3852;
-    border-color: #4a5b80;
-  }
-  .ctx-menu button {
-    color: #f2f5ff;
-  }
-  .ctx-menu button:hover {
-    background: #3b4a6b;
-  }
-}
-
 /* ============================================================
  * Wake-word listening pill: the small indicator shown at the
  * top-center of the screen after the wake word is detected.
@@ -1081,9 +804,7 @@ html, body {
   color: #a09a8e;
 }
 /* ---- Reduced motion: fade in, no pulse. ---- */
-@media (prefers-reduced-motion: reduce) {
-  .wake-pill { animation: wake-fade-in 140ms ease-out both; }
-  .wake-bubble { animation: wake-fade-in 140ms ease-out both; }
-  .wake-dot { animation: none; opacity: 0.85; }
-}
+@media (prefers-reduced-motion: reduce) {.wake-pill { animation: wake-fade-in 140ms ease-out both; }
+.wake-bubble { animation: wake-fade-in 140ms ease-out both; }
+.wake-dot { animation: none; opacity: 0.85; }}
 @keyframes wake-fade-in { from { opacity: 0; } to { opacity: 1; } }

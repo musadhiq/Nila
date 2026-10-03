@@ -26,6 +26,22 @@ export interface Reminder {
   enabled: boolean;
 }
 
+/** Reminder payload as emitted by the Rust backend on REMINDER_DUE. */
+export interface DueReminder {
+  id: string;
+  title: string;
+  message: string;
+  kind: string;
+}
+
+/** Physical-pixel monitor rectangle. */
+export interface MonitorRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface AppSettings {
   quiet_start: string;      // "HH:MM"
   quiet_end: string;        // "HH:MM"
@@ -177,17 +193,3 @@ export const DEFAULT_SETTINGS: AppSettings = {
   monitor_index: 0,
   presence_pos: null,
 };
-
-export type NilaEvent =
-  | "REMINDER_DUE"
-  | "REMINDER_SHOWN"
-  | "REMINDER_DISMISSED"
-  | "REMINDER_SNOOZED"
-  | "REMINDER_COMPLETED"
-  | "SETTINGS_CHANGED"
-  | "SYSTEM_SLEEP"
-  | "SYSTEM_WAKE"
-  | "THEME_CHANGED"
-  | "CHARACTER_CLICK"
-  | "CHARACTER_HOVER"
-  | "CHARACTER_STATE_CHANGED";
