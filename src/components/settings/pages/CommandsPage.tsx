@@ -29,10 +29,6 @@ export function CommandsPage({ t }: PageProps) {
   ];
   return (
     <div className="settings-content-inner">
-      <div className="settings-page-head">
-        <h2>{c.title}</h2>
-        <p>{c.subtitle}</p>
-      </div>
       {groups.map((g) => (
         <SettingsSection key={g.title} title={g.title}>
           <ul className="commands-list">

@@ -142,17 +142,17 @@ export function JevPage({ t }: PageProps) {
           }
         />
 
-        {phase === "missing" && <p className="status-line">{j.intro}</p>}
+        {phase === "missing" && (
+          <div className="sgroup-pad">
+            <p className="status-line">{j.intro}</p>
+          </div>
+        )}
 
         {phase === "adding" && (
-          <>
-            <div className="srow">
-              <span className="srow-text">
-                <label className="srow-title" htmlFor="jev-token">
-                  {j.tokenLabel}
-                </label>
-              </span>
-            </div>
+          <div className="sgroup-pad">
+            <label className="field-label" htmlFor="jev-token">
+              {j.tokenLabel}
+            </label>
             <input
               id="jev-token"
               type="password"
@@ -192,7 +192,7 @@ export function JevPage({ t }: PageProps) {
                 {j.cancel}
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {phase === "ready" && (
@@ -221,22 +221,31 @@ export function JevPage({ t }: PageProps) {
                 </span>
               }
             />
-            <p className="status-line">{j.securityNote}</p>
+            <div className="sgroup-pad">
+              <p className="status-line">{j.securityNote}</p>
+            </div>
           </>
         )}
 
-        {testResult && (
-          <p
-            className={`status-line${testResult === "connected" ? " ok" : " err"}`}
-            role="status"
-          >
-            {testStatusLabel(testResult, t)}
-          </p>
-        )}
-        {notice && (
-          <p className={`status-line${notice.ok ? " ok" : " err"}`} role="status">
-            {notice.text}
-          </p>
+        {(testResult || notice) && (
+          <div className="sgroup-pad">
+            {testResult && (
+              <p
+                className={`status-line${testResult === "connected" ? " ok" : " err"}`}
+                role="status"
+              >
+                {testStatusLabel(testResult, t)}
+              </p>
+            )}
+            {notice && (
+              <p
+                className={`status-line${notice.ok ? " ok" : " err"}`}
+                role="status"
+              >
+                {notice.text}
+              </p>
+            )}
+          </div>
         )}
       </SettingsSection>
     </div>

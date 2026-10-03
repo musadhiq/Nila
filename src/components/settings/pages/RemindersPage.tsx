@@ -138,11 +138,15 @@ export function RemindersPage({
 
   return (
     <div className="settings-content-inner">
-      {nextLine && <p className="status-line">{nextLine}</p>}
-      {report && report.issues.length > 0 && (
-        <p className="status-line err">{r.dataIssue}</p>
-      )}
       <SettingsSection title={r.builtInSection}>
+        {(nextLine || (report && report.issues.length > 0)) && (
+          <div className="sgroup-pad">
+            {nextLine && <p className="status-line">{nextLine}</p>}
+            {report && report.issues.length > 0 && (
+              <p className="status-line err">{r.dataIssue}</p>
+            )}
+          </div>
+        )}
         {BUILT_IN_KINDS.map((kind) => {
           const rem = byKind(kind);
           if (!rem) return null;
@@ -238,9 +242,10 @@ export function RemindersPage({
             />
           </>
         )}
+        <div className="sgroup-pad">
+          <p className="status-line">{r.editHint}</p>
+        </div>
       </SettingsSection>
-
-      <p className="status-line">{r.editHint}</p>
 
       {editing && (
         <ReminderEditor

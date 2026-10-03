@@ -2,6 +2,7 @@
  * About page — minimal: Nila, version, tagline, links.
  */
 import { fill } from "../../../lib/i18n";
+import { openExternal } from "../../../lib/tauri";
 import { SettingsRow, SettingsSection } from "../ui";
 import type { PageProps } from "./page";
 import idleUrl from "../../../../character/states/idle.png";
@@ -37,6 +38,18 @@ export function AboutPage({ t, onOpenWelcome }: PageProps & { onOpenWelcome?: ()
         <SettingsRow
           title={a.github}
           control={<span className="mono">{a.githubValue}</span>}
+        />
+        <SettingsRow
+          title={a.author}
+          control={
+            <button
+              type="button"
+              className="link"
+              onClick={() => void openExternal(a.authorUrl)}
+            >
+              {a.authorValue}
+            </button>
+          }
         />
         <SettingsRow title={a.madeFor} />
       </SettingsSection>

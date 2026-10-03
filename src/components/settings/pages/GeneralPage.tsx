@@ -292,13 +292,17 @@ export function GeneralPage({
             </span>
           }
         />
+        {status && (
+          <div className="sgroup-pad">
+            <p
+              className={`status-line${status.ok ? " ok" : " err"}`}
+              role="status"
+            >
+              {status.text}
+            </p>
+          </div>
+        )}
       </SettingsSection>
-
-      {status && (
-        <p className={`status-line ${status.ok ? "ok" : "err"}`} role="status">
-          {status.text}
-        </p>
-      )}
     </div>
   );
 }

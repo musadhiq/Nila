@@ -47,12 +47,10 @@ export function NilaPage({
 
   return (
     <div className="settings-content-inner">
-      <h3 className="presence-heading">{c.presenceTitle}</h3>
-      <p className="presence-sub">{c.presenceSubtitle}</p>
-
-      <SettingsSection title={c.dockSection}>
-        <p className="section-desc">{c.dockDesc}</p>
-        <DockDiagram t={t} />
+      <SettingsSection title={c.dockSection} description={c.dockDesc}>
+        <div className="sgroup-pad">
+          <DockDiagram t={t} />
+        </div>
       </SettingsSection>
 
       <SettingsSection title={c.appearanceSection}>
@@ -74,8 +72,7 @@ export function NilaPage({
         />
       </SettingsSection>
 
-      <SettingsSection title={c.visibilitySection}>
-        <p className="section-desc">{c.visibilityDesc}</p>
+      <SettingsSection title={c.visibilitySection} description={c.visibilityDesc}>
         <SettingsRow
           title={c.visibilityAlways}
           description={c.visibilityAlwaysDesc}
@@ -96,8 +93,7 @@ export function NilaPage({
         />
       </SettingsSection>
 
-      <SettingsSection title={c.idleSection}>
-        <p className="section-desc">{c.idleDesc}</p>
+      <SettingsSection title={c.idleSection} description={c.idleDesc}>
         <SettingsRow
           title={c.idleNormal}
           description={c.idleNormalDesc}
@@ -113,9 +109,8 @@ export function NilaPage({
       </SettingsSection>
 
       {import.meta.env.DEV && (
-        <SettingsSection title={c.previewSection}>
-          <p className="section-desc">{c.previewDesc}</p>
-          <div className="preview-btn-row">
+        <SettingsSection title={c.previewSection} description={c.previewDesc}>
+          <div className="sgroup-pad preview-btn-row">
             <button type="button" className="btn" onClick={() => onPreview("short")}>
               {c.previewShort}
             </button>
