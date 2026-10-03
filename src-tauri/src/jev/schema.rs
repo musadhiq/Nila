@@ -71,14 +71,6 @@ pub enum ResponseType {
 }
 
 impl Intent {
-    /// Intents that never need user confirmation (the V1 set). The
-    /// `requires_confirmation` machinery exists for future
-    /// destructive/sensitive actions; nothing sets it yet.
-    pub fn needs_confirmation(self) -> bool {
-        let _ = self;
-        false
-    }
-
     /// Which handler owns this intent after validation.
     pub fn response_type(self) -> ResponseType {
         use ResponseType::*;
@@ -157,8 +149,6 @@ pub struct JevResult {
     pub intent: Intent,
     #[serde(default)]
     pub parameters: JevParams,
-    #[serde(default)]
-    pub requires_confirmation: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
@@ -225,11 +215,6 @@ fn clean_text(raw: &str, max: usize) -> Result<String, String> {
 /// with a message, never an execution. The pipeline cannot crash on a
 /// bad Jev response.
 pub fn validate(result: &JevResult) -> ValidatedAction {
-    // A confirmation flag on an intent that doesn't support it is a
-    // schema violation, not an execution.
-    if result.requires_confirmation && !result.intent.needs_confirmation() {
-        return ValidatedAction::Unknown;
-    }
     let p = &result.parameters;
     let validated = (|| -> Result<ValidatedAction, String> {
         match result.intent {
@@ -359,7 +344,6 @@ mod tests {
         JevResult {
             intent,
             parameters: JevParams::default(),
-            requires_confirmation: false,
             message: None,
         }
     }
@@ -507,13 +491,5 @@ mod tests {
             validate(&result(Intent::Help)),
             ValidatedAction::UiHelp
         ));
-    }
-
-    #[test]
-    fn unexpected_confirmation_flag_is_not_executed() {
-        let mut r = result(Intent::OpenApplication);
-        r.parameters.application = Some("firefox".into());
-        r.requires_confirmation = true;
-        assert!(matches!(validate(&r), ValidatedAction::Unknown));
     }
 }

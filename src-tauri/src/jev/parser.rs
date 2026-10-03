@@ -28,7 +28,6 @@ fn jev(intent: Intent) -> JevResult {
     JevResult {
         intent,
         parameters: JevParams::default(),
-        requires_confirmation: intent.needs_confirmation(),
         message: None,
     }
 }
@@ -364,15 +363,36 @@ fn parse_conversational(text: &str) -> Option<Intent> {
     None
 }
 
-fn parse_reminder(rest: &str) -> JevResult {
-    // Split "call mom at 7 pm" / "check in in 10 minutes" on the LAST
-    // separator so titles containing "at"/"in" survive.
+/// Split "call mom at 7 pm" / "check in in 10 minutes" on the LAST
+/// separator so titles containing "at"/"in" survive. Shared by the
+/// reminder parsers.
+fn split_title_time(rest: &str) -> (String, String) {
     let (title, time_part) = rest
         .rsplit_once(" in ")
         .map(|(t, tm)| (t, format!("in {tm}")))
         .or_else(|| rest.rsplit_once(" at ").map(|(t, tm)| (t, tm.to_string())))
         .unwrap_or((rest, String::new()));
-    let title = title.trim().trim_end_matches(" please").trim().to_string();
+    let mut title = title.to_string();
+    let mut time_part = time_part;
+    // "team lunch tomorrow at 1 pm": the split above only cuts on the
+    // last " at ", so the date word would leak into the title AND the
+    // event would land on the wrong day. Move it onto the time part,
+    // which `parse_reminder_time` understands as a prefix.
+    if title.to_lowercase().ends_with(" tomorrow") {
+        title.truncate(title.len() - " tomorrow".len());
+        time_part = format!("tomorrow {time_part}");
+    }
+    let title = title
+        .trim()
+        .trim_end_matches(" please")
+        .trim()
+        .to_string();
+    (title, time_part.trim().to_string())
+}
+
+/// "remind me to call mom at 7 pm" — complete or prefill fallback.
+fn parse_reminder(rest: &str) -> JevResult {
+    let (title, time_part) = split_title_time(rest);
     if title.is_empty() {
         return unknown();
     }
@@ -783,5 +803,33 @@ mod tests {
         assert_eq!(intent_of(""), Intent::Unknown);
         assert_eq!(intent_of("cancel"), Intent::Cancel);
         assert_eq!(intent_of("never mind"), Intent::Cancel);
+    }
+
+    #[test]
+    fn calendar_phrases_are_not_jev_actions() {
+        // The Google Calendar connector is independent: it only syncs
+        // events into reminders. JEV does not list, create, move, or
+        // cancel calendar events, so these phrases are unknown.
+        for phrase in [
+            "What's on my calendar",
+            "What is on my calendar today",
+            "Show my calendar",
+            "What do I have next",
+            "My next meeting",
+            "What's next",
+            "Schedule team lunch tomorrow at 1 pm",
+            "Schedule lunch",
+            "Move it to 5 pm",
+            "Move my 4 pm meeting to 5 pm",
+            "Cancel it",
+            "Cancel my 3 pm meeting",
+        ] {
+            assert_eq!(intent_of(phrase), Intent::Unknown, "{phrase}");
+        }
+
+        // Existing reminder phrases keep their meaning.
+        assert_eq!(intent_of("Cancel my reminder"), Intent::ShowReminders);
+        assert_eq!(intent_of("Cancel that reminder"), Intent::CancelReminder);
+        assert_eq!(intent_of("Add a reminder"), Intent::NewReminder);
     }
 }
