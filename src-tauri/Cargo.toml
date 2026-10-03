@@ -32,3 +32,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
 keyring = "3"
+# Google Calendar connector (OAuth PKCE + API): tiny pure-Rust crates.
+sha2 = "0.10"
+base64 = "0.22"
