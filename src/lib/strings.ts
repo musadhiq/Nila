@@ -61,13 +61,6 @@ export const BUILT_IN_MESSAGES: Record<string, string[]> = {
   ],
 };
 
-/** Pick a rotating message variant for a reminder kind. */
-export function pickVariant(kind: string, index: number): string {
-  const variants = BUILT_IN_MESSAGES[kind];
-  if (!variants || variants.length === 0) return "";
-  return variants[index % variants.length];
-}
-
 /** Built-in reminder titles (Manglish). */
 export const BUILT_IN_TITLES: Record<string, string> = {
   water: "Vellam",
@@ -79,15 +72,3 @@ export const BUILT_IN_TITLES: Record<string, string> = {
   work: "Joli",
   sleep: "Urakkam",
 };
-
-/** First-launch greeting (Manglish). */
-export const ONBOARDING = {
-  hello: "Hi 👋",
-  intro:
-    "Njan Nila! Ningale sahayikkan vannu oru cheriya koottukari. " +
-    "Vellam kudikkanum visramikkanum njan snehathode ormmippikkam.",
-  chooseReminders: "Ethokke ormmappeduthalukal venam?",
-  schedule: "Eppozhokke ormmippikkanam?",
-  appearance: "Enne engane kananam?",
-  finish: "Sheri, thudangam!",
-} as const;

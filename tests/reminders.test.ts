@@ -2,7 +2,6 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   BUILT_IN_TEMPLATES,
-  describeSchedule,
   mergeSettings,
   parseSchedule,
   scheduleToJson,
@@ -55,15 +54,6 @@ describe("schedule parsing", () => {
   it("round-trips through JSON", () => {
     const s = { type: "interval", minutes: 90 } as const;
     assert.deepEqual(parseSchedule(scheduleToJson(s)), s);
-  });
-
-  it("describes schedules in English", () => {
-    assert.match(describeSchedule({ type: "daily", time: "09:00" }), /Daily/);
-    assert.match(describeSchedule({ type: "interval", minutes: 60 }), /60/);
-    assert.match(
-      describeSchedule({ type: "weekly", days: [0, 6], time: "10:00" }),
-      /Sun/,
-    );
   });
 });
 

@@ -53,11 +53,6 @@ export function frameUrl(requestedKey: string): string | null {
   return KEY_TO_URL.get(key) ?? null;
 }
 
-/** All asset keys actually bundled (for the dev gallery). */
-export function availableFrameKeys(): string[] {
-  return [...AVAILABLE_KEYS].sort();
-}
-
 const preloaded = new Set<string>();
 
 function loadImage(url: string): Promise<void> {
@@ -91,16 +86,6 @@ export function preloadFrames(keys: readonly string[]): Promise<void> {
   }
   if (fresh.length === 0) return Promise.resolve();
   return Promise.all(fresh.map(loadImage)).then(() => undefined);
-}
-
-/** Preload every frame of the named sequences. */
-export function preloadSequences(names: readonly string[]): Promise<void> {
-  const keys: string[] = [];
-  for (const name of names) {
-    const seq = MOTION_SEQUENCES[name];
-    if (seq) for (const f of seq.frames) keys.push(f.key);
-  }
-  return preloadFrames(keys);
 }
 
 /**
@@ -140,9 +125,4 @@ export function backgroundPreloadAll(chunkMs = 400): void {
     }
   };
   window.setTimeout(step, chunkMs);
-}
-
-/** For tests/dev: how many frames are currently preloaded. */
-export function preloadedCount(): number {
-  return preloaded.size;
 }

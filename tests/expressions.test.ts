@@ -2,8 +2,6 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   EXPRESSION_LABEL,
-  EXPRESSION_MOMENTS,
-  EXPRESSION_ORDER,
   type ExpressionName,
 } from "../src/character/expressions.ts";
 import { CharacterEngine } from "../src/character/engine.ts";
@@ -25,13 +23,12 @@ const EXPECTED: ExpressionName[] = [
 
 describe("expressions", () => {
   it("covers the full concept-sheet expression set", () => {
-    assert.deepEqual([...EXPRESSION_ORDER].sort(), [...EXPECTED].sort());
+    assert.deepEqual(Object.keys(EXPRESSION_LABEL).sort(), [...EXPECTED].sort());
   });
 
-  it("every expression has a label and a documented moment", () => {
-    for (const name of EXPRESSION_ORDER) {
+  it("every expression has a label", () => {
+    for (const name of EXPECTED) {
       assert.ok(EXPRESSION_LABEL[name], `missing label: ${name}`);
-      assert.ok(EXPRESSION_MOMENTS[name], `missing moment doc: ${name}`);
     }
   });
 

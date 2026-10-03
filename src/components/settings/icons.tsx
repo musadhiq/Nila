@@ -62,33 +62,6 @@ export const IconAppearance = (p: IconProps) =>
     </>,
   );
 
-export const IconSchedule = (p: IconProps) =>
-  base(
-    p,
-    <>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M12 7v5.2l3.4 2" />
-    </>,
-  );
-
-export const IconNotifications = (p: IconProps) =>
-  base(
-    p,
-    <>
-      <path d="M4 10v4h3l4 3.5v-11L7 10H4z" />
-      <path d="M15.5 9.5a4 4 0 0 1 0 5M18 7a8 8 0 0 1 0 10" />
-    </>,
-  );
-
-export const IconLanguage = (p: IconProps) =>
-  base(
-    p,
-    <>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.2 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.2-3.8-8.5s1.3-6.2 3.8-8.5z" />
-    </>,
-  );
-
 export const IconWelcome = (p: IconProps) =>
   base(
     p,

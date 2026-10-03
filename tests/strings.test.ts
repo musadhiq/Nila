@@ -4,8 +4,6 @@ import {
   ACTIONS,
   BUILT_IN_MESSAGES,
   BUILT_IN_TITLES,
-  ONBOARDING,
-  pickVariant,
 } from "../src/lib/strings.ts";
 
 const MALAYALAM_SCRIPT = /[\u0D00-\u0D7F]/;
@@ -27,16 +25,6 @@ describe("Nila strings", () => {
         assert.doesNotMatch(v, MALAYALAM_SCRIPT, `${kind} variant`);
       }
     }
-    assert.doesNotMatch(ONBOARDING.intro, MALAYALAM_SCRIPT);
-  });
-
-  it("pickVariant rotates through variants", () => {
-    const kinds = Object.keys(BUILT_IN_MESSAGES);
-    const kind = kinds[0];
-    const n = BUILT_IN_MESSAGES[kind].length;
-    assert.equal(pickVariant(kind, 0), BUILT_IN_MESSAGES[kind][0]);
-    assert.equal(pickVariant(kind, n), BUILT_IN_MESSAGES[kind][0]);
-    assert.equal(pickVariant("nope", 0), "");
   });
 
   it("overlay actions are Manglish", () => {
@@ -44,10 +32,5 @@ describe("Nila strings", () => {
     assert.equal(ACTIONS.ok, "Sheri");
     assert.equal(ACTIONS.snooze10, "10 minute kazhinj");
     assert.doesNotMatch(ACTIONS.later, MALAYALAM_SCRIPT);
-  });
-
-  it("onboarding greets first and introduces Nila", () => {
-    assert.match(ONBOARDING.hello, /Hi/);
-    assert.match(ONBOARDING.intro, /Nila/);
   });
 });

@@ -29,8 +29,6 @@ export const VOICE_EVENTS = {
   ended: "voice:ended",
 } as const;
 
-export type VoiceEventName = (typeof VOICE_EVENTS)[keyof typeof VOICE_EVENTS];
-
 /**
  * Model provisioning events, emitted by the Rust model downloader
  * (`src-tauri/src/models.rs`). The STT models are not bundled with the
@@ -44,8 +42,6 @@ export const MODEL_EVENTS = {
   ready: "nila://models-ready",
   error: "nila://models-error",
 } as const;
-
-export type ModelEventName = (typeof MODEL_EVENTS)[keyof typeof MODEL_EVENTS];
 
 export interface ModelsDownloadingPayload {
   type: "nila://models-downloading";
@@ -72,10 +68,6 @@ export type VoiceErrorCode =
   | "model_error"
   | "models_missing";
 
-export interface VoiceStartedPayload {
-  type: "voice:started";
-}
-
 export interface VoicePartialPayload {
   type: "voice:transcript_partial";
   text: string;
@@ -84,10 +76,6 @@ export interface VoicePartialPayload {
 export interface VoiceFinalPayload {
   type: "voice_command";
   text: string;
-}
-
-export interface VoiceProcessingPayload {
-  type: "voice:processing";
 }
 
 export interface VoiceErrorPayload {
@@ -104,10 +92,6 @@ export interface VoiceErrorPayload {
 export interface VoiceRepeatPayload {
   type: "voice:repeat";
   attempt: number;
-}
-
-export interface VoiceEndedPayload {
-  type: "voice:ended";
 }
 
 /**

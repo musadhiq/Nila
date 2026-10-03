@@ -20,7 +20,6 @@ import type { Dict } from "./i18n";
 export const JEV_EVENTS = {
   processing: "jev:processing",
   actionDetected: "jev:action_detected",
-  confirmationRequired: "jev:confirmation_required",
   result: "jev:result",
   error: "jev:error",
   uiAction: "jev:ui_action",

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import type { DockAckAction, DockNotification, DockPhase } from "./dockMachine";
+import type { DockNotification, DockPhase } from "./dockMachine";
 
 /**
  * NotificationDock — Nila's V1 notification surface.
@@ -183,5 +183,3 @@ export function NotificationDock({
     </div>
   );
 }
-
-export type { DockAckAction };

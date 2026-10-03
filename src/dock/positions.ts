@@ -16,21 +16,16 @@ export const NotificationPosition = {
 export type NotificationPosition =
   (typeof NotificationPosition)[keyof typeof NotificationPosition];
 
-export interface PxRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 /**
  * Top-left origin (physical pixels) for a window of `winW` x `winH`
  * placed at `position` on `monitor`. `safeMargin` is the clearance
  * below the system top bar in physical pixels.
  */
+import type { MonitorRect } from "../lib/types";
+
 export function dockWindowOrigin(
   position: NotificationPosition,
-  monitor: PxRect,
+  monitor: MonitorRect,
   winW: number,
   winH: number,
   safeMargin: number,

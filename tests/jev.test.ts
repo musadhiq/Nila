@@ -14,7 +14,6 @@ describe("jev event contract", () => {
   it("uses the exact event names the Rust service emits", () => {
     assert.equal(JEV_EVENTS.processing, "jev:processing");
     assert.equal(JEV_EVENTS.actionDetected, "jev:action_detected");
-    assert.equal(JEV_EVENTS.confirmationRequired, "jev:confirmation_required");
     assert.equal(JEV_EVENTS.result, "jev:result");
     assert.equal(JEV_EVENTS.error, "jev:error");
     assert.equal(JEV_EVENTS.uiAction, "jev:ui_action");
