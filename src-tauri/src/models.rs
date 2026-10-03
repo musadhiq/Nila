@@ -482,22 +482,6 @@ pub fn resolve_models(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf, Pat
     }
 }
 
-/// Start the one-time model download in the background. Called only
-/// from the manual `download_stt_models` command (Settings) — nothing
-/// in the app triggers a download on its own. No-op when the models are
-/// already present. Failures are reported on [`EVENT_MODELS_ERROR`].
-pub fn download_in_background(app: AppHandle) {
-    ModelManager::new(&app).download_in_background();
-}
-
-/// Make sure the models exist, downloading them when this is a manual
-/// settings-driven fetch. Serialized against concurrent callers; emits
-/// [`EVENT_MODELS_DOWNLOADING`] progress and [`EVENT_MODELS_READY`] on
-/// success.
-pub fn ensure_blocking(app: &AppHandle) -> Result<(), String> {
-    ModelManager::new(app).download()
-}
-
 /// Stream `url` to `dest` (via a `.part` staging file, atomically
 /// renamed on success), emitting progress events as it goes. A failed
 /// or interrupted download never leaves a half-written file behind —
