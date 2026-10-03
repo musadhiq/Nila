@@ -13,16 +13,22 @@ import type { ReactNode } from "react";
 export function SettingsSection({
   title,
   description,
+  icon,
   children,
 }: {
   title: string;
   /** Optional lead text, rendered with standard card padding. */
   description?: string;
+  /** Optional brand mark rendered before the title. */
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="ssection" aria-label={title}>
-      <h2 className="ssection-title">{title}</h2>
+      <h2 className="ssection-title">
+        {icon}
+        {title}
+      </h2>
       <div className="sgroup">
         {description && <p className="sgroup-desc">{description}</p>}
         {children}
