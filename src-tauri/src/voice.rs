@@ -9,14 +9,14 @@
 //!   -- speech starts -->
 //! RECORDING_COMMAND  (VAD + accumulating audio, live partial decodes)
 //!   -- trailing silence / max duration -->
-//! PROCESSING_STT  (final decode; hands the text to the future Jev layer)
-//!   -- PROCESSING_COMMAND / RESPONSE (reserved for the future Jev layer) -->
+//! PROCESSING_STT  (final decode; hands the text to the Jev layer via the
+//!                 frontend: `voice:transcript_final` -> `process_voice_command`)
+//!   -- PROCESSING_COMMAND / RESPONSE (reserved; never entered) -->
 //! WAKE_LISTENING
 //!
 //! Any failure (speech timeout, mic/model error, empty transcript) walks
 //! through ERROR instead and then returns to WAKE_LISTENING. RESPONSE is
-//! reserved for the future Jev layer's reply turn and is never entered in
-//! V1 (`voice:response` is not emitted yet).
+//! reserved and never entered (`voice:response` is not emitted).
 //! ```
 //!
 //! The wake-word implementation is untouched: this worker subscribes to
@@ -56,14 +56,13 @@ pub const EVENT_VOICE_STARTED: &str = "voice:started";
 /// Payload: [`PartialPayload`]. Never sent to Jev — UI only.
 pub const EVENT_TRANSCRIPT_PARTIAL: &str = "voice:transcript_partial";
 /// Frontend event: the final transcription. Payload [`FinalPayload`]
-/// uses `{ type: "voice_command", text }` — the shape the future Jev
-/// layer consumes.
+/// uses `{ type: "voice_command", text }` — the shape the Jev layer
+/// consumes (via the frontend's `process_voice_command` call).
 pub const EVENT_TRANSCRIPT_FINAL: &str = "voice:transcript_final";
-/// Frontend event: Nila is finalizing (Jev handoff point; no Jev in V1).
+/// Frontend event: Nila is finalizing (Jev handoff point).
 pub const EVENT_VOICE_PROCESSING: &str = "voice:processing";
 /// Frontend event: something went wrong. Payload [`ErrorPayload`].
-/// NOTE: `voice:response` is reserved for the future Jev layer and is
-/// not emitted by this worker.
+/// NOTE: `voice:response` is reserved and is not emitted by this worker.
 pub const EVENT_VOICE_ERROR: &str = "voice:error";
 /// Emitted when the transcript came back empty and Nila is giving the
 /// user another chance: "I didn't catch that — could you say it again?"
@@ -90,7 +89,7 @@ pub struct PartialPayload {
 }
 
 /// Payload for [`EVENT_TRANSCRIPT_FINAL`]. The `voice_command` shape is
-/// the future Jev layer's input contract.
+/// the Jev layer's input contract.
 #[derive(Clone, serde::Serialize)]
 pub struct FinalPayload {
     #[serde(rename = "type")]
@@ -139,17 +138,17 @@ enum Phase {
     ListeningForSpeech,
     /// Speech ongoing: VAD + accumulating audio + live partial decodes.
     RecordingCommand,
-    /// Final decode done; handing the text off (Jev layer in future).
+    /// Final decode done; handing the text off to the Jev layer.
     ProcessingStt,
-    /// Reserved for the future Jev layer (command processing); the
-    /// backend never enters it in V1 — a second "Hi Nila" here is
-    /// ignored because the wake listener is parked for the session.
+    /// Reserved (command processing); the backend never enters it —
+    /// a second "Hi Nila" here is ignored because the wake listener
+    /// is parked for the session.
     #[allow(dead_code)]
     ProcessingCommand,
     /// Final transcript emitted; returning to wake listening.
     CommandReady,
-    /// Reserved for the future Jev layer (Nila's reply turn); the backend
-    /// never enters it in V1 — `voice:response` is not emitted yet.
+    /// Reserved (Nila's reply turn); the backend never enters it —
+    /// `voice:response` is not emitted.
     #[allow(dead_code)]
     Response,
     /// A session failed (timeout / mic / model / empty transcript); the
