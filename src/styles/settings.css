@@ -144,8 +144,8 @@
 }
 
 .nav-item[aria-current="page"] {
-  background: var(--st-accent-soft);
-  color: var(--st-text);
+  background: #000;
+  color: #fff;
   font-weight: 600;
 }
 
@@ -283,6 +283,44 @@
   border: 1px solid var(--st-border);
   border-radius: 12px;
   overflow: hidden;
+}
+
+/* Padded block for loose content living directly inside a card
+   (descriptions, inputs, buttons, diagrams, status lines). Keeps every
+   page on the same inner rhythm. */
+.sgroup-pad {
+  padding: 14px 16px;
+}
+
+.sgroup-pad + .sgroup-pad,
+.srow + .sgroup-pad,
+.sgroup-pad + .srow {
+  border-top: 1px solid var(--st-hairline);
+}
+
+/* Standard section description, rendered at the top of a card via the
+   SettingsSection `description` prop. */
+.sgroup-desc {
+  margin: 0;
+  padding: 14px 16px 10px;
+  font-size: 12.5px;
+  color: var(--st-text-2);
+}
+
+/* Text-button link (e.g. the author profile on the About page). */
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--st-accent);
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
 }
 
 .srow {
@@ -1343,6 +1381,19 @@ button.srow.as-button:hover {
   flex-wrap: wrap;
   gap: 8px;
   margin: 2px 0 12px;
+}
+
+/* Inside a padded card block the pad already supplies the spacing. */
+.sgroup-pad > .preview-btn-row {
+  margin: 0;
+}
+
+.sgroup-pad > .status-line {
+  margin: 0;
+}
+
+.sgroup-pad > .status-line + .status-line {
+  margin-top: 6px;
 }
 
 /* Welcome page — first-run onboarding and replays-later tour */
