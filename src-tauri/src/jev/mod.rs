@@ -359,6 +359,12 @@ pub(crate) fn emit_action_detected(app: &AppHandle, intent: &str) {
 /// anything. The frontend renders it like any other result; the
 /// intent is never a terminal one, so conversation mode stays alive
 /// and the mic re-arms for the follow-up.
+///
+/// Contract: pass a non-terminal marker intent here — "clarify",
+/// "confirm", "cancel", or "unknown" — never a real action intent.
+/// The frontend ends the conversation on action intents such as
+/// "new_reminder", so emitting one for a mere question would kill
+/// the follow-up turn.
 pub(crate) fn emit_interpret_result(
     app: &AppHandle,
     intent: &str,
