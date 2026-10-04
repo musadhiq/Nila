@@ -480,7 +480,7 @@ fn parse_rrule(value: &str) -> Option<ParsedRRule> {
 }
 
 fn days_in_month(year: i32, month: u32) -> u32 {
-    use chrono::NaiveDate;
+    use chrono::{Datelike, NaiveDate};
     let (y, m) = if month == 12 {
         (year + 1, 1)
     } else {
@@ -932,11 +932,13 @@ pub fn syscal_get_status(app: AppHandle) -> Result<SysCalStatus, String> {
     // when enabled.
     let enabled = is_enabled(&app);
     let calendar_count = if enabled { list_sources().len() } else { 0 };
+    let last_sync = state.last_sync.lock().map_err(|e| e.to_string())?.clone();
+    let last_error = state.last_error.lock().map_err(|e| e.to_string())?.clone();
     Ok(SysCalStatus {
         enabled,
         calendar_count,
-        last_sync: state.last_sync.lock().map_err(|e| e.to_string())?.clone(),
-        last_error: state.last_error.lock().map_err(|e| e.to_string())?.clone(),
+        last_sync,
+        last_error,
     })
 }
 
@@ -946,7 +948,7 @@ pub fn syscal_set_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     if enabled {
         spawn_poll(app.clone());
         if let Some(state) = app.try_state::<SysCalState>() {
-            state.notify();
+            state.notify.notify_one();
         }
     } else {
         request_stop(&app);
