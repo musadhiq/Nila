@@ -698,24 +698,26 @@ html, body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.wake-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #c96f4a;
-  animation: wake-pulse 1.6s ease-in-out infinite;
+/* ---- Voice wave: the Lottie voice-line, driven by the live mic
+ * level (speed + amplitude follow the user's speech). Replaces the
+ * old free-running pulse dot. ---- */
+.wake-wave {
+  width: 104px;
+  height: 34px;
+  flex: none;
+  overflow: hidden;
+  /* transform is driven per-frame by the component (amplitude); the
+   * transition keeps it from snapping when the level jumps. */
+  will-change: transform;
 }
-.wake-dot.is-still {
-  animation: none;
-  opacity: 0.85;
+.wake-wave svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 @keyframes wake-in {
   from { opacity: 0; transform: translateY(-14px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes wake-pulse {
-  0%, 100% { opacity: 0.45; transform: scale(0.85); }
-  50%      { opacity: 1;    transform: scale(1.1); }
 }
 /* ---- Transcript bubble: live partials while the user speaks, the
  * frozen final while processing, or a gentle error line. Same warm
@@ -808,8 +810,7 @@ html, body {
 .commands-quote {
   color: #a09a8e;
 }
-/* ---- Reduced motion: fade in, no pulse. ---- */
+/* ---- Reduced motion: fade in, static wave frame. ---- */
 @media (prefers-reduced-motion: reduce) {.wake-pill { animation: wake-fade-in 140ms ease-out both; }
-.wake-bubble { animation: wake-fade-in 140ms ease-out both; }
-.wake-dot { animation: none; opacity: 0.85; }}
+.wake-bubble { animation: wake-fade-in 140ms ease-out both; }}
 @keyframes wake-fade-in { from { opacity: 0; } to { opacity: 1; } }
