@@ -165,6 +165,7 @@ fn fix_vocab_word(word: &str) -> &str {
         "setings" | "seting" => "settings",
         "set" => "set",
         "firfox" | "fierfox" => "firefox",
+        "crom" => "chrome",
         "termnal" | "terminl" => "terminal",
         "helo" | "hellow" => "hello",
         "thnaks" | "thaks" => "thanks",
@@ -660,6 +661,66 @@ fn match_applications(raw: &str, text: &str, words: &[&str]) -> Vec<IntentCandid
     out
 }
 
+/// "open X in Y" with STT noise — the parser handles the clean form;
+/// this catches mangled variants ("open the nyla folder in crom").
+/// The app name
+/// must be allowlisted and sit at the tail after "in"; everything
+/// between the verb and "in" is the target query.
+fn match_open_in_app(raw: &str, words: &[&str]) -> Vec<IntentCandidate> {
+    let mut out = Vec::new();
+    if is_hostile_raw(raw) {
+        return out;
+    }
+    let Some(in_pos) = words.iter().position(|w| *w == "in") else {
+        return out;
+    };
+    let tail = &words[in_pos + 1..];
+    let Some(app) = find_app_name(tail) else {
+        return out;
+    };
+    let head = &words[..in_pos];
+    if !head.iter().any(|w| OPEN_VERBS.contains(w)) {
+        return out;
+    }
+    let query: String = head
+        .iter()
+        .filter(|w| {
+            !OPEN_VERBS.contains(w)
+                && !ARTICLES.contains(w)
+                && **w != "please"
+                && **w != "folder"
+                && **w != "file"
+        })
+        .map(|w| w.to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if query.is_empty() {
+        return out;
+    }
+    // The app should own the tail; trailing words are noise.
+    let app_words = app.split_whitespace().count();
+    let mut conf: f32 = 0.74;
+    if tail.len() > app_words + 1 {
+        conf = conf.min(0.55);
+    }
+    // A long target phrase is probably ramble, not a name.
+    if query.split_whitespace().count() > 4 {
+        conf = conf.min(0.55);
+    }
+    let mut params = JevParams::default();
+    params.query = Some(query);
+    params.application = Some(app);
+    out.push(IntentCandidate {
+        intent: Intent::OpenInApplication,
+        confidence: conf,
+        priority: 2,
+        entities: params,
+        source: "open_in_app",
+        safety: SafetyClass::Config,
+    });
+    out
+}
+
 /// "close"/"quit" with no app name: not enough to act on, but enough
 /// to ask which application.
 fn match_close_no_app(text: &str) -> Vec<IntentCandidate> {
@@ -978,6 +1039,7 @@ pub fn interpret(raw: &str) -> Vec<IntentCandidate> {
     cands.extend(match_time_date(&text, &words));
     cands.extend(match_applications(raw, &text, &words));
     cands.extend(match_close_no_app(&text));
+    cands.extend(match_open_in_app(raw, &words));
     cands.extend(match_files_folders(raw, &text, &words));
     cands.extend(match_create_folder(raw, &text, &words));
     cands.extend(match_reminders(&text, &words));
@@ -1058,6 +1120,7 @@ fn required_entities(intent: Intent) -> &'static [EntityKind] {
     match intent {
         Intent::OpenApplication | Intent::CloseApplication => &[EntityKind::Application],
         Intent::FindFile | Intent::OpenFile | Intent::OpenFolder => &[EntityKind::Query],
+        Intent::OpenInApplication => &[EntityKind::Query, EntityKind::Application],
         Intent::CreateFolder => &[EntityKind::FolderName],
         Intent::SetReminder => &[EntityKind::ReminderTitle, EntityKind::ReminderTime],
         _ => &[],
@@ -1106,6 +1169,14 @@ fn clarify_question(
         }
         // "open" with no target: it could be an app or a file.
         (Intent::OpenFile, EntityKind::Query) => ("convClarifyOpenTarget", serde_json::json!({})),
+        // "open X in Y" with the app missing: reuse the app question.
+        (Intent::OpenInApplication, EntityKind::Application) => {
+            ("convClarifyAppOpen", serde_json::json!({}))
+        }
+        // "open X in Y" with the target missing: reuse the target question.
+        (Intent::OpenInApplication, EntityKind::Query) => {
+            ("convClarifyOpenTarget", serde_json::json!({}))
+        }
         (Intent::CreateFolder, EntityKind::FolderName) => {
             ("convClarifyFolderName", serde_json::json!({}))
         }
@@ -1128,6 +1199,13 @@ fn confirm_question(intent: Intent, params: &JevParams) -> (&'static str, serde_
         Intent::SetReminder => (
             "convConfirmReminder",
             serde_json::json!({ "title": params.title.clone().unwrap_or_default() }),
+        ),
+        Intent::OpenInApplication => (
+            "convConfirmOpenInApp",
+            serde_json::json!({
+                "name": params.query.clone().unwrap_or_default(),
+                "app": params.application.clone().unwrap_or_default(),
+            }),
         ),
         _ => ("convAskRepeat", serde_json::json!({})),
     }
@@ -1634,6 +1712,7 @@ mod tests {
         assert_eq!(normalize_transcript("firfox"), "firefox");
         assert_eq!(normalize_transcript("helo"), "hello");
         assert_eq!(normalize_transcript("serch for my file"), "search for my file");
+        assert_eq!(normalize_transcript("open crom"), "open chrome");
     }
 
     #[test]
@@ -1711,6 +1790,43 @@ mod tests {
                 "{t:?} should execute current_date"
             );
         }
+    }
+
+    // --- open in application --------------------------------------------------
+
+    #[test]
+    fn open_in_app_fuzzy_executes() {
+        // STT-mangled "open X in Y" still resolves to the specific intent
+        // (the clean form never reaches recovery — the parser owns it).
+        match executes_as("open the nyla folder in crom") {
+            Some((Intent::OpenInApplication, p)) => {
+                assert_eq!(p.query.as_deref(), Some("nyla"));
+                assert_eq!(p.application.as_deref(), Some("chrome"));
+            }
+            other => panic!("expected open_in_application execute, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_in_app_noisy_asks_first() {
+        // Trailing ramble dilutes confidence below the execute bar →
+        // confirmation instead of a surprise launch.
+        match decide_for("open nila in code now now now") {
+            Decision::Confirm { intent, .. } => {
+                assert_eq!(intent, Intent::OpenInApplication)
+            }
+            other => panic!("expected confirm, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_in_app_unknown_app_not_matched() {
+        // No allowlisted app after "in": not this intent.
+        let cands = interpret("open nila in vlcplayer");
+        assert!(
+            !cands.iter().any(|c| c.intent == Intent::OpenInApplication),
+            "unexpected open_in_application candidate"
+        );
     }
 
     // --- applications ---------------------------------------------------------
