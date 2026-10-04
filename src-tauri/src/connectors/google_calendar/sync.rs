@@ -108,12 +108,10 @@ pub fn diff_events(
     let mut next_cache = HashMap::with_capacity(fetched.len());
 
     for event in fetched {
-        // Ended already: drop from the cache; the reminder row (long
-        // inert — a fired `Once` never refires) is deleted too.
+        // Ended already: drop from the cache. The sweep below emits
+        // the single Unschedule for the reminder row (long inert — a
+        // fired `Once` never refires).
         if event.end <= now {
-            if cached.contains_key(&event.id) {
-                actions.push(SyncAction::Unschedule { id: event.id.clone() });
-            }
             continue;
         }
         let prev = cached.get(&event.id);

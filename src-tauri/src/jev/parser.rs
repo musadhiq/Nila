@@ -422,6 +422,13 @@ fn parse_reminder(rest: &str) -> JevResult {
 /// `unknown` rather than guessing.
 fn parse_reminder_time(s: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
     let s = s.trim().to_lowercase();
+    // No time given at all: not a time, full stop. (An empty string
+    // used to fall through to the "tomorrow" branch below and conjure
+    // tomorrow 9am — "remind me to drink water" became a dated
+    // reminder instead of opening the dialog with a prefill.)
+    if s.is_empty() {
+        return None;
+    }
     let s = s.strip_prefix("at ").unwrap_or(&s);
 
     // "in 10 minutes" / "in 2 hours" / "in an hour" / "in 30 seconds"
@@ -445,10 +452,16 @@ fn parse_reminder_time(s: &str, now: DateTime<Local>) -> Option<DateTime<Local>>
 
     // "tomorrow at 9 pm" / "tomorrow"
     let (s, add_day) = match s.strip_prefix("tomorrow ") {
-        Some(rest) => (rest.trim(), true),
+        Some(rest) => {
+            let rest = rest.trim();
+            // "tomorrow at 9" — the "at " survived the first strip
+            // because it sat behind "tomorrow ".
+            let rest = rest.strip_prefix("at ").unwrap_or(rest);
+            (rest.trim(), true)
+        }
         None => (s, s == "tomorrow"),
     };
-    if s == "tomorrow" || s.is_empty() {
+    if s == "tomorrow" {
         return Some(
             now.date_naive()
                 .succ_opt()?
