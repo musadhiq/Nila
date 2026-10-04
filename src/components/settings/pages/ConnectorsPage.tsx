@@ -1,25 +1,24 @@
 /**
  * Settings → Connectors → Google Calendar.
  *
- * States mirror the backend `GcalStatus.state`:
- *   disconnected → client-ID setup (first run) or [Connect]
- *   connecting   → "Connecting…" while the browser flow runs
- *   connected    → account line + test/disconnect + reminder settings
- *   auth_required→ "needs reconnection" + [Connect]
- *   error        → error line + [Connect]
+ * No OAuth: the connector reads the calendar's private ICS feed
+ * ("Secret address in iCal format"). The user pastes the URL once;
+ * it goes straight to the OS keychain via `gcal_set_feed_url` and the
+ * frontend never sees it again.
  *
- * Security: only the OAuth *client ID* (public by design) is handled
- * here as plain settings text. Tokens live in the OS keychain and
- * never cross this UI.
+ * States mirror the backend `GcalStatus.state`:
+ *   disconnected → feed-URL setup (first run)
+ *   connected    → calendar line + test/sync/disconnect + reminder settings
+ *   error        → error line + setup
  */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri, listenEvent } from "../../../lib/tauri";
 import {
   GCAL_EVENTS,
   gcalDisconnect,
   gcalGetStatus,
-  gcalSetClientId,
-  gcalStartAuth,
+  gcalSetFeedUrl,
   gcalSyncNow,
   gcalTestConnection,
   type GcalStatus,
@@ -37,8 +36,6 @@ function testLabel(status: GcalTestStatus, t: PageProps["t"]): string {
   switch (status) {
     case "connected":
       return c.testConnected;
-    case "auth_required":
-      return c.testAuthRequired;
     case "network_error":
       return c.testNetworkError;
     case "service_unavailable":
@@ -51,7 +48,7 @@ function testLabel(status: GcalTestStatus, t: PageProps["t"]): string {
 export function ConnectorsPage({ t, settings, update }: PageProps) {
   const c = t.calendar;
   const [status, setStatus] = useState<GcalStatus | null>(null);
-  const [clientId, setClientId] = useState(settings.gcal_client_id ?? "");
+  const [feedUrl, setFeedUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [testResult, setTestResult] = useState<GcalTestStatus | null>(null);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
@@ -79,42 +76,22 @@ export function ConnectorsPage({ t, settings, update }: PageProps) {
     };
   }, [refresh]);
 
-  // Connector settings are written through the shared settings
-  // command; the backend reacts to `gcal_*` changes atomically in
-  // that same call (see `update_settings`), so no separate
-  // "settings changed" round-trip is needed here — and a separate
-  // call could otherwise race the write. The status card refreshes
-  // from the `gcal:status` event the backend emits.
-  const onSaveClientId = async () => {
-    const value = clientId.trim();
+  // The feed URL is a bearer credential: it is validated and stored
+  // in the OS keychain by the backend in the same IPC call, so the
+  // frontend never retains it beyond this form.
+  const onSaveFeedUrl = async () => {
+    const value = feedUrl.trim();
     if (!value || busy) return;
     setBusy(true);
     setNotice(null);
     try {
-      await gcalSetClientId(value);
-      update({ gcal_client_id: value });
-      if (alive.current) setNotice({ text: c.clientIdSaved, ok: true });
+      await gcalSetFeedUrl(value);
+      if (alive.current) {
+        setFeedUrl("");
+        setNotice({ text: c.feedUrlSaved, ok: true });
+      }
     } catch {
-      if (alive.current) setNotice({ text: c.clientIdInvalid, ok: false });
-    } finally {
-      if (alive.current) setBusy(false);
-      void refresh();
-    }
-  };
-
-  const onConnect = async () => {
-    if (busy) return;
-    setBusy(true);
-    setNotice(null);
-    setTestResult(null);
-    try {
-      await gcalStartAuth();
-    } catch (e) {
-      if (alive.current)
-        setNotice({
-          text: fill(c.authFailed, { error: e instanceof Error ? e.message : String(e) }),
-          ok: false,
-        });
+      if (alive.current) setNotice({ text: c.feedUrlInvalid, ok: false });
     } finally {
       if (alive.current) setBusy(false);
       void refresh();
@@ -155,17 +132,14 @@ export function ConnectorsPage({ t, settings, update }: PageProps) {
   };
 
   const state = status?.state ?? "disconnected";
-  const hasClientId = (settings.gcal_client_id ?? "").trim().length > 0;
   const connected = state === "connected";
 
   const statusLine = (() => {
     switch (state) {
       case "connected":
-        return status?.email ? fill(c.connectedAs, { email: status.email }) : c.statusConnected;
-      case "connecting":
-        return c.statusConnecting;
-      case "auth_required":
-        return c.statusAuthRequired;
+        return status?.calendar_name
+          ? fill(c.connectedAs, { name: status.calendar_name })
+          : c.statusConnected;
       case "error":
         return status?.last_error ?? c.statusError;
       default:
@@ -180,58 +154,50 @@ export function ConnectorsPage({ t, settings, update }: PageProps) {
           title={c.title}
           description={statusLine}
           control={
-            state === "disconnected" || state === "auth_required" || state === "error" ? (
+            state === "error" ? (
               <button
                 type="button"
                 className="btn primary"
-                disabled={busy || !isTauri() || !hasClientId}
-                onClick={() => void onConnect()}
+                disabled={busy || !isTauri()}
+                onClick={() => void onTest()}
               >
-                {c.connect}
+                {busy ? c.testing : c.testConnection}
               </button>
-            ) : state === "connecting" ? (
-              <span className="status-line">{c.connecting}</span>
             ) : undefined
           }
         />
 
-        {!hasClientId && (
+        {!connected && (
           <div className="sgroup-pad">
-            <label className="field-label" htmlFor="gcal-client-id">
-              {c.clientIdLabel}
+            <p className="status-line" style={{ marginBottom: 10 }}>{c.feedUrlDesc}</p>
+            <label className="field-label" htmlFor="gcal-feed-url">
+              {c.feedUrlLabel}
             </label>
             <input
-              id="gcal-client-id"
-              type="text"
+              id="gcal-feed-url"
+              type="password"
               className="text-input"
               autoComplete="off"
               spellCheck={false}
-              placeholder={c.clientIdPlaceholder}
-              value={clientId}
+              placeholder={c.feedUrlPlaceholder}
+              value={feedUrl}
               disabled={busy}
-              onChange={(e) => setClientId(e.target.value)}
+              onChange={(e) => setFeedUrl(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void onSaveClientId();
+                if (e.key === "Enter") void onSaveFeedUrl();
               }}
             />
-            <p className="status-line" style={{ marginTop: 8 }}>{c.clientIdDesc}</p>
-            <p className="status-line" style={{ marginTop: 8 }}>{c.clientIdHelp}</p>
+            <p className="status-line" style={{ marginTop: 8 }}>{c.feedUrlHelp}</p>
             <div className="btn-row" style={{ marginTop: 10 }}>
               <button
                 type="button"
                 className="btn primary"
-                disabled={busy || clientId.trim().length === 0}
-                onClick={() => void onSaveClientId()}
+                disabled={busy || feedUrl.trim().length === 0}
+                onClick={() => void onSaveFeedUrl()}
               >
-                {c.saveClientId}
+                {c.saveFeedUrl}
               </button>
             </div>
-          </div>
-        )}
-
-        {state === "auth_required" && (
-          <div className="sgroup-pad">
-            <p className="status-line err">{c.authRequired}</p>
           </div>
         )}
 

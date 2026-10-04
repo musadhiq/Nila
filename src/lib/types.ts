@@ -71,8 +71,6 @@ export interface AppSettings {
   desktop_notifications: boolean;
   /** Idle animation ambience for the character. */
   idle_behavior: "normal" | "minimal";
-  /** Google Calendar connector: OAuth client ID (user's own Desktop app credential). */
-  gcal_client_id: string;
   /** Google Calendar connector: master toggle for calendar reminders. */
   gcal_reminders_enabled: boolean;
   /** Google Calendar connector: minutes before an event to notify. */
@@ -183,7 +181,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   desktop_notifications: false,
   idle_behavior: "normal",
   accent: "teal",
-  gcal_client_id: "",
   gcal_reminders_enabled: true,
   gcal_reminder_minutes: 15,
   gcal_allday_reminders_enabled: false,

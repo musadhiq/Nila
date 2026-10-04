@@ -6,8 +6,10 @@
  * Tauri commands for Settings → Connectors → Google Calendar and
  * the `gcal:*` event contract.
  *
- * Tokens are NEVER handled here — the OAuth flow, storage, and
- * refresh all stay in Rust. The client ID is plain settings text.
+ * No OAuth: the connector reads the calendar's private ICS feed
+ * ("Secret address in iCal format"). The feed URL is a bearer
+ * credential and is NEVER handled here — it is stored and fetched
+ * entirely in Rust (OS keychain).
  */
 
 import { invokeCommand } from "./tauri.ts";
@@ -17,23 +19,17 @@ export const GCAL_EVENTS = {
   sync: "gcal:sync",
 } as const;
 
-export type GcalState =
-  | "disconnected"
-  | "connecting"
-  | "connected"
-  | "auth_required"
-  | "error";
+export type GcalState = "disconnected" | "connected" | "error";
 
 export interface GcalStatus {
   state: GcalState;
-  email: string | null;
+  calendar_name: string | null;
   last_sync: string | null;
   last_error: string | null;
 }
 
 export type GcalTestStatus =
   | "connected"
-  | "auth_required"
   | "network_error"
   | "service_unavailable"
   | "not_configured";
@@ -47,25 +43,21 @@ export async function gcalGetStatus(): Promise<GcalStatus> {
   return invokeCommand<GcalStatus>("gcal_get_status");
 }
 
-/** Save the user's Google OAuth client ID (plain settings). */
-export async function gcalSetClientId(clientId: string): Promise<void> {
-  await invokeCommand("gcal_set_client_id", { clientId });
-}
-
 /**
- * Begin the browser OAuth flow. Returns immediately; progress
- * arrives as `gcal:status` events.
+ * Save the calendar's private ICS feed URL ("Secret address in iCal
+ * format"). The URL goes straight to the OS keychain; the frontend
+ * never sees it again.
  */
-export async function gcalStartAuth(): Promise<void> {
-  await invokeCommand("gcal_start_auth");
+export async function gcalSetFeedUrl(url: string): Promise<void> {
+  await invokeCommand("gcal_set_feed_url", { url });
 }
 
-/** Remove tokens, stop polling, delete calendar reminders. */
+/** Remove the feed URL, stop polling, delete calendar reminders. */
 export async function gcalDisconnect(): Promise<void> {
   await invokeCommand("gcal_disconnect");
 }
 
-/** Lightweight authenticated probe. */
+/** Fetch the feed once and report. */
 export async function gcalTestConnection(): Promise<GcalTestReport> {
   return invokeCommand<GcalTestReport>("gcal_test_connection");
 }
