@@ -1396,13 +1396,9 @@ export default function App() {
         (wakeListening || voicePhase !== "idle") &&
         dock.phase === "hidden" && (
           <WakePill
-            label={
-              voicePhase === "processing"
-                ? getStrings(settings.language).voice.processing
-                : getStrings(settings.language).wake.listening
-            }
             alt={getStrings(settings.language).wake.nilaAlt}
             reducedMotion={settings.animation !== "full" || prefersReducedMotion}
+            busy={voicePhase === "processing"}
             waveActive={voicePhase === "listening" || voicePhase === "recording"}
             subtext={
               voicePhase === "listening" || voicePhase === "recording"
