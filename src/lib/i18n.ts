@@ -29,12 +29,10 @@ const en = {
     nilaAlt: "Nila peeking over the notification",
   },
   wake: {
-    listening: "Listening…",
     nilaAlt: "Nila listening",
     okayNila: "Okay Nila",
   },
   voice: {
-    processing: "Working on it…",
     speechTimeout: "I didn't hear anything.",
     emptyTranscript: "Sorry, I didn't catch that.",
     repeatPrompt: "Sorry, I didn't catch that — could you say it again?",
@@ -476,12 +474,10 @@ const manglish: Dict = {
     nilaAlt: "Notification-nokkiya Nila",
   },
   wake: {
-    listening: "Kelkkunnu…",
     nilaAlt: "Kelkkunna Nila",
     okayNila: "Okay Nila",
   },
   voice: {
-    processing: "Cheythondirikkunnu…",
     speechTimeout: "Onnum kelkkan pattiyilla.",
     emptyTranscript: "Sorry, manassilayilla.",
     repeatPrompt: "Sorry, manassilayilla — onnu koodi parayamo?",
