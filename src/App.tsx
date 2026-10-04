@@ -699,8 +699,10 @@ export default function App() {
       setVoiceErrorCode(code);
     };
     /**
-     * Start a follow-up listening turn without the wake phrase. The small
-     * delay keeps the re-arm clear of the backend's wake debounce.
+     * Start a follow-up listening turn without the wake phrase. The
+     * backend treats an explicit conversation turn as deliberate and
+     * bypasses its post-session wake debounce for it; the small delay
+     * here is just a beat for the mic handoff.
      */
     const rearmConversation = () => {
       if (!conversationModeRef.current) return;
