@@ -202,11 +202,14 @@
   padding: 20px clamp(24px, 4vw, 56px) 64px;
   animation: page-in 180ms ease;
 }
-/* The inner column is fully fluid — every page's cards fill the same
-   content width, which expands and contracts with the main window.
-   (The welcome onboarding keeps its own centered, narrower treatment.) */
+/* The inner column is fluid up to a comfortable reading width; on wide
+   (e.g. maximized) windows it centers instead of stretching full-bleed
+   or stranding space on the right. (The welcome onboarding keeps its
+   own centered, narrower treatment.) */
 .settings-content-inner {
   width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
 }
 @keyframes page-in {
   from {
@@ -219,7 +222,8 @@
   }
 }
 .page-header {
-  margin: 4px 0 18px;
+  margin: 4px auto 18px;
+  max-width: 960px;
 }
 .page-title {
   margin: 0;

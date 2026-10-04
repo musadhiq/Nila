@@ -600,6 +600,11 @@ html, body {
   background: rgba(255, 255, 255, 0.97);
   border-radius: 12px;
   overflow: hidden;
+  /* The companion root is pointer-events:none (transparent window must
+     not block the desktop); the panel is opaque UI and must receive
+     all input. Without this, settings renders but no click or scroll
+     ever reaches it. */
+  pointer-events: auto;
 }
 @media (prefers-color-scheme: dark) {.panel-wrap { background: rgba(28, 32, 48, 0.97); color: #f2f5ff; }}
 .panel {
