@@ -1,28 +1,34 @@
 /**
- * WakePill — the small "Nila is listening" indicator shown at the top of
- * the screen after the wake word is detected.
+ * WakePill — the small indicator shown at the top of the screen after
+ * the wake word is detected.
  *
- * It is deliberately minimal (her attentive face + one word + the
- * voice-driven wave) and transform/opacity-only, in the same visual
- * language as the notification dock. The dock wins while a reminder is
- * on screen; this pill only renders while the dock is hidden.
+ * It is deliberately minimal (her attentive face + a living line) and
+ * transform/opacity-only, in the same visual language as the
+ * notification dock. The dock wins while a reminder is on screen; this
+ * pill only renders while the dock is hidden.
  *
- * While the user speaks, the live STT partial renders as a subtext line
- * inside the pill, under the label. The bubble underneath is reserved
- * for the frozen final text while processing, Nila's response, or a
- * gentle error line when nothing was heard.
+ * - While the mic is held, the Lottie voice wave reacts to the user's
+ *   speech (speed + amplitude follow the mic level).
+ * - While Nila works on the command, a plain heartbeat line pulses
+ *   instead of a "Working on it…" label.
+ * - While the user speaks, the live STT partial renders as a subtext
+ *   line under the wave. The bubble underneath is reserved for the
+ * frozen final text while processing, Nila's response, or a gentle
+ * error line when nothing was heard.
  */
 
 import { expressionUrl } from "../dock/expressions";
 import { VoiceWave } from "./VoiceWave";
+import { HeartbeatLine } from "./HeartbeatLine";
 
 interface WakePillProps {
-  /** Localized pill label ("Listening…" / "Working on it…"). */
-  label: string;
   /** Alt text for Nila's portrait. */
   alt: string;
-  /** Disable the pulse animation. */
+  /** Disable animations (static wave frame / static heartbeat). */
   reducedMotion: boolean;
+  /** True while Nila is working on the command: the heartbeat line
+   * shows instead of the voice wave. */
+  busy: boolean;
   /** True while the mic is held for the user's speech (listening /
    * recording). The wave is then driven by the live mic level;
    * otherwise it idles at a slow drift. */
@@ -41,7 +47,7 @@ interface WakePillProps {
   dismissLabel?: string;
 }
 
-export function WakePill({ label, alt, reducedMotion, waveActive, subtext, transcript, error, dismissible, onDismiss, dismissLabel }: WakePillProps) {
+export function WakePill({ alt, reducedMotion, busy, waveActive, subtext, transcript, error, dismissible, onDismiss, dismissLabel }: WakePillProps) {
   const bubbleText = error ?? (transcript && transcript.trim().length > 0 ? transcript : null);
   const sub = subtext && subtext.trim().length > 0 ? subtext : null;
   const showDismiss = dismissible && onDismiss && bubbleText && !error;
@@ -54,11 +60,14 @@ export function WakePill({ label, alt, reducedMotion, waveActive, subtext, trans
           alt={alt}
           draggable={false}
         />
-        <span className="wake-textcol">
-          <span className="wake-label">{label}</span>
-          {sub ? <span className="wake-subtext">{sub}</span> : null}
-        </span>
-        <VoiceWave active={waveActive} reducedMotion={reducedMotion} />
+        {busy ? (
+          <HeartbeatLine reducedMotion={reducedMotion} />
+        ) : (
+          <span className="wake-textcol">
+            <VoiceWave active={waveActive} reducedMotion={reducedMotion} />
+            {sub ? <span className="wake-subtext">{sub}</span> : null}
+          </span>
+        )}
       </div>
       {bubbleText ? (
         <div className={error ? "wake-bubble is-error" : "wake-bubble"}>
