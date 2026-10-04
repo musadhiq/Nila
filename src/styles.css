@@ -669,14 +669,42 @@ html, body {
   display: block;
   pointer-events: none;
 }
-.wake-label {
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
+/* ---- Heartbeat line: the "working" indicator. A flat trace with a
+ * rhythmic pulse scrolling through it, fading at both edges like a
+ * monitor. The track holds three 60px periods and loops -60px for a
+ * seamless scroll. ---- */
+.wake-heartbeat {
+  width: 104px;
+  height: 34px;
+  flex: none;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
 }
-/* ---- Text column inside the pill: the label on top, the live
- * command subtext under it. ---- */
+.wake-heartbeat svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.wake-heartbeat path {
+  fill: none;
+  stroke: #c96f4a;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.wake-heartbeat-track {
+  animation: heartbeat-scroll 2.4s linear infinite;
+}
+.wake-heartbeat.is-still .wake-heartbeat-track {
+  animation: none;
+}
+@keyframes heartbeat-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-60px); }
+}
+/* ---- Text column inside the pill: the wave on top, the live command
+ * subtext under it. ---- */
 .wake-textcol {
   display: flex;
   flex-direction: column;
