@@ -115,10 +115,26 @@ export default function App() {
    * Conversation mode: after one wake word, Nila stays present and the
    * user can keep talking without repeating the wake phrase. Each answer
    * emits nila://conversation-turn, which the voice worker treats like a
-   * wake event to start another VAD-bounded listening session. Set false
-   * on goodbye, error, or explicit dismissal.
+   * wake event to start another VAD-bounded listening session. The line
+   * stays open across turns: a follow-up turn that hears nothing in time
+   * quietly re-arms instead of ending. Set false only on goodbye, a
+   * terminal UI action, a real error, or explicit dismissal (Okay Nila
+   * / ×) — never on a bare timeout.
    */
   const conversationModeRef = useRef(false);
+  /**
+   * Nila's latest response message. It stays visible (with the Okay
+   * Nila dismiss) while the conversation line is open for a follow-up,
+   * so the user sees her answer and can end the conversation whenever.
+   * Cleared on dismiss.
+   */
+  const [responseText, setResponseText] = useState("");
+  /**
+   * True once Nila's answer for the current turn has arrived. The Okay
+   * Nila button appears only then — never while she's still working on
+   * the command.
+   */
+  const [responseReady, setResponseReady] = useState(false);
   /** True while a conversation turn is pending the previous session's
    * voice:ended — the backend rejects overlapping sessions, so the
    * re-arm must wait for the handoff. */
@@ -138,6 +154,8 @@ export default function App() {
     setVoicePhase("idle");
     setVoiceText("");
     setVoiceErrorCode(null);
+    setResponseText("");
+    setResponseReady(false);
     setWakeListening(false);
   }, []);
   /** First-run setup flow: the panel opens on the welcome page with a
@@ -709,12 +727,15 @@ export default function App() {
         intent === "show_reminders" ||
         intent === "open_settings";
       setVoice("processing", message);
+      // The answer has arrived: the Okay Nila button may now appear,
+      // and the message stays on screen while the line is open.
+      setResponseText(message);
+      setResponseReady(true);
       if (terminal) {
         conversationModeRef.current = false;
         pendingRearmRef.current = false;
         window.setTimeout(() => {
-          setVoice("idle");
-          setWakeListening(false);
+          dismissConversation();
         }, 5000);
         return;
       }
@@ -738,8 +759,14 @@ export default function App() {
       render: (phase, text) => {
         // The existing pill only distinguishes listening vs working —
         // pipeline processing/executing/response all keep its
-        // "Working on it…" look.
+        // heartbeat look.
         setVoice(phase === "idle" ? "idle" : "processing", text);
+        // A new turn's work started: the previous answer is stale and
+        // the Okay Nila button hides until the new response arrives.
+        // ("response" is left alone — answer() sets the flag next.)
+        if (phase === "processing" || phase === "executing") {
+          setResponseReady(false);
+        }
       },
       answer: showJevResponse,
       strings: () => getStrings(settingsRef.current.language),
@@ -770,12 +797,19 @@ export default function App() {
       );
       unlistens.push(
         await listenEvent<VoicePartialPayload>(VOICE_EVENTS.partial, (p) => {
+          // Late partial from a dismissed turn's orphaned mic hold:
+          // the UI is already gone, never resurrect it.
+          if (!voiceActiveRef.current) return;
           // Live partials are display-only; Jev only ever sees the final.
           setVoice("recording", p.text);
         }),
       );
       unlistens.push(
         await listenEvent<VoiceFinalPayload>(VOICE_EVENTS.final, (p) => {
+          // The user dismissed mid-listen (Okay Nila is now available
+          // while the line is open): drop the orphaned turn's final
+          // instead of resurrecting the pill and running a command.
+          if (!voiceActiveRef.current) return;
           // The pipeline validates the text and forwards it to the Jev
           // service. Partial transcripts never reach this listener, so
           // Jev only ever sees the final transcript.
@@ -796,6 +830,19 @@ export default function App() {
       unlistens.push(
         await listenEvent<VoiceErrorPayload>(VOICE_EVENTS.error, (p) => {
           pipeline.handleVoiceError();
+          // A follow-up turn that heard nothing in time is not a
+          // failure — the user simply wasn't ready yet. Keep the
+          // conversation line open: flag the re-arm and let the
+          // voice:ended handler below re-open the mic instead of
+          // hiding the pill. The conversation now ends only via Okay
+          // Nila / ×, goodbye, a terminal action, or a real error.
+          if (p.code === "speech_timeout" && conversationModeRef.current) {
+            pendingRearmRef.current = true;
+            return;
+          }
+          // Late error from a dismissed turn's orphaned mic hold:
+          // the UI is already gone, nothing to show.
+          if (!voiceActiveRef.current) return;
           // The session died: conversation mode ends here, matching the
           // documented design (set false on goodbye, error, or dismissal).
           conversationModeRef.current = false;
@@ -861,6 +908,13 @@ export default function App() {
           // Voice-triggered UI navigation. The opening UI is the
           // response — the pipeline returns to idle silently.
           pipeline.handleUiAction();
+          // The panel takes over the surface: end any conversation so a
+          // stale re-arm can't reopen the mic and no stale answer
+          // lingers under the next wake.
+          conversationModeRef.current = false;
+          pendingRearmRef.current = false;
+          setResponseText("");
+          setResponseReady(false);
           switch (p.action) {
             case "open_new_reminder":
               openPanel("settings", {
@@ -876,10 +930,8 @@ export default function App() {
               openPanel("settings", { page: "general" });
               break;
             case "open_help":
-              // The commands list takes over the surface; end any
-              // conversation so a stale re-arm can't reopen the mic.
-              conversationModeRef.current = false;
-              pendingRearmRef.current = false;
+              // The commands list takes over the surface (conversation
+              // already ended above).
               openPanel("settings", { page: "commands" });
               break;
           }
@@ -1405,7 +1457,17 @@ export default function App() {
                 ? voiceText
                 : undefined
             }
-            transcript={voicePhase === "processing" ? voiceText : undefined}
+            transcript={
+              voicePhase === "processing"
+                ? voiceText
+                : // The conversation line is open: her last answer stays
+                  // on screen under the wave so the user has context for
+                  // the follow-up — and a way to end it.
+                  responseText !== "" &&
+                    (voicePhase === "listening" || voicePhase === "recording")
+                  ? responseText
+                  : undefined
+            }
             error={
               voiceErrorCode
                 ? voiceErrorLabel(
@@ -1414,7 +1476,17 @@ export default function App() {
                   )
                 : null
             }
-            dismissible={voicePhase === "processing" && !voiceErrorCode}
+            dismissible={
+              // Okay Nila appears only once her response has arrived —
+              // never while she's still working — and stays available
+              // while the line is open, so the conversation ends only
+              // when the user ends it.
+              !voiceErrorCode &&
+              responseReady &&
+              (voicePhase === "processing" ||
+                (responseText !== "" &&
+                  (voicePhase === "listening" || voicePhase === "recording")))
+            }
             onDismiss={dismissConversation}
             dismissLabel={getStrings(settings.language).wake.okayNila}
           />
