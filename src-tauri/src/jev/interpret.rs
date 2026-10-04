@@ -82,11 +82,15 @@ pub fn normalize_transcript(raw: &str) -> String {
 
     // Punctuation → space (so "battery,level" still tokenizes);
     // apostrophes are dropped ("what's" → "whats", matching the
-    // registry's apostrophe-free phrases).
+    // registry's apostrophe-free phrases). Non-ASCII (Malayalam script
+    // etc.) passes through untouched — combining marks like the virama
+    // are not "alphanumeric" but must never be rewritten.
     let mut spaced = String::with_capacity(lowered.len());
     for c in lowered.chars() {
         if c == '\'' || c == '\u{2019}' {
             continue;
+        } else if !c.is_ascii() {
+            spaced.push(c);
         } else if c.is_alphanumeric() || c.is_whitespace() {
             spaced.push(c);
         } else {
@@ -1097,10 +1101,11 @@ fn clarify_question(
             "convClarifyReminderTime",
             serde_json::json!({ "title": params.title.clone().unwrap_or_default() }),
         ),
-        (Intent::FindFile | Intent::OpenFile, EntityKind::Query) => {
+        (Intent::FindFile, EntityKind::Query) => {
             ("convClarifyFileQuery", serde_json::json!({}))
         }
-        (Intent::OpenFile, _) => ("convClarifyOpenTarget", serde_json::json!({})),
+        // "open" with no target: it could be an app or a file.
+        (Intent::OpenFile, EntityKind::Query) => ("convClarifyOpenTarget", serde_json::json!({})),
         (Intent::CreateFolder, EntityKind::FolderName) => {
             ("convClarifyFolderName", serde_json::json!({}))
         }
@@ -1288,7 +1293,13 @@ fn is_negative(text: &str) -> bool {
 pub fn resolve_pending(pending: &PendingInteraction, raw: &str) -> PendingResolution {
     let text = normalize_transcript(raw);
     if text.is_empty() {
-        return PendingResolution::NotContinuation;
+        // An unintelligible grunt ("uh") while Nila is awaiting an
+        // entity: re-ask the question rather than dropping the thread.
+        // While awaiting a yes/no it means nothing — not a continuation.
+        return match &pending.kind {
+            PendingKind::AwaitingEntity { .. } => reask_or_give_up(pending),
+            PendingKind::AwaitingConfirmation => PendingResolution::NotContinuation,
+        };
     }
 
     match &pending.kind {
