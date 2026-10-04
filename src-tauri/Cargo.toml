@@ -30,7 +30,6 @@ tar = "0.4"
 bzip2 = "0.6"
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.10"
 tokio = { version = "1", features = ["full"] }
 keyring = "3"
 # Google Calendar connector (OAuth PKCE + API): tiny pure-Rust crates.

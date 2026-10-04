@@ -90,10 +90,6 @@ pub const VALID_KINDS: &[&str] = &[
     "water", "food", "break", "move", "sleep", "stretch", "exercise", "work", "custom",
     // System health reminders, fired by the system monitor (system_monitor.rs).
     "battery", "cpu", "memory", "disk",
-    // Google Calendar connector: event reminders scheduled from the
-    // rolling-window sync (connectors/google_calendar). The connector
-    // owns every row of this kind and deletes them on disconnect.
-    "calendar",
 ];
 
 pub fn list_reminders(conn: &Connection) -> rusqlite::Result<Vec<Reminder>> {
