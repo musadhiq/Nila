@@ -24,6 +24,7 @@ const CONTEXT_TTL: Duration = Duration::from_secs(5 * 60);
 pub struct SearchHit {
     pub name: String,
     pub path: PathBuf,
+    pub is_dir: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -102,6 +103,7 @@ mod tests {
         ctx.remember_search(vec![SearchHit {
             name: "resume.pdf".into(),
             path: PathBuf::from("/home/u/Documents/resume.pdf"),
+            is_dir: false,
         }]);
         assert_eq!(
             ctx.resolve_it(),

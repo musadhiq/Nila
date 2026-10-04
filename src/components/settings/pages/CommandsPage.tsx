@@ -16,7 +16,7 @@ export function CommandsPage({ t }: PageProps) {
     },
     {
       title: c.appsFiles,
-      items: [e.openApp, e.closeApp, e.findFile, e.openFolder, e.createFolder],
+      items: [e.openApp, e.openInApp, e.closeApp, e.findFile, e.openFolder, e.createFolder],
     },
     {
       title: c.system,

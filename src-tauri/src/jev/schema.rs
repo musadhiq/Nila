@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 pub enum Intent {
     OpenApplication,
     CloseApplication,
+    /// "open X in Y" — open file/folder X in application Y.
+    OpenInApplication,
     FindFile,
     SearchFiles,
     OpenFile,
@@ -92,6 +94,7 @@ impl Intent {
         match self {
             Intent::OpenApplication => "open_application",
             Intent::CloseApplication => "close_application",
+            Intent::OpenInApplication => "open_in_application",
             Intent::FindFile => "find_file",
             Intent::SearchFiles => "search_files",
             Intent::OpenFile => "open_file",
@@ -159,6 +162,10 @@ pub struct JevResult {
 pub enum ValidatedAction {
     OpenApplication { application: String },
     CloseApplication { application: String },
+    /// Open a resolved file/folder path in an allowlisted application.
+    /// The path always comes from the bounded search or known folders —
+    /// never raw user text.
+    OpenInApplication { query: String, application: String },
     FindFile { query: String },
     SearchFiles { extension: String },
     OpenFile { query: String },
@@ -225,6 +232,16 @@ pub fn validate(result: &JevResult) -> ValidatedAction {
                 )?,
             }),
             Intent::CloseApplication => Ok(ValidatedAction::CloseApplication {
+                application: clean_text(
+                    p.application.as_deref().ok_or("missing application")?,
+                    MAX_TEXT_LEN,
+                )?,
+            }),
+            Intent::OpenInApplication => Ok(ValidatedAction::OpenInApplication {
+                query: clean_text(
+                    p.query.as_deref().ok_or("missing query")?,
+                    MAX_TEXT_LEN,
+                )?,
                 application: clean_text(
                     p.application.as_deref().ok_or("missing application")?,
                     MAX_TEXT_LEN,
@@ -356,6 +373,31 @@ mod tests {
             ValidatedAction::OpenApplication { application } => assert_eq!(application, "firefox"),
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn open_in_application_shape() {
+        let mut r = result(Intent::OpenInApplication);
+        r.parameters.query = Some("nila".into());
+        r.parameters.application = Some("vs code".into());
+        match validate(&r) {
+            ValidatedAction::OpenInApplication { query, application } => {
+                assert_eq!(query, "nila");
+                assert_eq!(application, "vs code");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_in_application_needs_both_slots() {
+        // Missing query or application: must not execute.
+        let mut r = result(Intent::OpenInApplication);
+        r.parameters.application = Some("code".into());
+        assert!(matches!(validate(&r), ValidatedAction::Unknown));
+        let mut r = result(Intent::OpenInApplication);
+        r.parameters.query = Some("nila".into());
+        assert!(matches!(validate(&r), ValidatedAction::Unknown));
     }
 
     #[test]
