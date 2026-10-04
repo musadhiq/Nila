@@ -2,10 +2,10 @@
  * WakePill — the small "Nila is listening" indicator shown at the top of
  * the screen after the wake word is detected.
  *
- * It is deliberately minimal (her attentive face + one word + a soft
- * pulse dot) and transform/opacity-only, in the same visual language as
- * the notification dock. The dock wins while a reminder is on screen;
- * this pill only renders while the dock is hidden.
+ * It is deliberately minimal (her attentive face + one word + the
+ * voice-driven wave) and transform/opacity-only, in the same visual
+ * language as the notification dock. The dock wins while a reminder is
+ * on screen; this pill only renders while the dock is hidden.
  *
  * While the user speaks, the live STT partial renders as a subtext line
  * inside the pill, under the label. The bubble underneath is reserved
@@ -14,6 +14,7 @@
  */
 
 import { expressionUrl } from "../dock/expressions";
+import { VoiceWave } from "./VoiceWave";
 
 interface WakePillProps {
   /** Localized pill label ("Listening…" / "Working on it…"). */
@@ -22,6 +23,10 @@ interface WakePillProps {
   alt: string;
   /** Disable the pulse animation. */
   reducedMotion: boolean;
+  /** True while the mic is held for the user's speech (listening /
+   * recording). The wave is then driven by the live mic level;
+   * otherwise it idles at a slow drift. */
+  waveActive: boolean;
   /** Live partial transcript; renders as subtext inside the pill when non-empty. */
   subtext?: string;
   /** Frozen final transcript or Nila's response; the bubble renders when non-empty. */
@@ -36,7 +41,7 @@ interface WakePillProps {
   dismissLabel?: string;
 }
 
-export function WakePill({ label, alt, reducedMotion, subtext, transcript, error, dismissible, onDismiss, dismissLabel }: WakePillProps) {
+export function WakePill({ label, alt, reducedMotion, waveActive, subtext, transcript, error, dismissible, onDismiss, dismissLabel }: WakePillProps) {
   const bubbleText = error ?? (transcript && transcript.trim().length > 0 ? transcript : null);
   const sub = subtext && subtext.trim().length > 0 ? subtext : null;
   const showDismiss = dismissible && onDismiss && bubbleText && !error;
@@ -53,10 +58,7 @@ export function WakePill({ label, alt, reducedMotion, subtext, transcript, error
           <span className="wake-label">{label}</span>
           {sub ? <span className="wake-subtext">{sub}</span> : null}
         </span>
-        <span
-          className={reducedMotion ? "wake-dot is-still" : "wake-dot"}
-          aria-hidden="true"
-        />
+        <VoiceWave active={waveActive} reducedMotion={reducedMotion} />
       </div>
       {bubbleText ? (
         <div className={error ? "wake-bubble is-error" : "wake-bubble"}>

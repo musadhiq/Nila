@@ -27,6 +27,8 @@ export const VOICE_EVENTS = {
   error: "voice:error",
   repeat: "voice:repeat",
   ended: "voice:ended",
+  /** Smoothed mic input level (0–1), ~16 Hz while the mic is captured. */
+  level: "voice:level",
 } as const;
 
 /**
@@ -92,6 +94,17 @@ export interface VoiceErrorPayload {
 export interface VoiceRepeatPayload {
   type: "voice:repeat";
   attempt: number;
+}
+
+/**
+ * Smoothed mic input level driving the listening wave animation.
+ * Emitted ~16 Hz from the Rust capture loop while the mic is held
+ * (waiting-for-speech and recording phases). `level` is 0 (silence)
+ * to 1 (loud), fast-attack / slow-release smoothed.
+ */
+export interface VoiceLevelPayload {
+  type: "voice:level";
+  level: number;
 }
 
 /**
