@@ -520,6 +520,12 @@ fn detection_loop(
                     },
                 )
                 .ok();
+                // Nila must APPEAR on wake, even from the tray: the
+                // frontend shows the listening pill, but only if the
+                // window itself is visible.
+                if let Some(w) = app.get_webview_window("companion") {
+                    let _ = w.show();
+                }
                 // The crate's repeat cooldown plus this hold spaces events
                 // out; stale audio queued during the hold is discarded by
                 // the listener itself.

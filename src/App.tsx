@@ -267,6 +267,10 @@ export default function App() {
         await win.setDecorations(true);
         await win.setMaxSize(null);
         await win.setMinSize(new LogicalSize(720, 480));
+        // Appear in the taskbar so Alt+Tab / clicking the panel brings
+        // it back — otherwise it "disappears" on focus loss with no way
+        // to return (tray-first only applies to the companion view).
+        await win.setSkipTaskbar(false);
         setDecorated(true);
       } else {
         // Companion/dock: frameless, always-on-top, no size locks — the
@@ -274,6 +278,7 @@ export default function App() {
         await win.setDecorations(false);
         await win.setMinSize(null);
         await win.setMaxSize(null);
+        await win.setSkipTaskbar(true);
         setDecorated(false);
       }
       await win.setAlwaysOnTop(!panel);
@@ -633,6 +638,11 @@ export default function App() {
         setView("companion");
         chimeForReminder();
         dockRef.current.notify({ id: r.id, title: r.title, message: r.message, kind: r.kind });
+        // Explicit present: the phase effect bails when the view was
+        // just switched from settings (stale closure), so a reminder
+        // firing under an open panel would never surface. Belt and
+        // suspenders — the effect is a no-op if already visible.
+        void presentDockWindow();
       });
       if (cancelled) {
         off();
@@ -739,6 +749,9 @@ export default function App() {
       unlistens.push(
         await listenEvent("nila://wake-detected", () => {
           if (hidden()) return;
+          // Leave settings if open: the wake pill only renders in the
+          // companion view, and the user expects Nila to appear on wake.
+          setView("companion");
           setWakeListening(true);
         }),
       );
