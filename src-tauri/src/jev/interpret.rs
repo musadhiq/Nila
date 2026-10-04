@@ -1444,12 +1444,16 @@ pub fn recover(app: &AppHandle, state: &JevState, raw_text: &str) {
                     pending: next_pending,
                     question_key,
                     question_params,
-                    intent,
+                    intent: _,
                 } => {
                     idebug!("pending re-ask {question_key}");
                     *guard = Some(next_pending);
                     drop(guard);
-                    emit_interpret_result(app, intent.as_str(), question_key, question_params);
+                    // A re-asked question is not the pending action: emit
+                    // the "clarify" marker so the frontend keeps the
+                    // conversation open instead of treating the pending
+                    // action's intent (e.g. "new_reminder") as terminal.
+                    emit_interpret_result(app, "clarify", question_key, question_params);
                     return;
                 }
                 PendingResolution::Cancelled => {
@@ -1513,7 +1517,10 @@ pub fn recover(app: &AppHandle, state: &JevState, raw_text: &str) {
         } => {
             *guard = Some(PendingInteraction::awaiting_confirmation(intent, params));
             drop(guard);
-            emit_interpret_result(app, intent.as_str(), question_key, question_params);
+            // A confirmation question is not the action itself: emit the
+            // "confirm" marker so the frontend keeps the conversation
+            // open for the yes/no answer.
+            emit_interpret_result(app, "confirm", question_key, question_params);
         }
         Decision::Clarify {
             intent,
@@ -1524,7 +1531,11 @@ pub fn recover(app: &AppHandle, state: &JevState, raw_text: &str) {
         } => {
             *guard = Some(PendingInteraction::awaiting_entity(intent, params, missing));
             drop(guard);
-            emit_interpret_result(app, intent.as_str(), question_key, question_params);
+            // A clarification question is not the pending action: emit
+            // the "clarify" marker so the frontend keeps the conversation
+            // open instead of treating the pending action's intent (e.g.
+            // "new_reminder") as terminal.
+            emit_interpret_result(app, "clarify", question_key, question_params);
         }
         Decision::ShowRemindersList => {
             // The existing ambiguous-cancel behavior: open the list so
