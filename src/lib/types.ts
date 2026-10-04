@@ -3,9 +3,7 @@
 export type ReminderKind =
   | "water" | "food" | "break" | "move" | "sleep" | "stretch" | "exercise" | "work" | "custom"
   // System health reminders, fired by the backend system monitor.
-  | "battery" | "cpu" | "memory" | "disk"
-  // Google Calendar connector: event reminders from the rolling sync.
-  | "calendar";
+  | "battery" | "cpu" | "memory" | "disk";
 
 /** Metric a system reminder watches. Mirrors the Rust `SystemMetric`. */
 export type SystemMetric = "battery_low" | "cpu_high" | "memory_high" | "disk_low";
@@ -71,12 +69,6 @@ export interface AppSettings {
   desktop_notifications: boolean;
   /** Idle animation ambience for the character. */
   idle_behavior: "normal" | "minimal";
-  /** Google Calendar connector: master toggle for calendar reminders. */
-  gcal_reminders_enabled: boolean;
-  /** Google Calendar connector: minutes before an event to notify. */
-  gcal_reminder_minutes: number;
-  /** Google Calendar connector: also notify for all-day events. */
-  gcal_allday_reminders_enabled: boolean;
   /** Accent color used across the settings UI. */
   accent: "teal" | "amber" | "rose" | "indigo";
   // --- Character presence & positioning (spec 33-57) ---
@@ -181,9 +173,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   desktop_notifications: false,
   idle_behavior: "normal",
   accent: "teal",
-  gcal_reminders_enabled: true,
-  gcal_reminder_minutes: 15,
-  gcal_allday_reminders_enabled: false,
   // Presence defaults (spec 51): predictable and calm.
   position_preset: "bottom-right",
   entrance: "gentle",

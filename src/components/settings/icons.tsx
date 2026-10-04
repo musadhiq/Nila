@@ -113,34 +113,6 @@ export const IconCommands = (p: IconProps) =>
     </>,
   );
 
-/**
- * Google Calendar brand mark — the blue calendar page with "31".
- * Used for the Connectors page and the Google Calendar card so the
- * connector is instantly recognizable as the real Google Calendar.
- */
-export const IconGoogleCalendar = (p: IconProps) => (
-  <svg
-    className={p.className}
-    viewBox="0 0 24 24"
-    width="16"
-    height="16"
-    aria-hidden="true"
-  >
-    <rect x="3" y="4" width="18" height="17" rx="3.5" fill="#4285F4" />
-    <text
-      x="12"
-      y="16.8"
-      textAnchor="middle"
-      fontFamily="Arial, Helvetica, sans-serif"
-      fontWeight="700"
-      fontSize="10.5"
-      fill="#ffffff"
-    >
-      31
-    </text>
-  </svg>
-);
-
 export const IconPlus = (p: IconProps) =>
   base(p, <path d="M12 5v14M5 12h14" />);
 
