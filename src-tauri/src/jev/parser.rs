@@ -13,7 +13,7 @@
 
 use chrono::{DateTime, Local, TimeZone};
 
-use super::executor::{is_known_app, is_known_folder};
+use super::executor::{is_known_app, is_known_folder, strip_kind_word};
 use super::schema::{Intent, JevParams, JevResult};
 
 pub struct LocalParser;
@@ -184,6 +184,31 @@ fn parse_transcript(transcript: &str) -> JevResult {
             }
         }
         return unknown();
+    }
+
+    // "open X in Y" — open file/folder X in application Y. Checked
+    // before the bare "open X" patterns below, which would otherwise
+    // swallow the whole phrase as a file query.
+    for verb in ["open ", "launch ", "start "] {
+        if let Some(rest) = text.strip_prefix(verb) {
+            if let Some((x, y)) = rest.split_once(" in ") {
+                let query = strip_kind_word(strip_leading_article(x.trim()).trim());
+                let app = strip_leading_article(y.trim().trim_end_matches(" app").trim())
+                    .trim()
+                    .to_string();
+                if !query.is_empty()
+                    && !app.is_empty()
+                    && !is_hostile_target(&query)
+                    && !is_hostile_target(&app)
+                    && is_known_app(&app)
+                {
+                    let mut r = jev(Intent::OpenInApplication);
+                    r.parameters.query = Some(query);
+                    r.parameters.application = Some(app);
+                    return r;
+                }
+            }
+        }
     }
 
     // "open X" / "launch X" / "start X" — disambiguated by registry.
@@ -766,6 +791,33 @@ mod tests {
 
         let r = parse_transcript("Open my documents");
         assert_eq!(r.intent, Intent::OpenFolder);
+    }
+
+    #[test]
+    fn open_in_app_variants() {
+        // "open X in Y" — file/folder X in application Y.
+        let r = parse_transcript("Open nila in vs code");
+        assert_eq!(r.intent, Intent::OpenInApplication);
+        assert_eq!(r.parameters.query.as_deref(), Some("nila"));
+        assert_eq!(r.parameters.application.as_deref(), Some("vs code"));
+
+        // Kind words are stripped from the query.
+        let r = parse_transcript("Open folder nila in vs code");
+        assert_eq!(r.intent, Intent::OpenInApplication);
+        assert_eq!(r.parameters.query.as_deref(), Some("nila"));
+
+        let r = parse_transcript("Launch the report file in the firefox app");
+        assert_eq!(r.intent, Intent::OpenInApplication);
+        assert_eq!(r.parameters.query.as_deref(), Some("report"));
+        assert_eq!(r.parameters.application.as_deref(), Some("firefox"));
+
+        // Unknown app → not this intent (falls through to file query).
+        let r = parse_transcript("Open nila in vlcplayer");
+        assert_ne!(r.intent, Intent::OpenInApplication);
+
+        // Empty query → not this intent.
+        let r = parse_transcript("Open in vs code");
+        assert_ne!(r.intent, Intent::OpenInApplication);
     }
 
     #[test]
