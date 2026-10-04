@@ -1403,6 +1403,7 @@ export default function App() {
             }
             alt={getStrings(settings.language).wake.nilaAlt}
             reducedMotion={settings.animation !== "full" || prefersReducedMotion}
+            waveActive={voicePhase === "listening" || voicePhase === "recording"}
             subtext={
               voicePhase === "listening" || voicePhase === "recording"
                 ? voiceText
