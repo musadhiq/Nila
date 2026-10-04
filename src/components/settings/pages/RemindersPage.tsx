@@ -10,7 +10,6 @@ import {
   type Language,
 } from "../../../lib/i18n";
 import type { Reminder, ReminderKind } from "../../../lib/types";
-import { oneHourFromNow } from "../../../lib/reminders";
 import { invokeCommand } from "../../../lib/tauri";
 import { SettingsRow, SettingsSection, Switch } from "../ui";
 import { IconChevronRight, IconPlus, IconReminders } from "../icons";
@@ -31,23 +30,6 @@ const SYSTEM_KINDS: ReminderKind[] = ["battery", "cpu", "memory", "disk"];
 interface StartupReport {
   issues: { reminder_id: string; reason: string }[];
   next: { id: string; at: string } | null;
-}
-
-/**
- * Skeleton for a voice-prefilled new reminder. The editor treats it
- * like any other initial value — the user reviews everything before
- * saving. Defaults to a one-time reminder one hour out.
- */
-function newReminderPrefill(title: string): Reminder {
-  const at = oneHourFromNow();
-  return {
-    id: "",
-    title,
-    message: title,
-    kind: "custom",
-    schedule: { type: "once", at: at.toISOString() },
-    enabled: true,
-  };
 }
 
 /** Backend status for the system calendar integration. */
@@ -126,7 +108,6 @@ export function RemindersPage({
   lang,
   reminders,
   autoNew,
-  prefillTitle,
   openEditorSignal,
   onToggle,
   onDelete,
@@ -138,8 +119,6 @@ export function RemindersPage({
   reminders: Reminder[];
   /** Open the editor immediately (tray "New Reminder"). */
   autoNew?: boolean;
-  /** Voice-prefilled title for the new-reminder editor. */
-  prefillTitle?: string;
   /** Bump to open the editor from elsewhere (welcome page). */
   openEditorSignal?: number;
   onToggle: (id: string, enabled: boolean) => void;
@@ -325,11 +304,7 @@ export function RemindersPage({
         <ReminderEditor
           t={t}
           initial={
-            editing === "new"
-              ? prefillTitle
-                ? newReminderPrefill(prefillTitle)
-                : null
-              : editing
+            editing === "new" ? null : editing
           }
           onSave={handleSave}
           onDelete={handleDelete}

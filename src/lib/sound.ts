@@ -53,3 +53,22 @@ export function playReminderChime(style: "soft" | "chime"): void {
   note(ac, 659.25, t, 1.2, 0.12); // E5
   note(ac, 987.77, t + 0.24, 1.5, 0.1); // B5
 }
+
+/**
+ * Play the wake-up greeting chime when "Hi Nila" is detected: a short,
+ * bright hello — G5 skipping up to C6 — clearly distinct from the
+ * reminder chime. `style` mirrors the settings sound choice; "soft"
+ * plays a single gentle note instead.
+ */
+export function playWakeChime(style: "soft" | "chime"): void {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime + 0.03;
+  if (style === "soft") {
+    note(ac, 783.99, t, 0.7, 0.08); // G5, one breath
+    return;
+  }
+  // A cheerful little hello: G5 -> C6, quick and bright.
+  note(ac, 783.99, t, 0.5, 0.09); // G5
+  note(ac, 1046.5, t + 0.14, 0.8, 0.09); // C6
+}

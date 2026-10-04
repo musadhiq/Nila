@@ -9,7 +9,6 @@ import { invokeCommand, isTauri } from "../../../lib/tauri";
 import type { AppSettings } from "../../../lib/types";
 import type { ExpressionName } from "../../../character/expressions";
 import { SettingsRow, SettingsSection, Slider, Switch } from "../ui";
-import { VoiceModelsSection } from "./VoiceModelsSection";
 
 interface Props {
   t: Dict;
@@ -143,10 +142,6 @@ export function GeneralPage({
           }
         />
       </SettingsSection>
-
-      {/* Voice models: manual one-time download, only relevant (and only
-          shown) when the wake word is on. Nila works without the models. */}
-      {settings.wake_word_enabled && <VoiceModelsSection t={t} />}
 
       <SettingsSection title={l.section}>
         {(["en", "manglish"] as Language[]).map((opt) => (
