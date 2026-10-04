@@ -66,13 +66,12 @@ pub fn update_settings(
         .unwrap_or_default();
     // Google Calendar connector: snapshot the functional settings so
     // the post-write reaction below only fires on an actual change.
-    const GCAL_KEYS: [&str; 4] = [
-        "gcal_client_id",
+    const GCAL_KEYS: [&str; 3] = [
         "gcal_reminders_enabled",
         "gcal_reminder_minutes",
         "gcal_allday_reminders_enabled",
     ];
-    let prev_gcal: [Option<String>; 4] =
+    let prev_gcal: [Option<String>; 3] =
         std::array::from_fn(|i| db::get_setting(&conn, GCAL_KEYS[i]).unwrap_or(None));
     for (k, v) in obj {
         if k.len() > 64 {

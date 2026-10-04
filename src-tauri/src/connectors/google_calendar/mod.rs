@@ -3,29 +3,31 @@
 //! Local-first design:
 //!
 //! ```text
-//! Google Calendar → OAuth (OS keychain) → rolling-window poll
+//! Google Calendar → private ICS feed (OS keychain) → rolling-window poll
 //!   → short-lived in-memory event cache → existing reminder scheduler
 //!   → Nila notification dock
 //! ```
 //!
-//! - No Nila backend: the desktop app talks to Google directly.
+//! - No OAuth, no Google Cloud project, no browser flow: the user pastes
+//!   the calendar's "Secret address in iCal format" once. The URL is a
+//!   bearer credential and lives in the OS keychain, never in plain
+//!   settings or logs.
+//! - No Nila backend: the desktop app fetches the feed directly.
 //! - No full calendar copy: only a 2-hour rolling window is ever
-//!   fetched, and events leave the cache the moment they end, are
+//!   parsed, and events leave the cache the moment they end, are
 //!   cancelled, or fall outside the window.
-//! - Credentials: the OAuth client ID lives in plain settings (public
-//!   by design for installed apps); access/refresh tokens live in the
-//!   OS keychain as one JSON blob and are never logged or returned to
-//!   the frontend.
+//! - Read-only by construction: the ICS feed cannot be written to, and
+//!   the connector never tries.
 //! - The poll task is idle (30 min cadence) when nothing is upcoming
 //!   and stops entirely when the connector is disconnected or
 //!   reminders are disabled.
 
-pub mod auth;
+pub mod ics;
 pub mod service;
 pub mod sync;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -46,15 +48,11 @@ pub struct GcalState {
     /// disable, settings change); the task exits when its captured
     /// generation no longer matches.
     generation: AtomicU64,
-    /// True while the browser OAuth flow is in flight.
-    connecting: AtomicBool,
-    /// Short-lived event cache: Google event id → cached entry.
+    /// Short-lived event cache: event id → cached entry.
     /// In-memory only; rebuilt on every sync.
     pub(crate) cache: Mutex<HashMap<String, sync::CachedEvent>>,
-    /// Last user-visible error (e.g. network failure during auth).
+    /// Last user-visible error (e.g. network failure during a sync).
     last_error: Mutex<Option<String>>,
-    /// Set when a token refresh fails: the user must reconnect.
-    pub(crate) auth_failed: AtomicBool,
 }
 
 impl GcalState {
@@ -62,10 +60,8 @@ impl GcalState {
         GcalState {
             notify: Arc::new(tokio::sync::Notify::new()),
             generation: AtomicU64::new(0),
-            connecting: AtomicBool::new(false),
             cache: Mutex::new(HashMap::new()),
             last_error: Mutex::new(None),
-            auth_failed: AtomicBool::new(false),
         }
     }
 
@@ -103,17 +99,12 @@ fn get_setting(app: &AppHandle, key: &str) -> Option<String> {
     crate::db::get_setting(&conn, key).ok().flatten()
 }
 
-fn set_setting(app: &AppHandle, key: &str, value: &str) -> Result<(), String> {
+pub(crate) fn set_setting(app: &AppHandle, key: &str, value: &str) -> Result<(), String> {
     let state = app
         .try_state::<crate::db::DbState>()
         .ok_or("settings unavailable".to_string())?;
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     crate::db::set_setting(&conn, key, value).map_err(|e| e.to_string())
-}
-
-/// OAuth client ID for the user's own Google Cloud "Desktop app".
-pub fn client_id(app: &AppHandle) -> Option<String> {
-    get_setting(app, "gcal_client_id").filter(|s| !s.trim().is_empty())
 }
 
 /// Calendar reminders master toggle. Defaults ON.
@@ -136,27 +127,6 @@ pub fn allday_reminders_enabled(app: &AppHandle) -> bool {
     get_setting(app, "gcal_allday_reminders_enabled")
         .map(|v| v == "true")
         .unwrap_or(false)
-}
-
-// ---------------------------------------------------------------------------
-// Token helper with one transparent refresh-and-retry
-// ---------------------------------------------------------------------------
-
-/// Run `f` with a valid access token, refreshing once on a 401 and
-/// retrying. Centralizes the "expired mid-call" race for sync, JEV,
-/// and the connection test.
-pub fn with_fresh_token<T>(
-    app: &AppHandle,
-    f: impl Fn(&str) -> Result<T, GcalError>,
-) -> Result<T, GcalError> {
-    let mut token = auth::ensure_access_token(app)?;
-    match f(&token) {
-        Err(GcalError::Api(401, _)) => {
-            token = auth::force_refresh(app)?;
-            f(&token)
-        }
-        other => other,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -216,25 +186,24 @@ pub fn request_stop(app: &AppHandle) {
     }
 }
 
-/// Startup entry point: resume polling only when the connector is
-/// connected and reminders are enabled. Never touches the network
-/// here — the first sync validates the token and degrades gracefully.
+/// Startup entry point: resume polling only when the feed URL is set
+/// and reminders are enabled. Never touches the network here — the
+/// first sync validates the feed and degrades gracefully.
 pub fn maybe_start(app: &AppHandle) {
-    if reminders_enabled(app) && auth::has_tokens() {
+    if reminders_enabled(app) && ics::has_url() {
         eprintln!("nila: gcal: resuming poll task");
         spawn_poll(app.clone());
     }
 }
 
-/// Drop all connector-owned state: keychain tokens, cached events,
+/// Drop all connector-owned state: keychain feed URL, cached events,
 /// and every reminder the connector scheduled.
 fn full_disconnect(app: &AppHandle) -> Result<(), String> {
-    auth::delete_bundle().map_err(|e| format!("credential store: {e}"))?;
+    ics::delete_url().map_err(|e| format!("credential store: {e}"))?;
     request_stop(app);
     if let Some(state) = app.try_state::<GcalState>() {
         state.cache.lock().expect("gcal cache poisoned").clear();
         state.set_error(None);
-        state.auth_failed.store(false, Ordering::SeqCst);
     }
     let db_state = app
         .try_state::<crate::db::DbState>()
@@ -245,7 +214,9 @@ fn full_disconnect(app: &AppHandle) -> Result<(), String> {
     if n > 0 {
         eprintln!("nila: gcal: removed {n} calendar reminder(s)");
     }
-    let _ = set_setting(app, "gcal_account_email", "");
+    let _ = set_setting(app, "gcal_calendar_name", "");
+    // Drop the stale OAuth-era client ID if it was ever saved.
+    let _ = set_setting(app, "gcal_client_id", "");
     crate::scheduler::notify_data_changed(app);
     emit_status(app);
     Ok(())
@@ -263,30 +234,23 @@ pub(crate) fn emit_status(app: &AppHandle) {
 
 #[derive(Serialize, Clone)]
 pub struct GcalStatus {
-    /// "disconnected" | "connecting" | "connected" |
-    /// "auth_required" | "error"
+    /// "disconnected" | "connected" | "error"
     pub state: String,
-    pub email: Option<String>,
+    pub calendar_name: Option<String>,
     pub last_sync: Option<String>,
     pub last_error: Option<String>,
 }
 
 /// `gcal_get_status` — the ONLY status the frontend ever sees.
-/// Tokens are never returned.
+/// The feed URL is never returned.
 #[tauri::command]
 pub fn gcal_get_status(app: AppHandle) -> Result<GcalStatus, String> {
     let state = app
         .try_state::<GcalState>()
         .ok_or("calendar connector unavailable".to_string())?;
-    let connecting = state.connecting.load(Ordering::SeqCst);
-    let auth_failed = state.auth_failed.load(Ordering::SeqCst);
     let last_error = state.last_error.lock().map_err(|e| e.to_string())?.clone();
-    let tokens = auth::has_tokens();
-    let state_str = if connecting {
-        "connecting"
-    } else if auth_failed {
-        "auth_required"
-    } else if tokens {
+    let connected = ics::has_url();
+    let state_str = if connected {
         "connected"
     } else if last_error.is_some() {
         "error"
@@ -295,106 +259,83 @@ pub fn gcal_get_status(app: AppHandle) -> Result<GcalStatus, String> {
     };
     Ok(GcalStatus {
         state: state_str.to_string(),
-        email: get_setting(&app, "gcal_account_email").filter(|s| !s.is_empty()),
+        calendar_name: get_setting(&app, "gcal_calendar_name").filter(|s| !s.is_empty()),
         last_sync: get_setting(&app, "gcal_last_sync").filter(|s| !s.is_empty()),
         last_error,
     })
 }
 
-/// `gcal_set_client_id` — store the user's Google OAuth client ID
-/// (Google Cloud Console → Desktop app). Public by design for
-/// installed apps; kept in plain settings, never hardcoded.
+/// Validate the pasted feed URL shape. The URL itself is opaque; we
+/// only check it looks like an HTTPS ICS feed so typos fail fast.
+fn validate_feed_url(url: &str) -> Result<String, String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("feed URL is empty".to_string());
+    }
+    if url.len() > 2048 {
+        return Err("feed URL is too long".to_string());
+    }
+    if url.chars().any(|c| c.is_control() || c == ' ') {
+        return Err("feed URL looks invalid".to_string());
+    }
+    let lower = url.to_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("webcal://")) {
+        return Err("feed URL must start with https://".to_string());
+    }
+    Ok(url.to_string())
+}
+
+/// `gcal_set_feed_url` — store the calendar's private ICS feed URL
+/// ("Secret address in iCal format") in the OS keychain, then start
+/// syncing. Replaces any previous URL.
 #[tauri::command]
-pub fn gcal_set_client_id(app: AppHandle, client_id: String) -> Result<(), String> {
-    let id = client_id.trim();
-    if id.is_empty() {
-        return Err("client ID is empty".to_string());
+pub fn gcal_set_feed_url(app: AppHandle, url: String) -> Result<(), String> {
+    let url = validate_feed_url(&url)?;
+    // webcal:// is just https:// for calendar feeds.
+    let url = url
+        .strip_prefix("webcal://")
+        .map(|rest| format!("https://{rest}"))
+        .unwrap_or(url);
+    ics::store_url(&url)?;
+    if let Some(state) = app.try_state::<GcalState>() {
+        state.set_error(None);
     }
-    if id.len() > 256 || id.chars().any(|c| c.is_control() || c.is_whitespace()) {
-        return Err("client ID looks invalid".to_string());
+    // Clear any stale calendar name; the first sync re-discovers it.
+    let _ = set_setting(&app, "gcal_calendar_name", "");
+    if reminders_enabled(&app) {
+        spawn_poll(app.clone());
+        if let Some(state) = app.try_state::<GcalState>() {
+            state.notify();
+        }
     }
-    set_setting(&app, "gcal_client_id", id)?;
     emit_status(&app);
     Ok(())
 }
 
-/// `gcal_start_auth` — begin the browser OAuth flow. Returns
-/// immediately; progress arrives as `gcal:status` events.
-#[tauri::command]
-pub fn gcal_start_auth(app: AppHandle) -> Result<(), String> {
-    let Some(id) = client_id(&app) else {
-        return Err("set your Google OAuth client ID first".to_string());
-    };
-    let state = app
-        .try_state::<GcalState>()
-        .ok_or("calendar connector unavailable".to_string())?;
-    if state.connecting.swap(true, Ordering::SeqCst) {
-        return Err("authorization already in progress".to_string());
-    }
-    state.set_error(None);
-    state.auth_failed.store(false, Ordering::SeqCst);
-    emit_status(&app);
-    std::thread::spawn(move || {
-        let outcome = auth::run_auth_flow(&app, &id);
-        let state = app.try_state::<GcalState>();
-        match outcome {
-            Ok(()) => {
-                eprintln!("nila: gcal: authorization succeeded");
-                if let Some(s) = &state {
-                    s.set_error(None);
-                    s.auth_failed.store(false, Ordering::SeqCst);
-                }
-                // Cache the account email for the status card.
-                match with_fresh_token(&app, service::primary_email) {
-                    Ok(email) => {
-                        let _ = set_setting(&app, "gcal_account_email", &email);
-                    }
-                    Err(e) => eprintln!("nila: gcal: email lookup failed: {e:?}"),
-                }
-                if reminders_enabled(&app) {
-                    spawn_poll(app.clone());
-                }
-            }
-            Err(e) => {
-                eprintln!("nila: gcal: authorization failed: {e}");
-                if let Some(s) = &state {
-                    s.set_error(Some(e));
-                }
-            }
-        }
-        if let Some(s) = state {
-            s.connecting.store(false, Ordering::SeqCst);
-        }
-        emit_status(&app);
-    });
-    Ok(())
-}
-
-/// `gcal_disconnect` — remove tokens, stop polling, delete every
+/// `gcal_disconnect` — remove the feed URL, stop polling, delete every
 /// calendar reminder, clear the cache.
 #[tauri::command]
 pub fn gcal_disconnect(app: AppHandle) -> Result<(), String> {
     full_disconnect(&app)
 }
 
-/// `gcal_test_connection` — lightweight authenticated probe.
+/// `gcal_test_connection` — fetch the feed once and report.
 #[tauri::command]
 pub fn gcal_test_connection(app: AppHandle) -> Result<TestConnectionReport, String> {
-    if !auth::has_tokens() {
+    if !ics::has_url() {
         return Ok(TestConnectionReport {
             status: "not_configured",
         });
     }
-    let status = match with_fresh_token(&app, service::primary_email) {
+    let now = chrono::Utc::now();
+    let status = match ics::fetch_events(now, now + chrono::Duration::hours(2)) {
         Ok(_) => "connected",
-        Err(GcalError::NotConfigured) | Err(GcalError::AuthRequired) => "auth_required",
         Err(GcalError::Network(_)) => "network_error",
-        Err(GcalError::Api(_, _) | GcalError::Storage(_)) => "service_unavailable",
+        Err(GcalError::Feed(_)) => "service_unavailable",
+        Err(_) => "service_unavailable",
     };
     if let Some(state) = app.try_state::<GcalState>() {
-        state
-            .auth_failed
-            .store(status == "auth_required", Ordering::SeqCst);
+        state.set_error(None);
     }
     emit_status(&app);
     Ok(TestConnectionReport { status })
@@ -418,7 +359,7 @@ pub fn gcal_settings_changed(app: AppHandle) -> Result<(), String> {
 /// the frontend saves fire-and-forget, so a separate "settings
 /// changed" call could otherwise read stale values.
 pub(crate) fn apply_settings_changed(app: &AppHandle) -> Result<(), String> {
-    let start = reminders_enabled(app) && auth::has_tokens();
+    let start = reminders_enabled(app) && ics::has_url();
     if start {
         spawn_poll(app.clone());
         if let Some(state) = app.try_state::<GcalState>() {
@@ -448,8 +389,8 @@ pub(crate) fn apply_settings_changed(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Wake the poll task for an immediate resync (e.g. after a JEV
-/// calendar mutation). No-op when the task isn't running.
+/// Wake the poll task for an immediate resync. No-op when the task
+/// isn't running.
 pub fn wake_poll(app: &AppHandle) {
     if let Some(state) = app.try_state::<GcalState>() {
         state.notify();
@@ -465,7 +406,7 @@ pub fn gcal_sync_now(app: AppHandle) -> Result<(), String> {
 
 #[derive(Serialize)]
 pub struct TestConnectionReport {
-    /// "connected" | "auth_required" | "network_error" |
-    /// "service_unavailable" | "not_configured"
+    /// "connected" | "network_error" | "service_unavailable" |
+    /// "not_configured"
     pub status: &'static str,
 }

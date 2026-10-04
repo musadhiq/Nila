@@ -20,7 +20,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local, TimeZone, Utc};
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::service::{self, CalendarEvent, GcalError};
+use super::service::{CalendarEvent, GcalError};
 use super::{GcalState, events};
 
 // ---------------------------------------------------------------------------
@@ -382,27 +382,22 @@ pub fn sync_once(app: &AppHandle) -> Option<u64> {
     let now = Utc::now();
     let window_end = now + Duration::from_secs(WINDOW_SECS as u64);
 
-    let fetched = match super::with_fresh_token(app, |t| {
-        service::list_events(t, now, window_end)
-    }) {
-        Ok(events) => events,
+    let fetched = match super::ics::fetch_events(now, window_end) {
+        Ok((cal_name, events)) => {
+            if let Some(name) = cal_name {
+                let _ = super::set_setting(app, "gcal_calendar_name", &name);
+            }
+            events
+        }
         Err(GcalError::NotConfigured) => {
             eprintln!("nila: gcal: not connected, stopping poll task");
             return None;
         }
-        Err(GcalError::AuthRequired) => {
-            eprintln!("nila: gcal: authentication required, stopping poll task");
-            if let Some(state) = app.try_state::<GcalState>() {
-                state
-                    .auth_failed
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-            }
-            super::emit_status(app);
-            return None;
-        }
         Err(e) => {
-            // Network/API failure: keep the cache and existing
+            // Network/feed failure: keep the cache and existing
             // reminders, retry on a calm cadence. No tight loop.
+            // A revoked URL surfaces here as a Feed error and stays
+            // visible via the status card.
             eprintln!("nila: gcal: sync failed ({e}); keeping cache, retrying later");
             return Some(POLL_ERROR_SECS);
         }
