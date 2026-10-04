@@ -50,6 +50,77 @@ function newReminderPrefill(title: string): Reminder {
   };
 }
 
+/** Backend status for the system calendar integration. */
+interface SysCalStatus {
+  enabled: boolean;
+  calendar_count: number;
+  last_sync: string | null;
+  last_error: string | null;
+}
+
+/**
+ * System calendar integration (Linux: evolution-data-server).
+ * A single toggle: when on, Nila reads the desktop's calendars and
+ * creates reminders for upcoming events. No accounts, no network.
+ */
+function SystemCalendarSection({ t }: { t: Dict }) {
+  const r = t.reminders;
+  const [status, setStatus] = useState<SysCalStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    invokeCommand<SysCalStatus>("syscal_get_status")
+      .then((s) => alive && setStatus(s))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const onToggle = async (v: boolean) => {
+    setBusy(true);
+    try {
+      await invokeCommand("syscal_set_enabled", { enabled: v });
+      const s = await invokeCommand<SysCalStatus>("syscal_get_status");
+      setStatus(s);
+    } catch {
+      /* keep the last known status */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const description = !status
+    ? "—"
+    : !status.enabled
+      ? r.syscalDesc
+      : status.calendar_count === 0
+        ? r.syscalNoCalendars
+        : r.syscalActive.replace("{count}", String(status.calendar_count));
+
+  return (
+    <SettingsSection title={r.syscalTitle}>
+      <SettingsRow
+        title={r.syscalTitle}
+        description={description}
+        control={
+          <Switch
+            checked={status?.enabled ?? false}
+            onChange={(v) => void onToggle(v)}
+            label={r.syscalTitle}
+          />
+        }
+      />
+      {busy && (
+        <div className="sgroup-pad">
+          <p className="status-line">{r.syscalWorking}</p>
+        </div>
+      )}
+    </SettingsSection>
+  );
+}
+
 export function RemindersPage({
   t,
   lang,
@@ -171,6 +242,8 @@ export function RemindersPage({
           );
         })}
       </SettingsSection>
+
+      <SystemCalendarSection t={t} />
 
       <SettingsSection title={r.systemSection}>
         {SYSTEM_KINDS.map((kind) => {

@@ -90,6 +90,10 @@ pub const VALID_KINDS: &[&str] = &[
     "water", "food", "break", "move", "sleep", "stretch", "exercise", "work", "custom",
     // System health reminders, fired by the system monitor (system_monitor.rs).
     "battery", "cpu", "memory", "disk",
+    // System calendar integration (system_calendar.rs): event reminders
+    // synced from evolution-data-server. The toggle owns every row of
+    // this kind and deletes them when switched off.
+    "system_calendar",
 ];
 
 pub fn list_reminders(conn: &Connection) -> rusqlite::Result<Vec<Reminder>> {

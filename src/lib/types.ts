@@ -3,7 +3,9 @@
 export type ReminderKind =
   | "water" | "food" | "break" | "move" | "sleep" | "stretch" | "exercise" | "work" | "custom"
   // System health reminders, fired by the backend system monitor.
-  | "battery" | "cpu" | "memory" | "disk";
+  | "battery" | "cpu" | "memory" | "disk"
+  // System calendar integration: event reminders synced from the desktop calendar.
+  | "system_calendar";
 
 /** Metric a system reminder watches. Mirrors the Rust `SystemMetric`. */
 export type SystemMetric = "battery_low" | "cpu_high" | "memory_high" | "disk_low";

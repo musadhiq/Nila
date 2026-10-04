@@ -14,6 +14,7 @@ pub mod db;
 pub mod jev;
 pub mod models;
 pub mod scheduler;
+pub mod system_calendar;
 pub mod system_monitor;
 pub mod voice;
 pub mod wakeword;
@@ -342,6 +343,9 @@ pub fn run() {
             // Jev action layer: conversation context, secure token store.
             app.manage(jev::JevState::new());
 
+            // System calendar integration state.
+            app.manage(system_calendar::SysCalState::new());
+
             // Startup sequence: load → validate → recover → compute the
             // first deadline → resume. The driver recomputes on every
             // wake, but doing it once here makes a failed resume visible
@@ -395,6 +399,9 @@ pub fn run() {
             // Settings (see models.rs); Nila works without them.
             voice::spawn(app.handle());
 
+            // System calendar: resume the poll task if the toggle is on.
+            system_calendar::maybe_start(app.handle());
+
             // Menu-bar tray: the character window stays hidden until a
             // reminder is due (or the user opens it from the tray).
             build_tray(app.handle()).expect("failed to build Nila tray icon");
@@ -432,6 +439,8 @@ pub fn run() {
             jev::jev_test_connection,
             jev::process_voice_command,
             commands::open_url,
+            system_calendar::syscal_get_status,
+            system_calendar::syscal_set_enabled,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nila");
@@ -442,6 +451,7 @@ pub fn run() {
         if matches!(event, tauri::RunEvent::Exit) {
             voice::request_stop(app);
             wakeword::request_stop(app);
+            system_calendar::request_stop(app);
         }
     });
 }
