@@ -722,8 +722,12 @@ export default function App() {
      */
     const showJevResponse = (message: string, intent: string) => {
       if (!voiceActiveRef.current) return;
+      // Terminal: the conversation reaches its end here — Nila says
+      // her piece (goodbye, you're-welcome, …) and the pill dismisses
+      // after a beat instead of re-arming the mic.
       const terminal =
         intent === "goodbye" ||
+        intent === "thanks" ||
         intent === "error" ||
         intent === "new_reminder" ||
         intent === "show_reminders" ||
