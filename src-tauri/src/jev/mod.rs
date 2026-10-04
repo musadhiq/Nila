@@ -21,6 +21,7 @@ pub mod context;
 pub mod conversation;
 pub mod credentials;
 pub mod executor;
+pub mod interpret;
 pub mod parser;
 pub mod schema;
 pub mod ui_action;
@@ -36,6 +37,7 @@ use self::context::ConversationContext;
 use self::conversation::ConversationHandler;
 use self::credentials::{KeyringStore, SecureStore};
 use self::executor::{ActionExecutor, ActionResult, ActionStatus};
+use self::interpret::PendingInteraction;
 use self::parser::LocalParser;
 use self::schema::{validate, Intent, JevResult, ResponseType};
 use self::ui_action::UIActionHandler;
@@ -104,6 +106,11 @@ struct ErrorPayload<'a> {
 
 pub struct JevState {
     ctx: Mutex<ConversationContext>,
+    /// Short-term conversational recovery state: a pending
+    /// confirmation ("Do you want me to open Firefox?" → "yes") or a
+    /// pending entity ("What time?" → "nine tomorrow"). Expires on its
+    /// own; cleared by any confidently parsed new command.
+    pub(crate) pending: Mutex<Option<PendingInteraction>>,
     store: Box<dyn SecureStore>,
     /// Last `jev_test_connection` outcome: None = never tested.
     last_test: Mutex<Option<bool>>,
@@ -114,6 +121,7 @@ impl JevState {
     pub fn new() -> Self {
         JevState {
             ctx: Mutex::new(ConversationContext::default()),
+            pending: Mutex::new(None),
             store: Box::new(KeyringStore),
             last_test: Mutex::new(None),
             not_configured_notice: Mutex::new(None),
@@ -124,6 +132,7 @@ impl JevState {
     fn with_store(store: Box<dyn SecureStore>) -> Self {
         JevState {
             ctx: Mutex::new(ConversationContext::default()),
+            pending: Mutex::new(None),
             store,
             last_test: Mutex::new(None),
             not_configured_notice: Mutex::new(None),
@@ -170,10 +179,15 @@ fn run_pipeline(app: &AppHandle, text: &str) {
         return;
     }
 
-    // Expire stale follow-up context before it can leak in.
+    // Expire stale follow-up context before it can leak in, and drop
+    // expired pending clarifications.
     {
         let mut ctx = state.ctx.lock().expect("jev ctx poisoned");
         ctx.expire_if_stale();
+        let mut pending = state.pending.lock().expect("jev pending poisoned");
+        if pending.as_ref().is_some_and(|p| p.is_expired()) {
+            *pending = None;
+        }
     }
 
     // 1. Jev produces a structured result (local parser or API).
@@ -182,6 +196,19 @@ fn run_pipeline(app: &AppHandle, text: &str) {
         // produce_jev_result already emitted the error.
         return;
     };
+
+    if jev_result.intent == Intent::Unknown {
+        // The parser/API gave up on this transcript: run the
+        // conversational recovery interpreter (normalization, fuzzy
+        // intent matching, confidence gating, pending state). It emits
+        // the same jev:* events as the normal path.
+        interpret::recover(app, &state, text);
+        return;
+    }
+
+    // A confidently parsed command supersedes any pending
+    // clarification — a new unrelated command clears the state.
+    *state.pending.lock().expect("jev pending poisoned") = None;
 
     let _ = app.emit(
         events::ACTION_DETECTED,
@@ -310,12 +337,44 @@ fn produce_jev_result(
     }
 }
 
-fn unknown_result() -> JevResult {
+/// `pub(crate)` so the interpretation layer can fall back to it.
+pub(crate) fn unknown_result() -> JevResult {
     JevResult {
         intent: Intent::Unknown,
         parameters: schema::JevParams::default(),
         message: Some("I don't know how to do that yet.".to_string()),
     }
+}
+
+/// Emit `jev:action_detected` for an interpreted (recovered) intent.
+pub(crate) fn emit_action_detected(app: &AppHandle, intent: &str) {
+    let _ = app.emit(
+        events::ACTION_DETECTED,
+        ActionDetectedPayload { intent },
+    );
+}
+
+/// Emit a `jev:result` that carries Nila's conversational reply
+/// (clarification, confirmation, repeat request) without executing
+/// anything. The frontend renders it like any other result; the
+/// intent is never a terminal one, so conversation mode stays alive
+/// and the mic re-arms for the follow-up.
+pub(crate) fn emit_interpret_result(
+    app: &AppHandle,
+    intent: &str,
+    response_key: &str,
+    response_params: serde_json::Value,
+) {
+    let _ = app.emit(
+        events::RESULT,
+        ActionCompletedPayload {
+            intent: intent.to_string(),
+            status: "success",
+            response_key: response_key.to_string(),
+            response_params,
+            data: None,
+        },
+    );
 }
 
 fn emit_error(app: &AppHandle, code: &str, response_key: &str) {

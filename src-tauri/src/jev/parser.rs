@@ -420,7 +420,10 @@ fn parse_reminder(rest: &str) -> JevResult {
 /// "noon", "midnight" into a future local datetime. Returns None when
 /// the text isn't a recognizable time — the reminder then degrades to
 /// `unknown` rather than guessing.
-fn parse_reminder_time(s: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
+///
+/// `pub(crate)`: the interpretation layer reuses this for time
+/// expressions inside partial transcripts ("nine tomorrow").
+pub(crate) fn parse_reminder_time(s: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
     let s = s.trim().to_lowercase();
     // No time given at all: not a time, full stop. (An empty string
     // used to fall through to the "tomorrow" branch below and conjure
