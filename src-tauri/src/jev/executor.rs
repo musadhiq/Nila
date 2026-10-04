@@ -221,6 +221,30 @@ impl ApplicationExecutor {
         }
     }
 
+    /// Open a validated path in an allowlisted application. The path is
+    /// passed as a single argv element — never a shell string.
+    fn open_path(application: &str, path: &Path) -> ActionResult {
+        let display = title_case(application);
+        let Some((_entry, bin)) = find_app(application) else {
+            return ActionResult::err("appNotFound", obj(&[("app", &display)]));
+        };
+        let name = path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or("item")
+            .to_string();
+        match spawn_detached(&bin, &[path.as_os_str()]) {
+            Ok(()) => ActionResult::ok(
+                "openingInApp",
+                obj(&[("app", &display), ("name", &name)]),
+            ),
+            Err(e) => {
+                eprintln!("nila: jev: failed to launch {bin:?} with path: {e}");
+                ActionResult::err("appLaunchFailed", obj(&[("app", &display)]))
+            }
+        }
+    }
+
     fn close(application: &str) -> ActionResult {
         let display = title_case(application);
         let Some((_entry, bin)) = find_app(application) else {
@@ -291,6 +315,27 @@ const SEARCH_MAX_HITS: usize = 20;
 enum MatchKind {
     NameContains,
     Extension,
+    /// Match directory names instead of file names.
+    DirNameContains,
+    /// Match both files and directories in one walk; directory hits
+    /// are preferred by the caller.
+    EitherNameContains,
+}
+
+/// Strip "folder"/"file" kind words from a spoken target: "folder nila",
+/// "nila folder" → "nila". Used by the intent parser and the executor's
+/// target resolution.
+pub(crate) fn strip_kind_word(s: &str) -> String {
+    let s = s.trim();
+    let s = s
+        .strip_prefix("folder ")
+        .or_else(|| s.strip_prefix("file "))
+        .unwrap_or(s);
+    let s = s
+        .strip_suffix(" folder")
+        .or_else(|| s.strip_suffix(" file"))
+        .unwrap_or(s);
+    s.trim().to_string()
 }
 
 struct FileExecutor;
@@ -330,7 +375,23 @@ impl FileExecutor {
                 let path = entry.path();
                 if meta.is_dir() {
                     if depth < SEARCH_MAX_DEPTH {
-                        stack.push((path, depth + 1));
+                        stack.push((path.clone(), depth + 1));
+                    }
+                    if matches!(
+                        kind,
+                        MatchKind::DirNameContains | MatchKind::EitherNameContains
+                    ) {
+                        let name = entry.file_name().to_string_lossy().to_lowercase();
+                        if name.contains(&needle) {
+                            total += 1;
+                            if hits.len() < SEARCH_MAX_HITS {
+                                hits.push(SearchHit {
+                                    name: entry.file_name().to_string_lossy().into_owned(),
+                                    path,
+                                    is_dir: true,
+                                });
+                            }
+                        }
                     }
                     continue;
                 }
@@ -339,12 +400,16 @@ impl FileExecutor {
                 }
                 let name = entry.file_name().to_string_lossy().to_lowercase();
                 let matched = match kind {
-                    MatchKind::NameContains => name.contains(&needle),
+                    MatchKind::NameContains | MatchKind::EitherNameContains => {
+                        name.contains(&needle)
+                    }
                     MatchKind::Extension => path
                         .extension()
                         .and_then(OsStr::to_str)
                         .map(|e| e.to_lowercase() == needle)
                         .unwrap_or(false),
+                    // Directories are matched in the branch above.
+                    MatchKind::DirNameContains => false,
                 };
                 if matched {
                     total += 1;
@@ -352,6 +417,7 @@ impl FileExecutor {
                         hits.push(SearchHit {
                             name: entry.file_name().to_string_lossy().into_owned(),
                             path,
+                            is_dir: false,
                         });
                     }
                 }
@@ -434,6 +500,64 @@ impl FileExecutor {
                 ActionResult::err("fileOpenFailed", obj(&[("name", &name)]))
             }
         }
+    }
+
+    /// Resolve a spoken target to a path: known folder → directory
+    /// search (best hit) → file search (best hit). Folders win ties:
+    /// "open X in an editor" usually means the project folder.
+    fn resolve_target(query: &str) -> Option<PathBuf> {
+        let q = strip_kind_word(query);
+        if q.is_empty() {
+            return None;
+        }
+        if let Some(d) = FolderExecutor::known_folder(&q) {
+            if d.is_dir() {
+                return Some(d);
+            }
+        }
+        // One bounded walk for both; directory hits win.
+        let (hits, _) = Self::search(MatchKind::EitherNameContains, &q);
+        hits
+            .iter()
+            .find(|h| h.is_dir)
+            .or_else(|| hits.first())
+            .map(|h| h.path.clone())
+    }
+
+    /// Open a file or folder (by search query, or "it" via context) in
+    /// a specific allowlisted application. The app is checked before
+    /// the filesystem is touched; the path always comes from search
+    /// results or known folders and is re-validated before launch.
+    fn open_in_app(
+        query: &str,
+        application: &str,
+        ctx: &mut ConversationContext,
+    ) -> ActionResult {
+        if find_app(application).is_none() {
+            return ActionResult::err(
+                "appNotFound",
+                obj(&[("app", &title_case(application))]),
+            );
+        }
+        let path = if is_pronoun(query) {
+            match ctx.resolve_it() {
+                Some(p) => p,
+                None => return ActionResult::err("noFileInContext", obj(&[])),
+            }
+        } else {
+            match Self::resolve_target(query) {
+                Some(p) => p,
+                None => return ActionResult::err("targetNotFound", obj(&[("query", query)])),
+            }
+        };
+        // Validate: exists, inside the user's home. The path came from
+        // search results, but re-check — the filesystem may have
+        // changed since.
+        if !path.exists() || !within_home(&path) {
+            return ActionResult::err("targetNotFound", obj(&[("query", query)]));
+        }
+        ctx.remember_file(path.clone());
+        ApplicationExecutor::open_path(application, &path)
     }
 }
 
@@ -766,6 +890,9 @@ impl ActionExecutor {
                 FileExecutor::search_by_extension(&extension, ctx)
             }
             ValidatedAction::OpenFile { query } => FileExecutor::open(&query, ctx),
+            ValidatedAction::OpenInApplication { query, application } => {
+                FileExecutor::open_in_app(&query, &application, ctx)
+            }
             ValidatedAction::OpenFolder { query } => FolderExecutor::open(&query),
             ValidatedAction::CreateFolder { name } => FolderExecutor::create(&name),
             ValidatedAction::SetReminder { title, at } => {
@@ -834,6 +961,36 @@ mod tests {
             assert_ne!(r, PathBuf::from("/"));
             assert!(r.starts_with(home_dir().unwrap()));
         }
+    }
+
+    #[test]
+    fn open_in_app_rejects_unknown_app_first() {
+        // The app is checked before the filesystem is touched: no
+        // search runs, no process spawns.
+        let mut ctx = ConversationContext::default();
+        let r = FileExecutor::open_in_app("nila", "definitely-not-a-real-app-xyz", &mut ctx);
+        assert_eq!(r.status, ActionStatus::Error);
+        assert_eq!(r.response_key, "appNotFound");
+    }
+
+    #[test]
+    fn open_path_rejects_unknown_app() {
+        let r = ApplicationExecutor::open_path(
+            "definitely-not-a-real-app-xyz",
+            Path::new("/home/user/nila"),
+        );
+        assert_eq!(r.status, ActionStatus::Error);
+        assert_eq!(r.response_key, "appNotFound");
+    }
+
+    #[test]
+    fn kind_word_stripping() {
+        assert_eq!(strip_kind_word("folder nila"), "nila");
+        assert_eq!(strip_kind_word("nila folder"), "nila");
+        assert_eq!(strip_kind_word("file report"), "report");
+        assert_eq!(strip_kind_word("report file"), "report");
+        assert_eq!(strip_kind_word("folder"), "folder");
+        assert_eq!(strip_kind_word(""), "");
     }
 
     #[test]
