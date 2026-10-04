@@ -214,7 +214,7 @@ fn tray_icon_rgba() -> image::RgbaImage {
 }
 
 /// The normal tray icon.
-fn tray_icon() -> tauri::image::Image {
+fn tray_icon() -> tauri::image::Image<'static> {
     let rgba = tray_icon_rgba();
     let (w, h) = (rgba.width(), rgba.height());
     tauri::image::Image::new_owned(rgba.into_raw(), w, h)
@@ -223,7 +223,7 @@ fn tray_icon() -> tauri::image::Image {
 /// A dimmed (grayscale, 60% brightness) version of the tray icon, shown
 /// while Nila is initializing (mic check, model load). No extra binary
 /// asset needed — derived programmatically from the normal icon.
-fn tray_icon_loading() -> tauri::image::Image {
+fn tray_icon_loading() -> tauri::image::Image<'static> {
     let mut rgba = tray_icon_rgba();
     for px in rgba.chunks_exact_mut(4) {
         let gray =
