@@ -285,7 +285,7 @@ fn unescape_text(s: &str) -> String {
 fn collect_vevents(lines: &[String]) -> Vec<Vec<Prop>> {
     let mut events = Vec::new();
     let mut current: Option<Vec<Prop>> = None;
-    let mut depth = 0;
+    let mut depth: u32 = 0;
     for line in lines {
         let Some(prop) = parse_prop(line) else { continue };
         match prop.name.as_str() {
@@ -500,10 +500,12 @@ fn expand_rrule(
             }
         }
         Freq::Monthly => {
-            let (mut y, mut m) = (start_date.year(), start_date.month() as i64);
+            let mut y = start_date.year();
+            let mut m = start_date.month() as i64;
             for _ in 0..36 {
-                let day = start_date.day().min(days_in_month(y, m));
-                if let Some(d) = NaiveDate::from_ymd_opt(y, m as u32, day) {
+                let mu = m as u32;
+                let day = start_date.day().min(days_in_month(y, mu));
+                if let Some(d) = NaiveDate::from_ymd_opt(y, mu, day) {
                     if d >= start_date {
                         candidates.push(d);
                     }
@@ -516,9 +518,9 @@ fn expand_rrule(
             }
         }
         Freq::Yearly => {
-            for n in 0..5 {
-                let y = start_date.year() + (n as i64) * rule.interval;
-                let day = start_date.day().min(days_in_month(y, start_date.month() as i64));
+            for n in 0..5i64 {
+                let y = start_date.year() + (n * rule.interval) as i32;
+                let day = start_date.day().min(days_in_month(y, start_date.month()));
                 if let Some(d) = NaiveDate::from_ymd_opt(y, start_date.month(), day) {
                     candidates.push(d);
                 }
@@ -560,13 +562,13 @@ fn expand_rrule(
     out
 }
 
-fn days_in_month(year: i64, month: i64) -> u32 {
+fn days_in_month(year: i32, month: u32) -> u32 {
     let (y, m) = if month == 12 {
         (year + 1, 1)
     } else {
         (year, month + 1)
     };
-    NaiveDate::from_ymd_opt(y as i32, m as u32, 1)
+    NaiveDate::from_ymd_opt(y, m, 1)
         .and_then(|d| d.pred_opt())
         .map(|d| d.day())
         .unwrap_or(28)
