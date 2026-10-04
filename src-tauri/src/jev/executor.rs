@@ -315,8 +315,6 @@ const SEARCH_MAX_HITS: usize = 20;
 enum MatchKind {
     NameContains,
     Extension,
-    /// Match directory names instead of file names.
-    DirNameContains,
     /// Match both files and directories in one walk; directory hits
     /// are preferred by the caller.
     EitherNameContains,
@@ -377,10 +375,7 @@ impl FileExecutor {
                     if depth < SEARCH_MAX_DEPTH {
                         stack.push((path.clone(), depth + 1));
                     }
-                    if matches!(
-                        kind,
-                        MatchKind::DirNameContains | MatchKind::EitherNameContains
-                    ) {
+                    if matches!(kind, MatchKind::EitherNameContains) {
                         let name = entry.file_name().to_string_lossy().to_lowercase();
                         if name.contains(&needle) {
                             total += 1;
@@ -408,8 +403,6 @@ impl FileExecutor {
                         .and_then(OsStr::to_str)
                         .map(|e| e.to_lowercase() == needle)
                         .unwrap_or(false),
-                    // Directories are matched in the branch above.
-                    MatchKind::DirNameContains => false,
                 };
                 if matched {
                     total += 1;
