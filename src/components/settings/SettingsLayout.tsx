@@ -15,9 +15,7 @@ import {
   IconAppearance,
   IconCharacter,
   IconClose,
-  IconCommands,
   IconGeneral,
-  IconJev,
   IconMinus,
   IconReminders,
   IconWelcome,
@@ -28,8 +26,6 @@ export type PageId =
   | "welcome"
   | "general"
   | "nila"
-  | "jev"
-  | "commands"
   | "reminders"
   | "appearance"
   | "accessibility"
@@ -39,8 +35,6 @@ const PAGES: { id: PageId; icon: (p: { className?: string }) => ReactNode }[] = 
   { id: "welcome", icon: IconWelcome },
   { id: "general", icon: IconGeneral },
   { id: "nila", icon: IconCharacter },
-  { id: "jev", icon: IconJev },
-  { id: "commands", icon: IconCommands },
   { id: "reminders", icon: IconReminders },
   { id: "appearance", icon: IconAppearance },
   { id: "accessibility", icon: IconAccessibility },

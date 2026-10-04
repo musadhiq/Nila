@@ -31,29 +31,10 @@ import {
   toReminder,
   type ReminderDto,
 } from "./lib/reminders";
-import { emitEvent, invokeCommand, isTauri, listenEvent } from "./lib/tauri";
-import {
-  MODEL_EVENTS,
-  VOICE_EVENTS,
-  voiceErrorLabel,
-  type ModelsDownloadingPayload,
-  type VoiceErrorCode,
-  type VoiceErrorPayload,
-  type VoiceFinalPayload,
-  type VoicePartialPayload,
-  type VoicePhase,
-  type VoiceRepeatPayload,
-} from "./lib/voice";
-import {
-  JEV_EVENTS,
-  type JevError,
-  type JevResultPayload,
-  type JevUiActionPayload,
-} from "./lib/jev";
-import { VoiceCommandPipeline } from "./lib/voiceCommandPipeline";
-import { playReminderChime } from "./lib/sound";
+import { invokeCommand, isTauri, listenEvent } from "./lib/tauri";
+import { playReminderChime, playWakeChime } from "./lib/sound";
 import type { MonitorRect, DueReminder } from "./lib/types";
-import { WakePill } from "./components/WakePill";
+import { WakeWave } from "./components/WakeWave";
 import { NotificationDock } from "./dock/NotificationDock";
 import { DockNilaFigure } from "./dock/DockNila";
 import { expressionSlotForContext } from "./dock/expressionSlots";
@@ -86,78 +67,15 @@ export default function App() {
   const [view, setView] = useState<View>("companion");
   const [paused, setPaused] = useState(false);
   /**
-   * Wake-word state: true while Nila is in the LISTENING_FOR_COMMAND
-   * visual window after the wake word was detected. The pill only
-   * renders while the notification dock is hidden (the dock owns the
-   * window while a reminder is on screen).
+   * Wake-word greeting: true while Nila waves hello after the wake
+   * word was detected. She appears, waves, and hides again — no
+   * listening, no voice commands. The greeting only renders while
+   * the notification dock is hidden (the dock owns the window while
+   * a reminder is on screen).
    */
-  const [wakeListening, setWakeListening] = useState(false);
-  /**
-   * Voice-session state, driven by the Rust voice worker's events
-   * (voice:started → voice:transcript_partial* → voice:transcript_final
-   * → voice:processing → voice:ended). While active, the wake pill shows
-   * live partials as subtext inside the pill, then a transcript bubble;
-   * the pill stays on screen until voice:ended.
-   * Partials are UI-only and never reach the future Jev layer — only the
-   * finalized voice_command payload does.
-   */
-  const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
-  const [voiceText, setVoiceText] = useState("");
-  const [voiceErrorCode, setVoiceErrorCode] = useState<VoiceErrorCode | null>(null);
-  /**
-   * Mirrors voicePhase for event handlers registered once. The voice
-   * worker parks the wake listener mid-hold, whose 6s listen window may
-   * still emit a stale nila://wake-idle — that must not hide an active
-   * voice session.
-   */
-  const voiceActiveRef = useRef(false);
-  /**
-   * Conversation mode: after one wake word, Nila stays present and the
-   * user can keep talking without repeating the wake phrase. Each answer
-   * emits nila://conversation-turn, which the voice worker treats like a
-   * wake event to start another VAD-bounded listening session. The line
-   * stays open across turns: a follow-up turn that hears nothing in time
-   * quietly re-arms instead of ending. Set false only on goodbye, a
-   * terminal UI action, a real error, or explicit dismissal (Okay Nila
-   * / ×) — never on a bare timeout.
-   */
-  const conversationModeRef = useRef(false);
-  /**
-   * Nila's latest response message. It stays visible (with the Okay
-   * Nila dismiss) while the conversation line is open for a follow-up,
-   * so the user sees her answer and can end the conversation whenever.
-   * Cleared on dismiss.
-   */
-  const [responseText, setResponseText] = useState("");
-  /**
-   * True once Nila's answer for the current turn has arrived. The Okay
-   * Nila button appears only then — never while she's still working on
-   * the command.
-   */
-  const [responseReady, setResponseReady] = useState(false);
-  /** True while a conversation turn is pending the previous session's
-   * voice:ended — the backend rejects overlapping sessions, so the
-   * re-arm must wait for the handoff. */
-  const pendingRearmRef = useRef(false);
-  /** Tracks whether the current voice session has ended (voice:ended
-   * arrived). Set false on voice:started. */
-  const sessionEndedRef = useRef(true);
-  const CONVERSATION_REARM_DELAY_MS = 900;
-  /**
-   * Dismiss the conversation: end conversation mode, clear the response,
-   * and hide the wake surface. Called by the Okay Nila button and ×.
-   */
-  const dismissConversation = useCallback(() => {
-    conversationModeRef.current = false;
-    pendingRearmRef.current = false;
-    voiceActiveRef.current = false;
-    setVoicePhase("idle");
-    setVoiceText("");
-    setVoiceErrorCode(null);
-    setResponseText("");
-    setResponseReady(false);
-    setWakeListening(false);
-  }, []);
+  const [wakeWaving, setWakeWaving] = useState(false);
+  /** How long the wake-up wave stays on screen before hiding. */
+  const WAKE_WAVE_MS = 4000;
   /** First-run setup flow: the panel opens on the welcome page with a
    *  finish button. Cleared once the user completes setup. */
   const [setupMode, setSetupMode] = useState(false);
@@ -168,8 +86,6 @@ export default function App() {
   const [panelPage, setPanelPage] = useState<PageId | null>(null);
   /** ... and opens the reminder editor immediately. */
   const [panelAutoNew, setPanelAutoNew] = useState(false);
-  /** Voice-prefilled reminder title ("remind me to drink water"). */
-  const [panelPrefillTitle, setPanelPrefillTitle] = useState<string | null>(null);
   /** True while the settings panel uses native OS window decorations
    *  (titlebar + resize handles). The custom titlebar hides then. */
   const [decorated, setDecorated] = useState(false);
@@ -232,21 +148,20 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dock.phase, view]);
-  // The wake-word pill drives the window too, but only while the dock is
-  // hidden: the notification dock owns the window whenever a reminder is
-  // on screen, and the settings panel owns it while open. When the wake
-  // listen window ends, the window returns to the tray — unless the dock
-  // is on screen (it never stopped being live).
+  // The wake-word greeting drives the window too, but only while the
+  // dock is hidden: the notification dock owns the window whenever a
+  // reminder is on screen, and the settings panel owns it while open.
+  // When the wave ends, the window returns to the tray — unless the
+  // dock is on screen (it never stopped being live).
   useEffect(() => {
     if (view !== "companion" || !isTauri()) return;
-    const voiceActive = voicePhase !== "idle";
-    if (wakeListening || voiceActive) {
+    if (wakeWaving) {
       if (dockRef.current.phase === "hidden") void presentWakeWindow();
     } else if (dockRef.current.phase === "hidden") {
       void hideDockWindow();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wakeListening, voicePhase, view]);
+  }, [wakeWaving, view]);
   // Window lifecycle: Nila lives in the menu-bar tray. The floating window
   // only appears when a reminder is due, or when opened from the tray.
   const pausedRef = useRef(false);
@@ -675,291 +590,44 @@ export default function App() {
   }, []);
 
   /**
-   * Wake-word + voice-session events from the Rust workers. On
-   * `nila://wake-detected` Nila wakes visually: the listening pill
-   * renders and the window-ownership effect below seats the window
-   * top-center without stealing focus. On `nila://wake-idle` (or the
-   * listen window ending) she returns to the tray — unless a voice
-   * session is active, which owns the surface until `voice:ended`.
-   * "Hidden" mode keeps her off-screen for wake words too, like
-   * reminders.
+   * Wake-word events from the Rust worker. On `nila://wake-detected`
+   * Nila waves hello: the greeting renders and the window-ownership
+   * effect above seats the window top-center without stealing focus.
+   * She waves for a few seconds, then hides back to the tray — no
+   * listening, no voice commands. On `nila://wake-idle` she hides
+   * immediately. "Hidden" mode keeps her off-screen for wake words
+   * too, like reminders.
    */
   useEffect(() => {
     const unlistens: (() => void)[] = [];
     // Same StrictMode double-effect guard as the REMINDER_DUE listener.
     let cancelled = false;
-    const setVoice = (
-      phase: VoicePhase,
-      text = "",
-      code: VoiceErrorCode | null = null,
-    ) => {
-      voiceActiveRef.current = phase !== "idle";
-      setVoicePhase(phase);
-      setVoiceText(text);
-      setVoiceErrorCode(code);
+    let waveTimer: number | undefined;
+    const stopWaving = () => {
+      window.clearTimeout(waveTimer);
+      setWakeWaving(false);
     };
-    /**
-     * Start a follow-up listening turn without the wake phrase. The
-     * backend treats an explicit conversation turn as deliberate and
-     * bypasses its post-session wake debounce for it; the small delay
-     * here is just a beat for the mic handoff.
-     */
-    const rearmConversation = () => {
-      if (!conversationModeRef.current) return;
-      pendingRearmRef.current = false;
-      window.setTimeout(() => {
-        if (conversationModeRef.current) {
-          emitEvent("nila://conversation-turn");
-        }
-      }, CONVERSATION_REARM_DELAY_MS);
-    };
-    /**
-     * Jev results → Nila's spoken response in the wake pill's bubble.
-     * After one wake word, conversation mode keeps Nila present: the
-     * response stays visible and the mic re-arms for a follow-up turn
-     * without the wake phrase. Goodbye, UI actions (the panel takes
-     * over), and errors end the conversation and dismiss as before.
-     */
-    const showJevResponse = (message: string, intent: string) => {
-      if (!voiceActiveRef.current) return;
-      // Terminal: the conversation reaches its end here — Nila says
-      // her piece (goodbye, you're-welcome, …) and the pill dismisses
-      // after a beat instead of re-arming the mic.
-      const terminal =
-        intent === "goodbye" ||
-        intent === "thanks" ||
-        intent === "error" ||
-        intent === "new_reminder" ||
-        intent === "show_reminders" ||
-        intent === "open_settings";
-      setVoice("processing", message);
-      // The answer has arrived: the Okay Nila button may now appear,
-      // and the message stays on screen while the line is open.
-      setResponseText(message);
-      setResponseReady(true);
-      if (terminal) {
-        conversationModeRef.current = false;
-        pendingRearmRef.current = false;
-        window.setTimeout(() => {
-          dismissConversation();
-        }, 5000);
-        return;
-      }
-      // Conversation mode: stay visible. If the session already ended,
-      // re-arm now; otherwise the voice:ended handler re-arms.
-      conversationModeRef.current = true;
-      if (sessionEndedRef.current) {
-        rearmConversation();
-      } else {
-        pendingRearmRef.current = true;
-      }
-    };
-    /**
-     * VoiceCommandPipeline — the STT → Jev integration. It owns the
-     * final-transcript handoff (validate → Jev service → response) and
-     * the processing/executing/response lifecycle; the pill UI above is
-     * untouched. Partials never reach it: only the
-     * `voice:transcript_final` listener below calls into it.
-     */
-    const pipeline = new VoiceCommandPipeline({
-      render: (phase, text) => {
-        // The existing pill only distinguishes listening vs working —
-        // pipeline processing/executing/response all keep its
-        // heartbeat look.
-        setVoice(phase === "idle" ? "idle" : "processing", text);
-        // A new turn's work started: the previous answer is stale and
-        // the Okay Nila button hides until the new response arrives.
-        // ("response" is left alone — answer() sets the flag next.)
-        if (phase === "processing" || phase === "executing") {
-          setResponseReady(false);
-        }
-      },
-      answer: showJevResponse,
-      strings: () => getStrings(settingsRef.current.language),
-    });
     (async () => {
       const hidden = () => settingsRef.current.character_visibility === "hidden";
       unlistens.push(
         await listenEvent("nila://wake-detected", () => {
           if (hidden()) return;
-          // Leave settings if open: the wake pill only renders in the
+          // Leave settings if open: the wave only renders in the
           // companion view, and the user expects Nila to appear on wake.
           setView("companion");
-          setWakeListening(true);
+          // Wake-up greeting sound, honoring the sound setting.
+          const s = settingsRef.current.sound;
+          if (s !== "none") playWakeChime(s);
+          setWakeWaving(true);
+          // She waves for a beat, then hides again.
+          window.clearTimeout(waveTimer);
+          waveTimer = window.setTimeout(stopWaving, WAKE_WAVE_MS);
         }),
       );
       unlistens.push(
         await listenEvent("nila://wake-idle", () => {
-          if (voiceActiveRef.current) return;
-          setWakeListening(false);
+          stopWaving();
         }),
-      );
-      unlistens.push(
-        await listenEvent(VOICE_EVENTS.started, () => {
-          if (hidden()) return;
-          sessionEndedRef.current = false;
-          setVoice("listening");
-        }),
-      );
-      unlistens.push(
-        await listenEvent<VoicePartialPayload>(VOICE_EVENTS.partial, (p) => {
-          // Late partial from a dismissed turn's orphaned mic hold:
-          // the UI is already gone, never resurrect it.
-          if (!voiceActiveRef.current) return;
-          // Live partials are display-only; Jev only ever sees the final.
-          setVoice("recording", p.text);
-        }),
-      );
-      unlistens.push(
-        await listenEvent<VoiceFinalPayload>(VOICE_EVENTS.final, (p) => {
-          // The user dismissed mid-listen (Okay Nila is now available
-          // while the line is open): drop the orphaned turn's final
-          // instead of resurrecting the pill and running a command.
-          if (!voiceActiveRef.current) return;
-          // The pipeline validates the text and forwards it to the Jev
-          // service. Partial transcripts never reach this listener, so
-          // Jev only ever sees the final transcript.
-          void pipeline.handleFinalTranscript(p.text);
-        }),
-      );
-      unlistens.push(
-        await listenEvent(VOICE_EVENTS.processing, () => {
-          // Backend handoff beat; the frozen transcript stays visible.
-          if (voiceActiveRef.current) setVoicePhase("processing");
-        }),
-      );
-      unlistens.push(
-        await listenEvent(VOICE_EVENTS.response, () => {
-          // Reserved for the future Jev layer; not emitted in V1.
-        }),
-      );
-      unlistens.push(
-        await listenEvent<VoiceErrorPayload>(VOICE_EVENTS.error, (p) => {
-          pipeline.handleVoiceError();
-          // A follow-up turn that heard nothing in time is not a
-          // failure — the user simply wasn't ready yet. Keep the
-          // conversation line open: flag the re-arm and let the
-          // voice:ended handler below re-open the mic instead of
-          // hiding the pill. The conversation now ends only via Okay
-          // Nila / ×, goodbye, a terminal action, or a real error.
-          if (p.code === "speech_timeout" && conversationModeRef.current) {
-            pendingRearmRef.current = true;
-            return;
-          }
-          // Late error from a dismissed turn's orphaned mic hold:
-          // the UI is already gone, nothing to show.
-          if (!voiceActiveRef.current) return;
-          // The session died: conversation mode ends here, matching the
-          // documented design (set false on goodbye, error, or dismissal).
-          conversationModeRef.current = false;
-          pendingRearmRef.current = false;
-          setVoice("error", "", p.code);
-        }),
-      );
-      unlistens.push(
-        await listenEvent<VoiceRepeatPayload>(VOICE_EVENTS.repeat, () => {
-          // Nila couldn't make out the words and asks the user to
-          // repeat. The session stays alive — the pill keeps listening
-          // and the prompt shows as subtext until the retry's live
-          // partials replace it.
-          if (!voiceActiveRef.current) return;
-          setVoice(
-            "listening",
-            getStrings(settingsRef.current.language).voice.repeatPrompt,
-          );
-        }),
-      );
-      unlistens.push(
-        await listenEvent(VOICE_EVENTS.ended, () => {
-          sessionEndedRef.current = true;
-          // A Jev command may still be running (voice:ended fires ~800ms
-          // after the final transcript); its completion event owns the
-          // surface until Nila's response has been shown.
-          if (pipeline.isActive()) return;
-          // Conversation mode: Nila's answer already requested a
-          // follow-up turn — re-arm the mic instead of hiding.
-          if (conversationModeRef.current && pendingRearmRef.current) {
-            rearmConversation();
-            return;
-          }
-          setVoice("idle");
-          setWakeListening(false);
-        }),
-      );
-      // Jev lifecycle → pipeline phases. The pipeline turns the
-      // machine-readable payloads into Nila's EN/Manglish response and
-      // drives the pill; stale events (no active command) are ignored.
-      unlistens.push(
-        await listenEvent(JEV_EVENTS.processing, () => {
-          pipeline.handleJevProcessing();
-        }),
-      );
-      unlistens.push(
-        await listenEvent<{ intent: string }>(JEV_EVENTS.actionDetected, (p) => {
-          pipeline.handleActionDetected(p.intent);
-        }),
-      );
-      unlistens.push(
-        await listenEvent<JevResultPayload>(JEV_EVENTS.result, (p) => {
-          pipeline.handleResult(p);
-        }),
-      );
-      unlistens.push(
-        await listenEvent<JevError>(JEV_EVENTS.error, (p) => {
-          pipeline.handleError(p);
-        }),
-      );
-      unlistens.push(
-        await listenEvent<JevUiActionPayload>(JEV_EVENTS.uiAction, (p) => {
-          // Voice-triggered UI navigation. The opening UI is the
-          // response — the pipeline returns to idle silently.
-          pipeline.handleUiAction();
-          // The panel takes over the surface: end any conversation so a
-          // stale re-arm can't reopen the mic and no stale answer
-          // lingers under the next wake.
-          conversationModeRef.current = false;
-          pendingRearmRef.current = false;
-          setResponseText("");
-          setResponseReady(false);
-          switch (p.action) {
-            case "open_new_reminder":
-              openPanel("settings", {
-                page: "reminders",
-                autoNew: true,
-                prefillTitle: p.prefill?.title || undefined,
-              });
-              break;
-            case "open_reminders":
-              openPanel("settings", { page: "reminders" });
-              break;
-            case "open_settings":
-              openPanel("settings", { page: "general" });
-              break;
-            case "open_help":
-              // The commands list takes over the surface (conversation
-              // already ended above).
-              openPanel("settings", { page: "commands" });
-              break;
-          }
-        }),
-      );
-      unlistens.push(
-        await listenEvent<ModelsDownloadingPayload>(
-          MODEL_EVENTS.downloading,
-          (p) => {
-            // Manual model download (from Settings): surface progress in
-            // the active session's bubble if one happens to own the
-            // surface right now. Silent otherwise.
-            if (!voiceActiveRef.current) return;
-            const pct =
-              p.total_bytes > 0
-                ? Math.round((p.downloaded_bytes / p.total_bytes) * 100)
-                : 0;
-            setVoiceText(
-              `${getStrings(settingsRef.current.language).voice.modelsDownloading} ${pct}%`,
-            );
-          },
-        ),
       );
       if (cancelled) {
         for (const off of unlistens) off();
@@ -968,7 +636,7 @@ export default function App() {
     })();
     return () => {
       cancelled = true;
-      pipeline.dispose();
+      window.clearTimeout(waveTimer);
       for (const off of unlistens) off();
     };
   }, []);
@@ -996,14 +664,13 @@ export default function App() {
    */
   const openPanel = (
     mode: "settings" | "setup",
-    opts?: { page?: PageId; autoNew?: boolean; prefillTitle?: string },
+    opts?: { page?: PageId; autoNew?: boolean },
   ) => {
     const setup = mode === "setup";
     void refreshSettings();
     setSetupMode(setup);
     setPanelPage(opts?.page ?? null);
     setPanelAutoNew(opts?.autoNew ?? false);
-    setPanelPrefillTitle(opts?.prefillTitle ?? null);
     setView("settings");
     // Remount so the panel starts on the right page.
     setPanelKey((k) => k + 1);
@@ -1445,58 +1112,15 @@ export default function App() {
           onMeasure={handleDockMeasure}
         />
       )}
-      {/* Wake-word listening pill: only while the dock is hidden — the
-       * dock owns the window whenever a reminder is on screen. While the
-       * user speaks, the live STT partial renders as subtext inside the
-       * pill; the bubble underneath is reserved for the frozen final
-       * while processing, Nila's response, or a gentle error line. */}
-      {view === "companion" &&
-        (wakeListening || voicePhase !== "idle") &&
-        dock.phase === "hidden" && (
-          <WakePill
-            alt={getStrings(settings.language).wake.nilaAlt}
-            reducedMotion={settings.animation !== "full" || prefersReducedMotion}
-            busy={voicePhase === "processing"}
-            waveActive={voicePhase === "listening" || voicePhase === "recording"}
-            subtext={
-              voicePhase === "listening" || voicePhase === "recording"
-                ? voiceText
-                : undefined
-            }
-            transcript={
-              voicePhase === "processing"
-                ? voiceText
-                : // The conversation line is open: her last answer stays
-                  // on screen under the wave so the user has context for
-                  // the follow-up — and a way to end it.
-                  responseText !== "" &&
-                    (voicePhase === "listening" || voicePhase === "recording")
-                  ? responseText
-                  : undefined
-            }
-            error={
-              voiceErrorCode
-                ? voiceErrorLabel(
-                    voiceErrorCode,
-                    getStrings(settings.language).voice,
-                  )
-                : null
-            }
-            dismissible={
-              // Okay Nila appears only once her response has arrived —
-              // never while she's still working — and stays available
-              // while the line is open, so the conversation ends only
-              // when the user ends it.
-              !voiceErrorCode &&
-              responseReady &&
-              (voicePhase === "processing" ||
-                (responseText !== "" &&
-                  (voicePhase === "listening" || voicePhase === "recording")))
-            }
-            onDismiss={dismissConversation}
-            dismissLabel={getStrings(settings.language).wake.okayNila}
-          />
-        )}
+      {/* Wake-word greeting: only while the dock is hidden — the
+       * dock owns the window whenever a reminder is on screen. Nila
+       * waves hello for a few seconds, then hides again. */}
+      {view === "companion" && wakeWaving && dock.phase === "hidden" && (
+        <WakeWave
+          alt={getStrings(settings.language).wake.nilaAlt}
+          reducedMotion={settings.animation !== "full" || prefersReducedMotion}
+        />
+      )}
       {import.meta.env.DEV && nilaDebug && view === "companion" && (
         <button
           type="button"
@@ -1523,7 +1147,6 @@ export default function App() {
             nativeTitlebar={decorated}
             initialPage={setupMode ? "welcome" : (panelPage ?? undefined)}
             autoNewReminder={panelAutoNew}
-            prefillTitle={panelPrefillTitle ?? undefined}
             setupMode={setupMode}
             // Onboarding finished: persist off setup mode and hand the
             // window back to the tray — the main Nila experience.

@@ -13,8 +13,6 @@ import type { ExpressionName } from "../character/expressions";
 import { SettingsLayout, type PageId } from "./settings/SettingsLayout";
 import { WelcomePage } from "./settings/pages/WelcomePage";
 import { GeneralPage } from "./settings/pages/GeneralPage";
-import { JevPage } from "./settings/pages/JevPage";
-import { CommandsPage } from "./settings/pages/CommandsPage";
 import { RemindersPage } from "./settings/pages/RemindersPage";
 import { NilaPage } from "./settings/pages/NilaPage";
 import { AppearancePage } from "./settings/pages/AppearancePage";
@@ -48,8 +46,6 @@ interface Props {
   initialPage?: PageId;
   /** Open the reminder editor immediately (tray "New Reminder"). */
   autoNewReminder?: boolean;
-  /** Voice-prefilled title for the new-reminder editor. */
-  prefillTitle?: string;
   /** First-run flow: the welcome page shows its finish button. */
   setupMode?: boolean;
   /** Called when the user finishes the first-run setup. */
@@ -76,7 +72,6 @@ export function SettingsPanel({
   onMinimize,
   initialPage,
   autoNewReminder,
-  prefillTitle,
   setupMode,
   onSetupComplete,
   onDataChanged,
@@ -99,6 +94,11 @@ export function SettingsPanel({
   const finishSetup = () => {
     update({ setup_complete: true });
     onSetupComplete?.();
+  };
+
+  /** Welcome "Continue" in setup mode: finish the first-run flow. */
+  const advanceSetup = () => {
+    finishSetup();
   };
 
   /** Welcome page "Create your first reminder": jump to Reminders with the
@@ -174,7 +174,7 @@ export function SettingsPanel({
             settings={settings}
             update={update}
             setupMode={setupMode}
-            onFinishSetup={finishSetup}
+            onFinishSetup={advanceSetup}
             onCreateFirstReminder={createFirstReminder}
           />
         )}
@@ -192,15 +192,12 @@ export function SettingsPanel({
             onFlash={onFlash}
           />
         )}
-        {page === "jev" && <JevPage t={t} settings={settings} update={update} />}
-        {page === "commands" && <CommandsPage t={t} settings={settings} update={update} />}
         {page === "reminders" && (
           <RemindersPage
             t={t}
             lang={lang}
             reminders={reminders}
             autoNew={autoNewReminder}
-            prefillTitle={prefillTitle}
             openEditorSignal={editorSignal}
             onToggle={onToggleReminder}
             onDelete={onDeleteReminder}
