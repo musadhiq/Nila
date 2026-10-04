@@ -208,9 +208,22 @@ pub struct VoiceState {
 ///
 /// Frontend event: request another conversation turn without requiring
 /// the wake word. Emitted by the UI after Nila answers, to keep a
-/// multi-turn conversation going. The voice worker treats it exactly
-/// like a wake-word detection (starts a listening session).
+/// multi-turn conversation going. The voice worker starts a listening
+/// session for it like a wake-word detection — except the turn is an
+/// explicit request, so it bypasses the post-session wake debounce.
 pub const EVENT_CONVERSATION_TURN: &str = "nila://conversation-turn";
+
+/// What woke the voice worker: a genuine wake-word detection, or an
+/// explicit UI request for a conversation follow-up turn.
+///
+/// A conversation turn is deliberate — the user is mid-conversation —
+/// so it bypasses the post-session wake debounce. A bare wake-word
+/// detection inside that window is treated as stale detector output.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum WakeSignal {
+    Wake,
+    ConversationTurn,
+}
 
 /// The worker subscribes to the wake-word module's
 /// `nila://wake-detected` event. The wake-word implementation itself is
@@ -221,16 +234,16 @@ pub fn spawn(app: &AppHandle) {
     app.manage(VoiceState { stop: stop.clone() });
     // The wake-word module is untouched: we subscribe to its detection
     // event and forward it to the worker thread.
-    let (wake_tx, wake_rx) = mpsc::channel::<()>();
+    let (wake_tx, wake_rx) = mpsc::channel::<WakeSignal>();
     let wake_tx_wake = wake_tx.clone();
     let _ = app.listen(wakeword::EVENT_WAKE_DETECTED, move |_| {
-        let _ = wake_tx_wake.send(());
+        let _ = wake_tx_wake.send(WakeSignal::Wake);
     });
     // Conversation turns: the UI requests the next listening session
     // directly, without the wake word, to sustain a conversation.
     let wake_tx_conversation = wake_tx.clone();
     let _ = app.listen(EVENT_CONVERSATION_TURN, move |_| {
-        let _ = wake_tx_conversation.send(());
+        let _ = wake_tx_conversation.send(WakeSignal::ConversationTurn);
     });
     // The STT models are a manual, settings-driven download (see
     // models.rs) — nothing fetches them automatically, so Nila works
@@ -451,22 +464,33 @@ fn emit_error(app: &AppHandle, code: &'static str, message: impl Into<String>) {
 /// Stale queued events are coalesced: one session per burst. A wake that
 /// arrives before `ignore_until` (just after a session ended) is
 /// treated as the tail of the same utterance and ignored, so a single
-/// phrase can never start two sessions back-to-back.
+/// phrase can never start two sessions back-to-back. An explicit
+/// [`WakeSignal::ConversationTurn`] is exempt: the user is
+/// mid-conversation, so it always starts a session immediately.
 fn await_wake(
     stop: &Arc<AtomicBool>,
-    wake_rx: &mpsc::Receiver<()>,
+    wake_rx: &mpsc::Receiver<WakeSignal>,
     timeout: Duration,
     ignore_until: Instant,
 ) -> Option<Instant> {
-    // Coalesce anything already queued.
-    let mut pending = false;
-    while wake_rx.try_recv().is_ok() {
-        pending = true;
+    // Coalesce anything already queued. An explicit conversation turn
+    // is never debounced; a bare wake-word detection inside the
+    // post-session window is stale detector output.
+    let mut turn = false;
+    let mut wake = false;
+    while let Ok(sig) = wake_rx.try_recv() {
+        match sig {
+            WakeSignal::ConversationTurn => turn = true,
+            WakeSignal::Wake => wake = true,
+        }
     }
-    if pending && Instant::now() >= ignore_until {
+    if turn {
         return Some(Instant::now());
     }
-    // Either nothing queued, or a stale burst inside the debounce
+    if wake && Instant::now() >= ignore_until {
+        return Some(Instant::now());
+    }
+    // Either nothing queued, or a stale wake burst inside the debounce
     // window (already drained above): keep waiting.
     let deadline = Instant::now() + timeout;
     while !stop.load(Ordering::SeqCst) {
@@ -475,8 +499,16 @@ fn await_wake(
             return None;
         }
         match wake_rx.recv_timeout(remaining.min(Duration::from_millis(250))) {
-            Ok(()) => {
-                while wake_rx.try_recv().is_ok() {}
+            Ok(sig) => {
+                let mut turn = matches!(sig, WakeSignal::ConversationTurn);
+                while let Ok(s) = wake_rx.try_recv() {
+                    if matches!(s, WakeSignal::ConversationTurn) {
+                        turn = true;
+                    }
+                }
+                if turn {
+                    return Some(Instant::now());
+                }
                 let now = Instant::now();
                 if now >= ignore_until {
                     return Some(now);
@@ -493,7 +525,7 @@ fn await_wake(
 /// Outer loop: wait for wake detections and run one voice session each.
 /// The engine loads lazily on first wake so app startup pays nothing,
 /// and stays loaded afterwards (no 40–50 MB reload per command).
-fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, wake_rx: mpsc::Receiver<()>) {
+fn run_forever(app: &AppHandle, stop: &Arc<AtomicBool>, wake_rx: mpsc::Receiver<WakeSignal>) {
     let mut engine: Option<Engine> = None;
     let mut phase = Phase::WakeListening;
     let mut last_missing_notice: Option<Instant> = None;
@@ -1258,7 +1290,7 @@ mod tests {
     #[test]
     fn await_wake_honors_post_session_debounce() {
         let stop = Arc::new(AtomicBool::new(false));
-        let (tx, rx) = mpsc::channel::<()>();
+        let (tx, rx) = mpsc::channel::<WakeSignal>();
 
         // A wake arriving mid-wait but inside the debounce window is
         // ignored: the worker keeps waiting instead of starting a
@@ -1266,14 +1298,14 @@ mod tests {
         let tx2 = tx.clone();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(20));
-            let _ = tx2.send(());
+            let _ = tx2.send(WakeSignal::Wake);
         });
         let ignore_until = Instant::now() + Duration::from_secs(3600);
         let got = await_wake(&stop, &rx, Duration::from_millis(150), ignore_until);
         assert!(got.is_none(), "debounced wake must not start a session");
 
         // After the window, a wake arrives normally.
-        tx.send(()).unwrap();
+        tx.send(WakeSignal::Wake).unwrap();
         let got = await_wake(
             &stop,
             &rx,
@@ -1284,12 +1316,33 @@ mod tests {
     }
 
     #[test]
+    fn await_wake_conversation_turn_bypasses_debounce() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel::<WakeSignal>();
+
+        // An explicit conversation turn inside the debounce window
+        // still starts a session immediately: the user is
+        // mid-conversation, this is not stale detector output.
+        let tx2 = tx.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            let _ = tx2.send(WakeSignal::ConversationTurn);
+        });
+        let ignore_until = Instant::now() + Duration::from_secs(3600);
+        let got = await_wake(&stop, &rx, Duration::from_millis(150), ignore_until);
+        assert!(
+            got.is_some(),
+            "conversation turn must bypass the debounce"
+        );
+    }
+
+    #[test]
     fn await_wake_coalesces_bursts_into_one() {
         let stop = Arc::new(AtomicBool::new(false));
-        let (tx, rx) = mpsc::channel::<()>();
-        tx.send(()).unwrap();
-        tx.send(()).unwrap();
-        tx.send(()).unwrap();
+        let (tx, rx) = mpsc::channel::<WakeSignal>();
+        tx.send(WakeSignal::Wake).unwrap();
+        tx.send(WakeSignal::Wake).unwrap();
+        tx.send(WakeSignal::ConversationTurn).unwrap();
         let got = await_wake(
             &stop,
             &rx,
