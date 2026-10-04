@@ -173,6 +173,7 @@ pub fn skip_quiet_hours(candidate: DateTime<Utc>, start: (u32, u32), end: (u32, 
 }
 
 /// Eligibility check before a reminder may fire.
+#[derive(Debug, Clone)]
 pub struct Eligibility {
     pub enabled: bool,
     pub paused: bool,
