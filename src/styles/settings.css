@@ -1137,3 +1137,56 @@ button.srow.as-button:hover {
 .setup-footer .btn {
   min-width: 140px;
 }
+/* AI setup (first-run unified setup) + AI Models page */
+.ai-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 460px;
+}
+.ai-setup-title {
+  font-size: 1.25rem;
+  margin: 0 0 4px;
+}
+.ai-setup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--st-border, rgba(128, 128, 128, 0.25));
+}
+.ai-setup-label {
+  font-weight: 600;
+}
+.ai-setup-bar {
+  font-family: ui-monospace, monospace;
+  letter-spacing: 1px;
+  color: var(--st-accent, #0d9488);
+}
+.ai-setup-progress,
+.ai-setup-done,
+.ai-setup-idle {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ai-setup-done {
+  color: var(--st-accent, #0d9488);
+}
+.ai-setup-status {
+  opacity: 0.75;
+  margin: 4px 0 0;
+}
+.ai-setup-cta {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.btn-row {
+  display: inline-flex;
+  gap: 8px;
+}
+.section-desc {
+  opacity: 0.75;
+  margin: 0 0 4px;
+}
