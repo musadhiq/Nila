@@ -369,44 +369,6 @@ pub fn import_data(
     Ok(count)
 }
 
-/// Voice-model state for the Settings UI: installed / not installed /
-/// downloading / error, plus the installed size and the last download
-/// error. See [`crate::models::ModelInfo`].
-#[tauri::command]
-pub fn stt_models_status(app: AppHandle) -> Result<crate::models::ModelInfo, String> {
-    Ok(crate::models::ModelManager::new(&app).get_status())
-}
-
-/// Result of requesting a manual model download.
-#[derive(Serialize)]
-pub struct SttDownloadResult {
-    /// False when the models were already present — nothing was started.
-    pub started: bool,
-}
-
-/// Start the one-time voice-model download in the background (manual,
-/// from Settings — the option only shows when the wake word is
-/// enabled). Progress arrives on `nila://models-downloading`,
-/// completion on `nila://models-ready`, failure on `nila://models-error`.
-#[tauri::command]
-pub fn download_stt_models(app: AppHandle) -> Result<SttDownloadResult, String> {
-    let mgr = crate::models::ModelManager::new(&app);
-    if mgr.is_installed() {
-        return Ok(SttDownloadResult { started: false });
-    }
-    mgr.download_in_background();
-    Ok(SttDownloadResult { started: true })
-}
-
-/// Delete the downloaded voice models from the app-managed directory
-/// (env-override paths are never touched). Returns true when at least
-/// one file was removed. The voice worker unloads its in-memory engine
-/// on the next wake when the models are gone, so RAM is freed too.
-#[tauri::command]
-pub fn delete_stt_models(app: AppHandle) -> Result<bool, String> {
-    crate::models::ModelManager::new(&app).delete()
-}
-
 /// Open an http(s) URL in the user's default browser (xdg-open on
 /// Linux). Only http(s) URLs are accepted; anything else is rejected
 /// so this command can never be used to launch local files or schemes.

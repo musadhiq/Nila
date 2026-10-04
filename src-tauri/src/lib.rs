@@ -1,22 +1,18 @@
 //! Nila native backend library.
-//
-// Modules:
-//   db             — SQLite schema, migrations, queries
-//   scheduler      — event-driven reminder scheduling
-//   system_monitor — battery / CPU / memory / disk health reminders
-//   commands       — Tauri IPC command handlers
-//   wakeword       — microphone wake-word listener (micro-wakeword)
-//   voice          — post-wake voice-command pipeline (sherpa-onnx STT)
-//   models         — manual download of the STT models into app-data
+//!
+//! Modules:
+//!   db             — SQLite schema, migrations, queries
+//!   scheduler      — event-driven reminder scheduling
+//!   system_monitor — battery / CPU / memory / disk health reminders
+//!   system_calendar — local system-calendar (EDS) event sync → reminders
+//!   commands       — Tauri IPC command handlers
+//!   wakeword       — microphone wake-word listener (micro-wakeword)
 
 pub mod commands;
 pub mod db;
-pub mod jev;
-pub mod models;
 pub mod scheduler;
 pub mod system_calendar;
 pub mod system_monitor;
-pub mod voice;
 pub mod wakeword;
 
 use tauri::Manager;
@@ -340,9 +336,6 @@ pub fn run() {
             // Scheduler generation counter (wakes the driver on changes).
             app.manage(scheduler::SchedulerGen::new());
 
-            // Jev action layer: conversation context, secure token store.
-            app.manage(jev::JevState::new());
-
             // System calendar integration state.
             app.manage(system_calendar::SysCalState::new());
 
@@ -388,16 +381,9 @@ pub fn run() {
             // the detector consumes transient 10 ms blocks only. The
             // settings toggle flips the worker live (mic released while
             // off); the initial value comes from the DB read above.
+            // On wake, Nila waves hello and hides again — no voice
+            // commands, no transcription.
             wakeword::spawn(app.handle(), wake_word_on);
-            // Voice-command worker: subscribes to the wake-word
-            // detector's `nila://wake-detected` event, parks the wake
-            // listener while a command is captured, and transcribes it
-            // locally with sherpa-onnx (INT8 Conformer-CTC). Audio is
-            // never recorded or saved; inference runs only during a
-            // post-wake session, never while idle. The STT models are not
-            // bundled — the user downloads them once, manually, from
-            // Settings (see models.rs); Nila works without them.
-            voice::spawn(app.handle());
 
             // System calendar: resume the poll task if the toggle is on.
             system_calendar::maybe_start(app.handle());
@@ -430,26 +416,17 @@ pub fn run() {
             commands::record_reminder_action,
             commands::export_data,
             commands::import_data,
-            commands::stt_models_status,
-            commands::download_stt_models,
-            commands::delete_stt_models,
-            jev::jev_get_status,
-            jev::jev_set_token,
-            jev::jev_remove_token,
-            jev::jev_test_connection,
-            jev::process_voice_command,
             commands::open_url,
             system_calendar::syscal_get_status,
             system_calendar::syscal_set_enabled,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nila");
-    // Stop the voice and wake-word workers before the process exits.
-    // Each honors its flag between blocking calls; see
-    // voice::request_stop and wakeword::request_stop.
+    // Stop the wake-word worker before the process exits.
+    // It honors its flag between blocking calls; see
+    // wakeword::request_stop.
     app.run(|app, event| {
         if matches!(event, tauri::RunEvent::Exit) {
-            voice::request_stop(app);
             wakeword::request_stop(app);
             system_calendar::request_stop(app);
         }

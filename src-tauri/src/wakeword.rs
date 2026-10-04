@@ -178,7 +178,10 @@ fn stem_candidates() -> Vec<String> {
     MODEL_STEMS.iter().map(|s| s.to_string()).collect()
 }
 
-/// Directories searched for wake-word models, in order.
+/// Directories searched for wake-word models, in order: next to the
+/// working directory (covers dev runs), next to the executable, and
+/// the Tauri bundled resources dir (packaged .deb / .AppImage).
+/// Detection behavior is unchanged.
 fn search_dirs(app: &AppHandle) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     // Next to the working directory (covers `cargo run` and `tauri dev`
@@ -205,6 +208,29 @@ fn search_dirs(app: &AppHandle) -> Vec<PathBuf> {
 /// Find the wake-word model. Prefers a model JSON (author-tuned threshold
 /// and window) next to the `.tflite`; falls back to a bare `.tflite`.
 fn resolve_model(app: &AppHandle) -> Option<ModelSource> {
+    resolve_model_in(&search_dirs(app))
+}
+
+/// The model file path for the asset manager's legacy fallback.
+/// Returns the `.tflite` (or the JSON config's sibling `.tflite` when
+/// the JSON names one — here simplified to the JSON's sibling stem).
+pub(crate) fn resolve_model_path(app: &AppHandle) -> Option<PathBuf> {
+    match resolve_model(app)? {
+        ModelSource::Bare(tflite) => Some(tflite),
+        ModelSource::Config(json) => {
+            // Prefer the sibling .tflite next to the JSON config.
+            let stem = json.file_stem()?.to_str()?;
+            let tflite = json.with_file_name(format!("{stem}.tflite"));
+            if tflite.is_file() {
+                Some(tflite)
+            } else {
+                Some(json)
+            }
+        }
+    }
+}
+
+fn resolve_model_in(dirs: &[PathBuf]) -> Option<ModelSource> {
     // Explicit file path via env var wins outright.
     if let Ok(v) = std::env::var(ENV_MODEL) {
         let v = v.trim();
@@ -216,15 +242,14 @@ fn resolve_model(app: &AppHandle) -> Option<ModelSource> {
             eprintln!("nila: wake-word: {ENV_MODEL} points at missing file '{v}'");
         }
     }
-    let dirs = search_dirs(app);
     for stem in stem_candidates() {
-        for dir in &dirs {
+        for dir in dirs {
             let json = dir.join(format!("{stem}.json"));
             if json.is_file() {
                 return Some(ModelSource::Config(json));
             }
         }
-        for dir in &dirs {
+        for dir in dirs {
             let tflite = dir.join(format!("{stem}.tflite"));
             if tflite.is_file() {
                 return Some(ModelSource::Bare(tflite));
