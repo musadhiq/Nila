@@ -72,6 +72,12 @@ pub const EVENT_VOICE_REPEAT: &str = "voice:repeat";
 /// Frontend event: the voice session fully ended and the wake-word
 /// listener is back in charge. The UI should hide the voice surface.
 pub const EVENT_VOICE_ENDED: &str = "voice:ended";
+/// Frontend event: smoothed mic input level (0.0–1.0) for the listening
+/// wave animation. Emitted ~16 Hz while the mic is captured, in both the
+/// waiting-for-speech and recording phases, so the wave idles gently on
+/// room tone and reacts to the user's voice instead of free-running.
+/// Payload: [`LevelPayload`].
+pub const EVENT_VOICE_LEVEL: &str = "voice:level";
 
 /// Payload for [`EVENT_VOICE_STARTED`].
 #[derive(Clone, serde::Serialize)]
@@ -127,6 +133,15 @@ pub struct RepeatPayload {
 pub struct EndedPayload {
     #[serde(rename = "type")]
     pub kind: &'static str,
+}
+
+/// Payload for [`EVENT_VOICE_LEVEL`]: normalized, smoothed mic level.
+#[derive(Clone, serde::Serialize)]
+pub struct LevelPayload {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    /// 0.0 (silence) – 1.0 (loud), fast attack / slow release.
+    pub level: f32,
 }
 
 /// Voice session state machine (per command).
@@ -791,6 +806,9 @@ fn capture_command(
     let mut peak_total: f32 = 0.0;
     let mut detected_windows: u64 = 0;
     let mut queued_windows: u64 = 0;
+    // Listening-wave level: smoothed normalized RMS, emitted ~16 Hz.
+    let mut level_smooth: f32 = 0.0;
+    let mut level_tick: u64 = 0;
 
     loop {
         if stop.load(Ordering::SeqCst) {
@@ -845,6 +863,32 @@ fn capture_command(
                 let a = s.abs();
                 if a > peak_total {
                     peak_total = a;
+                }
+            }
+            // Mic level for the listening wave animation: RMS of this
+            // 32 ms window, normalized (0.20 ≈ loud speech) with a
+            // perceptual lift, then fast-attack / slow-release smoothing
+            // so the wave follows syllables without jitter. Throttled to
+            // every 2nd window (~16 Hz) — plenty for animation, cheap IPC.
+            {
+                let rms =
+                    (chunk.iter().map(|s| s * s).sum::<f32>() / chunk.len() as f32).sqrt();
+                let inst = (rms / 0.20).clamp(0.0, 1.0).sqrt();
+                if inst > level_smooth {
+                    level_smooth = inst;
+                } else {
+                    level_smooth += (inst - level_smooth) * 0.25;
+                }
+                level_tick += 1;
+                if level_tick % 2 == 0 {
+                    emit(
+                        app,
+                        EVENT_VOICE_LEVEL,
+                        LevelPayload {
+                            kind: "voice:level",
+                            level: level_smooth,
+                        },
+                    );
                 }
             }
             if *phase == Phase::ListeningForSpeech {
