@@ -39,7 +39,7 @@
 use std::time::{Duration, Instant};
 
 use chrono::Local;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use super::executor::{is_known_app, is_known_folder};
 use super::parser::parse_reminder_time;
@@ -618,7 +618,7 @@ fn match_applications(raw: &str, text: &str, words: &[&str]) -> Vec<IntentCandid
     if has_close_verb {
         let mut params = JevParams::default();
         params.application = Some(app);
-        let mut conf = 0.90;
+        let mut conf: f32 = 0.90;
         if noise_words > 0 {
             conf = conf.min(0.45);
         }
@@ -636,7 +636,7 @@ fn match_applications(raw: &str, text: &str, words: &[&str]) -> Vec<IntentCandid
         // Verb + app ("open firefox", possibly with a dropped verb
         // recovered as a bare name): bare names still score enough to
         // ask, never to surprise-launch on noise.
-        let mut conf = if has_open_verb { 0.90 } else { 0.62 };
+        let mut conf: f32 = if has_open_verb { 0.90 } else { 0.62 };
         if noise_words > 0 {
             conf = conf.min(0.45);
         }
