@@ -369,6 +369,28 @@ pub fn import_data(
     Ok(count)
 }
 
+/// Reset Nila to factory defaults: wipes all reminders, snooze state,
+/// history and settings, then re-seeds the built-in system reminders.
+/// The frontend reloads settings/reminders afterwards and returns to
+/// the welcome flow. This is destructive and the UI confirms first.
+#[tauri::command]
+pub fn reset_all(app: AppHandle, db: State<'_, db::DbState>) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    conn.execute_batch(
+        "DELETE FROM snoozed_reminders; \
+         DELETE FROM reminder_history; \
+         DELETE FROM reminders; \
+         DELETE FROM settings;",
+    )
+    .map_err(|e| e.to_string())?;
+    drop(conn);
+    // Re-seed the built-in reminders so a fresh database isn't empty,
+    // then wake the scheduler so it recomputes from the clean state.
+    crate::scheduler::seed_system_reminders(&app);
+    crate::scheduler::notify_data_changed(&app);
+    Ok(())
+}
+
 /// Open an http(s) URL in the user's default browser (xdg-open on
 /// Linux). Only http(s) URLs are accepted; anything else is rejected
 /// so this command can never be used to launch local files or schemes.

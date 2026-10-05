@@ -416,6 +416,7 @@ pub fn run() {
             commands::record_reminder_action,
             commands::export_data,
             commands::import_data,
+            commands::reset_all,
             commands::open_url,
             system_calendar::syscal_get_status,
             system_calendar::syscal_set_enabled,
