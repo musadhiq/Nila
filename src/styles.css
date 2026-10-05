@@ -329,7 +329,7 @@ html, body {
   width: 108px;
   margin-right: 10px; /* breathing room between her box and the chat */
   background: #f5f4f1;
-  border-radius: 16px;
+  border-radius: 0 0 16px 16px;
   padding: 6px;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
   pointer-events: none;
@@ -338,7 +338,7 @@ html, body {
   width: 100%;
   height: auto;
   display: block;
-  border-radius: 11px;
+  border-radius: 0 0 11px 11px;
   pointer-events: none;
 }
 /* The chat bubble. */
@@ -347,7 +347,7 @@ html, body {
   z-index: 1;
   background: #f5f4f1;
   color: #1d1a16;
-  border-radius: 18px;
+  border-radius: 0 0 18px 18px;
   padding: 12px 14px 13px;
   min-width: 248px;
   max-width: 340px;

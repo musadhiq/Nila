@@ -329,7 +329,7 @@ export default function App() {
    * correct on arrival.
    */
   /** Top clearance: the dock hangs just below the system top bar. */
-  const DOCK_SAFE_MARGIN = 34;
+  const DOCK_SAFE_MARGIN = 12;
   /** Window padding around the card: shadow spread + animation overshoot. */
   const DOCK_PAD_X = 56;
   const DOCK_PAD_Y = 64;
