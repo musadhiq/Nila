@@ -2,7 +2,7 @@
   <img src="assets/nila-banner.webp" alt="Nila — little desktop companion" width="100%" />
 </p>
 
-# നില (Nila)
+# Nila
 
 **Your little desktop companion for Linux.**
 

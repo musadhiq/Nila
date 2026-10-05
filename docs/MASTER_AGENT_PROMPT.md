@@ -19,11 +19,11 @@ The reminder engine creates situations in which the character appears.
 The experience should feel warm, subtle, expressive, visually memorable, lightweight, non-intrusive, local-first, and offline-first.
 
 Example reminders:
-- വെള്ളം കുടിച്ചോ?
-- കുറച്ച് നേരം വിശ്രമിച്ചാലോ?
-- ഭക്ഷണം കഴിച്ചോ?
-- ഒന്ന് എഴുന്നേറ്റ് നടക്കാമോ?
-- ഇനി കുറച്ച് വിശ്രമിക്കാം.
+- Vellam kudicho?
+- Kurach neram vishramichaalo?
+- Bhakshanam kazhicho?
+- Onn ezhunneettu nadakkamo?
+- Ini kurach vishramikkam.
 
 ## 2. V1 scope
 
@@ -177,9 +177,9 @@ Example:
 ┌──────────────────────┐
 │      [CHARACTER]     │
 │                      │
-│      വെള്ളം കുടിച്ചോ? │
+│      Vellam kudicho? │
 │                      │
-│  [പിന്നീട്] [ശരി]   │
+│  [Pinneed] [Shari]   │
 └──────────────────────┘
 ```
 
@@ -202,25 +202,25 @@ Do not build multilingual infrastructure in V1.
 ## 10. Built-in reminders
 
 Water:
-- വെള്ളം കുടിച്ചോ?
-- കുറച്ച് വെള്ളം കുടിക്കാം?
-- ഒരു ഗ്ലാസ് വെള്ളം ആയാലോ?
+- Vellam kudicho?
+- Kurach vellam kudikkam?
+- Oru glass vellam aayaalo?
 
 Food:
-- ഭക്ഷണം കഴിച്ചോ?
-- ഭക്ഷണം കഴിക്കാൻ സമയമായി.
+- Bhakshanam kazhicho?
+- Bhakshanam kazhikkaan samayaayi.
 
 Break:
-- കുറച്ച് നേരം വിശ്രമിച്ചാലോ?
-- സ്ക്രീനിൽ നിന്ന് കുറച്ച് നേരം മാറിയിരിക്കാം.
+- Kurach neram vishramichaalo?
+- Screenil ninn kurach neram maariyirikam.
 
 Movement:
-- ഒന്ന് എഴുന്നേറ്റ് നടക്കാമോ?
-- കുറച്ച് stretch ചെയ്യാം.
+- Onn ezhunneettu nadakkamo?
+- Kurach stretch cheyyaam.
 
 Sleep:
-- ഇനി കുറച്ച് വിശ്രമിക്കാം.
-- ഉറങ്ങാൻ സമയമായില്ലേ?
+- Ini kurach vishramikkam.
+- Urangaan samayaayille?
 
 Use multiple message variants.
 
@@ -278,7 +278,7 @@ Provide:
 
 Primary Malayalam action:
 
-`പിന്നീട്`
+`Pinneed`
 
 Persist snooze across restart.
 
@@ -546,7 +546,7 @@ The first-launch flow must introduce the character first.
 
 Suggested sequence:
 1. character appears
-2. "ഹായ് 👋"
+2. "Hi 👋"
 3. short Malayalam explanation
 4. choose reminders
 5. configure basic schedule
@@ -572,7 +572,7 @@ The character stays dominant.
 
 Provide:
 
-`ഒരു reminder പരീക്ഷിക്കുക`
+`Oru reminder pareekshikkuka`
 
 It must trigger the complete character/reminder experience immediately.
 
