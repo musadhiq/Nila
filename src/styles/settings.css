@@ -535,6 +535,15 @@ button.srow.as-button:hover {
   background: var(--st-accent);
   filter: brightness(0.94);
 }
+.btn.danger {
+  background: #c0392b;
+  border-color: transparent;
+  color: #fff;
+}
+.btn.danger:hover:not(:disabled) {
+  background: #a93226;
+  filter: none;
+}
 .btn.ghost {
   border-color: transparent;
   background: none;

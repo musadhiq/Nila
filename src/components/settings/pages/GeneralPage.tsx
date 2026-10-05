@@ -41,6 +41,7 @@ export function GeneralPage({
   const fileRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const backendAvailable = isTauri();
 
   const errText = (e: unknown, fallback: string): string =>
@@ -91,6 +92,26 @@ export function GeneralPage({
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  /** Wipe everything and start fresh. Two-step: arm, then confirm. */
+  const doReset = async () => {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      return;
+    }
+    setStatus(null);
+    setBusy(true);
+    try {
+      await invokeCommand("reset_all");
+      setConfirmReset(false);
+      onDataChanged();
+      setStatus({ ok: true, text: g.resetDone });
+    } catch (e) {
+      setStatus({ ok: false, text: errText(e, t.errors.resetFailed) });
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -297,6 +318,35 @@ export function GeneralPage({
             </p>
           </div>
         )}
+      </SettingsSection>
+
+      <SettingsSection title={g.resetSection}>
+        <SettingsRow
+          title={g.resetButton}
+          description={confirmReset ? g.resetConfirm : g.resetDesc}
+          control={
+            <span className="btn-row">
+              <button
+                type="button"
+                className={`btn${confirmReset ? " danger" : ""}`}
+                disabled={!backendAvailable || busy}
+                onClick={() => void doReset()}
+              >
+                {confirmReset ? g.resetConfirmButton : g.resetButton}
+              </button>
+              {confirmReset && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => setConfirmReset(false)}
+                >
+                  {t.errors.cancel}
+                </button>
+              )}
+            </span>
+          }
+        />
       </SettingsSection>
     </div>
   );

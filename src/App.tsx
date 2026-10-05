@@ -39,6 +39,7 @@ import { NotificationDock } from "./dock/NotificationDock";
 import { DockNilaFigure } from "./dock/DockNila";
 import { expressionSlotForContext } from "./dock/expressionSlots";
 import { expressionUrl } from "./dock/expressions";
+import { emotionAnimUrl } from "./dock/emotionAnims";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockActionable, isDockOnScreen } from "./dock/dockMachine";
@@ -1093,7 +1094,11 @@ export default function App() {
             dock.current ? (
               <DockNilaFigure
                 slot={nilaSlot}
-                src={expressionUrl(nilaSlot)}
+                src={
+                  settings.animation !== "full" || prefersReducedMotion
+                    ? expressionUrl(nilaSlot)
+                    : emotionAnimUrl(nilaSlot)
+                }
                 alt={getStrings(settings.language).dock.nilaAlt}
                 reaction={dock.reaction}
                 blinkSignal={dock.blinkSignal}

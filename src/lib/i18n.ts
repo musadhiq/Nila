@@ -103,6 +103,12 @@ const en = {
     testSection: "Try it out",
     testReminder: "Try a reminder",
     testReminderDesc: "See how a reminder looks and sounds.",
+    resetSection: "Reset",
+    resetDesc: "Wipe all reminders, history and settings, and start fresh.",
+    resetButton: "Reset Nila",
+    resetConfirm: "Really wipe everything? This cannot be undone.",
+    resetConfirmButton: "Yes, wipe everything",
+    resetDone: "Nila is back to fresh. Welcome!",
     backupSection: "Backup",
     backupDesc: "Keep a copy of your reminders and settings.",
     export: "Export backup",
@@ -306,6 +312,8 @@ const en = {
     exportFailed: "Couldn't create the backup.",
     importFailed: "Couldn't read the file.",
     importInvalid: "This file is not a Nila backup.",
+    resetFailed: "Couldn't reset. Please try again.",
+    cancel: "Cancel",
   },
 };
 
@@ -399,6 +407,12 @@ const manglish: Dict = {
     testSection: "Onnu try cheyyu",
     testReminder: "Oru reminder try cheyyu",
     testReminderDesc: "Reminder eppozhaanu kaanunnathu, sound engane — onnu kandu nokku.",
+    resetSection: "Reset",
+    resetDesc: "Ella reminders-um, history-um, settings-um azhich fresh aayi thudanguka.",
+    resetButton: "Nila reset cheyyuka",
+    resetConfirm: "Ellaam azhicho? Ith thirichu kittilla.",
+    resetConfirmButton: "Athe, ellaam azhikku",
+    resetDone: "Nila fresh aayi! Welcome!",
     backupSection: "Backup",
     backupDesc: "Reminders-um settings-um oru copy aayi save cheyyam.",
     export: "Backup export cheyyuka",
@@ -601,6 +615,8 @@ const manglish: Dict = {
     exportFailed: "Backup undakkan pattiyilla.",
     importFailed: "File vayikkan pattiyilla.",
     importInvalid: "Ithu Nila backup alla.",
+    resetFailed: "Reset cheyyan pattiyilla. Onnu koodi try cheyyu.",
+    cancel: "Cancel",
   },
 };
 
