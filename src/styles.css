@@ -330,15 +330,16 @@ html, body {
   margin-right: 10px; /* breathing room between her box and the chat */
   background: #f5f4f1;
   border-radius: 0 0 16px 16px;
-  padding: 6px;
+  padding: 0;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
   pointer-events: none;
+  overflow: hidden;
 }
 .dock-nila img {
   width: 100%;
   height: auto;
   display: block;
-  border-radius: 0 0 11px 11px;
+  border-radius: 0 0 16px 16px;
   pointer-events: none;
 }
 /* The chat bubble. */
