@@ -211,25 +211,6 @@ fn resolve_model(app: &AppHandle) -> Option<ModelSource> {
     resolve_model_in(&search_dirs(app))
 }
 
-/// The model file path for the asset manager's legacy fallback.
-/// Returns the `.tflite` (or the JSON config's sibling `.tflite` when
-/// the JSON names one — here simplified to the JSON's sibling stem).
-pub(crate) fn resolve_model_path(app: &AppHandle) -> Option<PathBuf> {
-    match resolve_model(app)? {
-        ModelSource::Bare(tflite) => Some(tflite),
-        ModelSource::Config(json) => {
-            // Prefer the sibling .tflite next to the JSON config.
-            let stem = json.file_stem()?.to_str()?;
-            let tflite = json.with_file_name(format!("{stem}.tflite"));
-            if tflite.is_file() {
-                Some(tflite)
-            } else {
-                Some(json)
-            }
-        }
-    }
-}
-
 fn resolve_model_in(dirs: &[PathBuf]) -> Option<ModelSource> {
     // Explicit file path via env var wins outright.
     if let Ok(v) = std::env::var(ENV_MODEL) {
