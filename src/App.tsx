@@ -34,11 +34,11 @@ import {
 import { invokeCommand, isTauri, listenEvent } from "./lib/tauri";
 import { playReminderChime, playWakeChime } from "./lib/sound";
 import type { MonitorRect, DueReminder } from "./lib/types";
-import { WakeWave } from "./components/WakeWave";
 import { NotificationDock } from "./dock/NotificationDock";
 import { NilaMascot } from "./mascot/NilaMascot";
 import nilaDirectionsUrl from "../character/mascot/nila-directions.webp";
 import nilaReactionsUrl from "../character/mascot/nila-reactions.webp";
+import nilaWaveUrl from "../character/mascot/nila-wave.webp";
 import { expressionSlotForContext } from "./dock/expressionSlots";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
@@ -1130,12 +1130,17 @@ export default function App() {
       )}
       {/* Wake-word greeting: only while the dock is hidden — the
        * dock owns the window whenever a reminder is on screen. Nila
-       * waves hello for a few seconds, then hides again. */}
+       * pops up happy for a few seconds, then hides again. */}
       {view === "companion" && wakeWaving && dock.phase === "hidden" && (
-        <WakeWave
-          alt={getStrings(settings.language).wake.nilaAlt}
-          reducedMotion={settings.animation !== "full" || prefersReducedMotion}
-        />
+        <div className="wake-mascot-wrap">
+          <img
+            src={nilaWaveUrl}
+            alt={getStrings(settings.language).wake.nilaAlt}
+            width={160}
+            height={160}
+            draggable={false}
+          />
+        </div>
       )}
       {import.meta.env.DEV && nilaDebug && view === "companion" && (
         <button

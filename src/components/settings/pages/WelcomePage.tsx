@@ -6,7 +6,9 @@
  * In setup mode (first launch) it shows "Create your first reminder" and
  * "Continue". Afterwards it is a calm tour page with no finish button.
  */
-import { expressionUrl } from "../../../dock/expressions";
+import { NilaMascot } from "../../../mascot/NilaMascot";
+import nilaDirectionsUrl from "../../../../character/mascot/nila-directions.webp";
+import nilaReactionsUrl from "../../../../character/mascot/nila-reactions.webp";
 import type { Language } from "../../../lib/i18n";
 import { Segmented } from "../ui";
 import type { PageProps } from "./page";
@@ -38,11 +40,13 @@ export function WelcomePage({
   return (
     <div className="settings-content-inner welcome-onboard">
       <div className="welcome-hero">
-        <img
-          src={expressionUrl("greeting")}
-          alt="Nila"
+        <NilaMascot
+          directions={nilaDirectionsUrl}
+          reactions={nilaReactionsUrl}
+          size={120}
+          label="Nila"
+          reaction={0}
           className="welcome-face"
-          draggable={false}
         />
         <h2 className="welcome-headline">{w.headline}</h2>
         <p className="welcome-intro">{w.intro}</p>
