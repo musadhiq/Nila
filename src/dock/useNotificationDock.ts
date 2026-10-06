@@ -6,10 +6,6 @@ import {
   type DockNotification,
   type DockPhase,
 } from "./dockMachine";
-import {
-  expressionSlotForContext,
-  type ExpressionSlot,
-} from "./expressionSlots";
 
 /**
  * useNotificationDock — owns the dock state machine and its timers.
@@ -68,7 +64,9 @@ export interface NotificationDockApi {
    * rejections). Null otherwise — done and snooze keep the per-kind
    * expression and answer with a single subtle blink instead.
    */
-  reaction: ExpressionSlot | null;
+  /** Nila's mascot reaction cell (0-8), set while a dismissal is being
+   * acknowledged. Null = she watches your cursor. */
+  reaction: number | null;
   /**
    * Incremented each time done/snooze is acknowledged; DockNilaFigure
    * plays one immediate blink beat per increment, then the card closes.
@@ -93,7 +91,7 @@ export function useNotificationDock(opts: {
   const phaseRef = useRef<DockPhase>("hidden");
   /** Back-to-back dismissals this session; done/snooze reset it. */
   const dismissStreak = useRef(0);
-  const [reaction, setReaction] = useState<ExpressionSlot | null>(null);
+  const [reaction, setReaction] = useState<number | null>(null);
   /** Bumped on every done/snooze ack to trigger one blink beat. */
   const [blinkSignal, setBlinkSignal] = useState(0);
 
@@ -145,16 +143,11 @@ export function useNotificationDock(opts: {
         break;
       case "acknowledging":
         if (state.ackAction === "dismissed") {
-          // Negative user action: Nila reacts briefly — sad, or a mild
-          // annoyed huff after a streak of dismissals. Cute, never
-          // guilt-tripping. The reaction holds ~1s, then collapses.
+          // Negative user action: Nila reacts briefly — sad (3), or a
+          // mild annoyed huff (4) after a streak of dismissals. Cute,
+          // never guilt-tripping. The reaction holds ~1s, then collapses.
           dismissStreak.current += 1;
-          setReaction(
-            expressionSlotForContext({
-              type: "rejected",
-              consecutiveRejections: dismissStreak.current,
-            }),
-          );
+          setReaction(dismissStreak.current >= 3 ? 4 : 3);
           later(t.react, () => dispatch({ type: "ack-done" }));
         } else {
           // Done or snooze: no expression swap — she keeps her current

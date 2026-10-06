@@ -11,7 +11,9 @@
  * A development-only preview section exercises the real dock with
  * short, long, and queued notifications.
  */
-import { NilaCharacter } from "../../../character/NilaCharacter";
+import { NilaMascot } from "../../../mascot/NilaMascot";
+import nilaDirectionsUrl from "../../../../character/mascot/nila-directions.webp";
+import nilaReactionsUrl from "../../../../character/mascot/nila-reactions.webp";
 import type { Dict } from "../../../lib/i18n";
 import { SettingsRow, SettingsSection, Segmented } from "../ui";
 import type { PageProps } from "./page";
@@ -29,7 +31,12 @@ function DockDiagram({ t }: { t: Dict }) {
           <span className="dock-diagram-title">Vellam</span>
           <span className="dock-diagram-msg">Vellam kudicho?</span>
           <span className="dock-diagram-nila">
-            <NilaCharacter state="idle" animation="idle-breathe" size="small" />
+            <NilaMascot
+              directions={nilaDirectionsUrl}
+              reactions={nilaReactionsUrl}
+              size={64}
+              label="Nila"
+            />
           </span>
         </div>
       </div>

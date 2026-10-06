@@ -39,7 +39,6 @@ import { NilaMascot } from "./mascot/NilaMascot";
 import nilaDirectionsUrl from "../character/mascot/nila-directions.webp";
 import nilaReactionsUrl from "../character/mascot/nila-reactions.webp";
 import nilaWaveUrl from "../character/mascot/nila-wave.webp";
-import { expressionSlotForContext } from "./dock/expressionSlots";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockActionable, isDockOnScreen } from "./dock/dockMachine";
@@ -121,18 +120,6 @@ export default function App() {
   // listener is registered once).
   const dockRef = useRef(dock);
   dockRef.current = dock;
-  // Nila's current expression slot: an acknowledgement reaction
-  // overrides the kind expression while it plays. Resolved once here so
-  // the portrait and its blink frames always agree.
-  const nilaSlot =
-    dock.reaction ??
-    (dock.current
-      ? expressionSlotForContext(
-          dock.current.id.startsWith("greeting-")
-            ? { type: "greeting" }
-            : { type: "kind", kind: dock.current.kind },
-        )
-      : "greeting");
   // The dock machine drives the window: when the first notification
   // starts entering, seat the window top-center and show it; when the
   // last one finishes collapsing, hide back to the tray. The settings
@@ -1097,23 +1084,7 @@ export default function App() {
                 reactions={nilaReactionsUrl}
                 size={108}
                 label={getStrings(settings.language).dock.nilaAlt}
-                reaction={
-                  // Map contextual slots to mascot reaction cells:
-                  // 0 happy, 1 surprised, 2 sleepy, 3 sad, 4 angry,
-                  // 5 worried, 6 delighted, 7 dizzy, 8 neutral.
-                  // Null = she watches your cursor.
-                  nilaSlot === "happy"
-                    ? 0
-                    : nilaSlot === "sad"
-                      ? 3
-                      : nilaSlot === "annoyed"
-                        ? 4
-                        : nilaSlot === "acknowledge"
-                          ? 6
-                          : nilaSlot === "sleepy"
-                            ? 2
-                            : null
-                }
+                reaction={dock.reaction}
               />
             ) : null
           }
