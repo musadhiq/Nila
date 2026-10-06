@@ -36,10 +36,10 @@ import { playReminderChime, playWakeChime } from "./lib/sound";
 import type { MonitorRect, DueReminder } from "./lib/types";
 import { WakeWave } from "./components/WakeWave";
 import { NotificationDock } from "./dock/NotificationDock";
-import { DockNilaFigure } from "./dock/DockNila";
+import { NilaMascot } from "./mascot/NilaMascot";
+import nilaDirectionsUrl from "../character/mascot/nila-directions.webp";
+import nilaReactionsUrl from "../character/mascot/nila-reactions.webp";
 import { expressionSlotForContext } from "./dock/expressionSlots";
-import { expressionUrl } from "./dock/expressions";
-import { emotionAnimUrl } from "./dock/emotionAnims";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockActionable, isDockOnScreen } from "./dock/dockMachine";
@@ -1092,17 +1092,28 @@ export default function App() {
              * idle breathe, blink beats, expression crossfades, one-shot
              * reactions — without touching the card layout. */
             dock.current ? (
-              <DockNilaFigure
-                slot={nilaSlot}
-                src={
-                  settings.animation !== "full" || prefersReducedMotion
-                    ? expressionUrl(nilaSlot)
-                    : emotionAnimUrl(nilaSlot)
+              <NilaMascot
+                directions={nilaDirectionsUrl}
+                reactions={nilaReactionsUrl}
+                size={108}
+                label={getStrings(settings.language).dock.nilaAlt}
+                reaction={
+                  // Map contextual slots to mascot reaction cells:
+                  // 0 happy, 1 surprised, 2 sleepy, 3 sad, 4 angry,
+                  // 5 worried, 6 delighted, 7 dizzy, 8 neutral.
+                  // Null = she watches your cursor.
+                  nilaSlot === "happy"
+                    ? 0
+                    : nilaSlot === "sad"
+                      ? 3
+                      : nilaSlot === "annoyed"
+                        ? 4
+                        : nilaSlot === "acknowledge"
+                          ? 6
+                          : nilaSlot === "sleepy"
+                            ? 2
+                            : null
                 }
-                alt={getStrings(settings.language).dock.nilaAlt}
-                reaction={dock.reaction}
-                blinkSignal={dock.blinkSignal}
-                reducedMotion={settings.animation !== "full" || prefersReducedMotion}
               />
             ) : null
           }
