@@ -644,3 +644,16 @@ html, body {
   from { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.9); }
   to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
+/* Gentle side-to-side rock so the raised hand reads as waving.
+ * The inner mascot still tracks the cursor independently. */
+.wake-mascot-wave {
+  animation: wake-wave-rock 1.2s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+@keyframes wake-wave-rock {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wake-mascot-wave { animation: none; }
+}

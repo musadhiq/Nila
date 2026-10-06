@@ -38,7 +38,7 @@ import { NotificationDock } from "./dock/NotificationDock";
 import { NilaMascot } from "./mascot/NilaMascot";
 import nilaDirectionsUrl from "../character/mascot/nila-directions.webp";
 import nilaReactionsUrl from "../character/mascot/nila-reactions.webp";
-import nilaWaveUrl from "../character/mascot/nila-wave.webp";
+import nilaWaveDirectionsUrl from "../character/mascot/nila-wave-directions.webp";
 import { useNotificationDock } from "./dock/useNotificationDock";
 import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockActionable, isDockOnScreen } from "./dock/dockMachine";
@@ -1104,13 +1104,14 @@ export default function App() {
        * pops up happy for a few seconds, then hides again. */}
       {view === "companion" && wakeWaving && dock.phase === "hidden" && (
         <div className="wake-mascot-wrap">
-          <img
-            src={nilaWaveUrl}
-            alt={getStrings(settings.language).wake.nilaAlt}
-            width={160}
-            height={160}
-            draggable={false}
-          />
+          <div className="wake-mascot-wave">
+            <NilaMascot
+              directions={nilaWaveDirectionsUrl}
+              reactions={nilaReactionsUrl}
+              size={160}
+              label={getStrings(settings.language).wake.nilaAlt}
+            />
+          </div>
         </div>
       )}
       {import.meta.env.DEV && nilaDebug && view === "companion" && (
