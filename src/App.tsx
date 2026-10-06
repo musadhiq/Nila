@@ -40,7 +40,6 @@ import nilaDirectionsUrl from "../character/mascot/nila-directions.webp";
 import nilaReactionsUrl from "../character/mascot/nila-reactions.webp";
 import nilaWaveDirectionsUrl from "../character/mascot/nila-wave-directions.webp";
 import { useNotificationDock } from "./dock/useNotificationDock";
-import { NotificationPosition, dockWindowOrigin } from "./dock/positions";
 import { isDockActionable, isDockOnScreen } from "./dock/dockMachine";
 import { SettingsPanel } from "./components/SettingsPanel";
 import type { PageId } from "./components/settings/SettingsLayout";
@@ -315,15 +314,9 @@ export default function App() {
    * onMeasure; before the first report we use a sane estimate and
    * correct on arrival.
    */
-  /** Top clearance: the dock hangs just below the system top bar. */
-  const DOCK_SAFE_MARGIN = 12;
-  /** Window padding around the card: shadow spread + animation overshoot. */
-  const DOCK_PAD_X = 56;
-  const DOCK_PAD_Y = 64;
-  /** Pre-measure estimate (typical card) so the first present is sane. */
-  const dockCardSize = useRef({ w: 340, h: 120 });
-
-  /** Size + top-center the dock window around the measured card. */
+  /** Fullscreen transparent window so the mascot tracks the mouse
+   * anywhere on screen. The dock card stays top-center via CSS;
+   * pointer-events pass through everywhere except the card itself. */
   const fitDockWindow = async () => {
     const win = getCurrentWindow();
     // Clear any locks left by the settings panel (min 720x480) or the
@@ -332,10 +325,6 @@ export default function App() {
     await win.setMaxSize(null);
     await win.setDecorations(false);
     await win.setAlwaysOnTop(true);
-    const { w, h } = dockCardSize.current;
-    const winW = Math.ceil(w + DOCK_PAD_X);
-    const winH = Math.ceil(h + DOCK_PAD_Y);
-    await win.setSize(new LogicalSize(winW, winH));
     const info = await monitorInfo();
     if (info.rects.length === 0) return;
     let mi = info.primary;
@@ -348,29 +337,17 @@ export default function App() {
     }
     const mon = info.rects[mi];
     const scale = info.scales[mi] ?? 1;
-    const o = dockWindowOrigin(
-      NotificationPosition.TOP_CENTER,
-      mon,
-      Math.round(winW * scale),
-      Math.round(winH * scale),
-      Math.round(DOCK_SAFE_MARGIN * scale),
+    // Fullscreen: mouse tracking works across the entire monitor.
+    const winW = Math.round(mon.width / scale);
+    const winH = Math.round(mon.height / scale);
+    await win.setSize(new LogicalSize(winW, winH));
+    await win.setPosition(
+      new PhysicalPosition(Math.round(mon.x), Math.round(mon.y)),
     );
-    await win.setPosition(new PhysicalPosition(o.x, o.y));
   };
 
-  /** The card measured itself: keep the window fitted while on screen. */
-  const handleDockMeasure = useCallback(
-    (w: number, h: number) => {
-      const prev = dockCardSize.current;
-      if (Math.abs(prev.w - w) < 2 && Math.abs(prev.h - h) < 2) return;
-      dockCardSize.current = { w: Math.ceil(w), h: Math.ceil(h) };
-      if (isTauri() && isDockOnScreen(dockRef.current.phase)) {
-        void fitDockWindow().catch(() => {});
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  /** The card measured itself: no-op now — the window is fullscreen. */
+  const handleDockMeasure = useCallback((_w: number, _h: number) => {}, []);
 
   const presentDockWindow = async () => {
     if (!isTauri()) return;
@@ -408,18 +385,13 @@ export default function App() {
     if (!isTauri()) return;
     try {
       const win = getCurrentWindow();
-      // Clear any locks left by the settings panel — the pill owns its
-      // size while it is on screen.
+      // Clear any locks left by the settings panel — the wake greeting
+      // uses the fullscreen transparent window (same as the dock) so the
+      // mascot tracks the mouse anywhere on screen.
       await win.setMinSize(null);
       await win.setMaxSize(null);
       await win.setDecorations(false);
       await win.setAlwaysOnTop(true);
-      // Pill (~200x54) + transcript bubble + breathing room for the
-      // entrance animation and the soft shadow. Fixed: no measurement
-      // needed. Sized for the bubble's ~3 wrapped lines of transcript.
-      const winW = 360;
-      const winH = 200;
-      await win.setSize(new LogicalSize(winW, winH));
       const info = await monitorInfo();
       if (info.rects.length === 0) return;
       let mi = info.primary;
@@ -432,14 +404,12 @@ export default function App() {
       }
       const mon = info.rects[mi];
       const scale = info.scales[mi] ?? 1;
-      const o = dockWindowOrigin(
-        NotificationPosition.TOP_CENTER,
-        mon,
-        Math.round(winW * scale),
-        Math.round(winH * scale),
-        Math.round(DOCK_SAFE_MARGIN * scale),
+      const winW = Math.round(mon.width / scale);
+      const winH = Math.round(mon.height / scale);
+      await win.setSize(new LogicalSize(winW, winH));
+      await win.setPosition(
+        new PhysicalPosition(Math.round(mon.x), Math.round(mon.y)),
       );
-      await win.setPosition(new PhysicalPosition(o.x, o.y));
       await win.show();
       // Deliberately no setFocus(): waking must not steal keyboard focus
       // from the user's work.
@@ -1103,14 +1073,24 @@ export default function App() {
        * dock owns the window whenever a reminder is on screen. Nila
        * pops up happy for a few seconds, then hides again. */}
       {view === "companion" && wakeWaving && dock.phase === "hidden" && (
-        <div className="wake-mascot-wrap">
-          <div className="wake-mascot-wave">
-            <NilaMascot
-              directions={nilaWaveDirectionsUrl}
-              reactions={nilaReactionsUrl}
-              size={160}
-              label={getStrings(settings.language).wake.nilaAlt}
-            />
+        <div className="dock-root">
+          <div className="dock-wrap is-entering">
+            <div className="dock-nila" aria-hidden="true">
+              <NilaMascot
+                directions={nilaWaveDirectionsUrl}
+                reactions={nilaReactionsUrl}
+                size={108}
+                label={getStrings(settings.language).wake.nilaAlt}
+              />
+            </div>
+            <div className="dock-card" role="status">
+              <div className="dock-title-row">
+                <span className="dock-title">Nila</span>
+              </div>
+              <div className="dock-message">
+                {getStrings(settings.language).dock.greeting}
+              </div>
+            </div>
           </div>
         </div>
       )}

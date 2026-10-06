@@ -8,15 +8,18 @@ import { useEffect, useRef, useState } from "react";
  *   3: left       4: center 5: right
  *   6: down-left  7: down  8: down-right
  *
- * Returns 4 (center) when the cursor is inside the dead zone, when the
- * device has no fine pointer, or when reduced motion is preferred.
+ * She looks toward the mouse only while it moves; when the mouse goes
+ * idle she settles back to center (looking directly at you). Returns 4
+ * when the device has no fine pointer or reduced motion is preferred.
  */
 export function useCursorDirection(
   targetRef: React.RefObject<HTMLElement | null>,
   deadZonePx = 40,
+  idleMs = 1200,
 ): number {
   const [cell, setCell] = useState(4);
   const rafRef = useRef(0);
+  const idleRef = useRef(0);
   const lastCell = useRef(4);
 
   useEffect(() => {
@@ -29,8 +32,17 @@ export function useCursorDirection(
       return;
     }
 
+    const lookCenter = () => {
+      if (lastCell.current !== 4) {
+        lastCell.current = 4;
+        setCell(4);
+      }
+    };
+
     const onMove = (e: MouseEvent) => {
       cancelAnimationFrame(rafRef.current);
+      // Mouse moved: cancel the idle timer, she stays attentive.
+      window.clearTimeout(idleRef.current);
       rafRef.current = requestAnimationFrame(() => {
         const el = targetRef.current;
         if (!el) return;
@@ -62,14 +74,17 @@ export function useCursorDirection(
           setCell(next);
         }
       });
+      // Mouse stopped: after idleMs she looks back at you.
+      idleRef.current = window.setTimeout(lookCenter, idleMs);
     };
 
     window.addEventListener("mousemove", onMove, { passive: true });
     return () => {
       window.removeEventListener("mousemove", onMove);
       cancelAnimationFrame(rafRef.current);
+      window.clearTimeout(idleRef.current);
     };
-  }, [targetRef, deadZonePx]);
+  }, [targetRef, deadZonePx, idleMs]);
 
   return cell;
 }

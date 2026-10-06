@@ -308,7 +308,7 @@ html, body {
  * ============================================================ */
 .dock-root {
   position: fixed;
-  top: 0; /* the window itself already clears the top bar */
+  top: 12px; /* DOCK_SAFE_MARGIN: card sits below the top bar */
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
@@ -630,30 +630,5 @@ html, body {
 .status-line.err { background: rgba(244, 67, 54, 0.12); color: #c62828; }
 /* Right-click context menu on Nila */
 
-/* Wake-word mascot greeting: centered pop-up, no box. */
-.wake-mascot-wrap {
-  position: fixed;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 60;
-  pointer-events: auto;
-  animation: wake-mascot-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes wake-mascot-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.9); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-}
-/* Gentle side-to-side rock so the raised hand reads as waving.
- * The inner mascot still tracks the cursor independently. */
-.wake-mascot-wave {
-  animation: wake-wave-rock 1.2s ease-in-out infinite;
-  transform-origin: 50% 90%;
-}
-@keyframes wake-wave-rock {
-  0%, 100% { transform: rotate(-4deg); }
-  50% { transform: rotate(4deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .wake-mascot-wave { animation: none; }
-}
+/* Wake-word greeting uses the standard dock UI (see App.tsx).
+ * No container animation — the mascot's own motion is enough. */
